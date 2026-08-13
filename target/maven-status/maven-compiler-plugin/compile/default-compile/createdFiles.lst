@@ -1,0 +1,16 @@
+com\cricket\platform\identity\RegisterUser.class
+com\cricket\platform\match\GetMatch.class
+com\cricket\platform\identity\LoginUser$Request.class
+com\cricket\platform\api\ApiExceptionHandler.class
+com\cricket\platform\identity\JwtService.class
+com\cricket\platform\identity\AuthController.class
+com\cricket\platform\match\CreateMatch.class
+com\cricket\platform\identity\RegisterUser$UserResponse.class
+com\cricket\platform\match\CreateMatch$MatchResponse.class
+com\cricket\platform\match\CreateMatch$Request.class
+com\cricket\platform\match\GetMatch$MatchView.class
+com\cricket\platform\identity\RegisterUser$Request.class
+com\cricket\platform\identity\LoginUser.class
+com\cricket\platform\CricketPlatformApplication.class
+com\cricket\platform\identity\LoginUser$AuthResponse.class
+com\cricket\platform\identity\IdentityController.class
