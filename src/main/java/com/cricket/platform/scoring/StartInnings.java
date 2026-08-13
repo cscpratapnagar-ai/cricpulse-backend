@@ -19,13 +19,21 @@ public class StartInnings {
     @Transactional
     public InningsResponse execute(Request request) {
         MatchState match = jdbc.queryForObject(
-                "SELECT id, team_a_id, team_b_id, total_overs, status FROM matches WHERE id = ?",
+                """
+                SELECT id, team_a_id, team_b_id, total_overs, status,
+                       toss_winner_team_id, toss_decision
+                FROM matches
+                WHERE id = ?
+                FOR UPDATE
+                """,
                 (rs, row) -> new MatchState(
                         rs.getObject("id", UUID.class),
                         rs.getObject("team_a_id", UUID.class),
                         rs.getObject("team_b_id", UUID.class),
                         (Integer) rs.getObject("total_overs"),
-                        rs.getString("status")
+                        rs.getString("status"),
+                        rs.getObject("toss_winner_team_id", UUID.class),
+                        rs.getString("toss_decision")
                 ),
                 request.matchId()
         );
@@ -34,20 +42,16 @@ public class StartInnings {
             throw new IllegalArgumentException("Match was not found");
         }
 
-        if (!request.battingTeamId().equals(match.teamAId()) && !request.battingTeamId().equals(match.teamBId())) {
-            throw new IllegalArgumentException("Batting team is not part of this match");
+        if (match.tossWinnerTeamId() == null || match.tossDecision() == null) {
+            throw new IllegalArgumentException("Toss must be recorded before starting an innings");
         }
 
-        UUID bowlingTeamId = request.battingTeamId().equals(match.teamAId())
-                ? match.teamBId()
-                : match.teamAId();
+        if (match.totalOvers() == null || match.totalOvers() <= 0) {
+            throw new IllegalArgumentException("Match total overs are not configured");
+        }
 
         if (request.inningsNumber() < 1) {
             throw new IllegalArgumentException("Innings number must be positive");
-        }
-
-        if (request.inningsNumber() > 1 && !hasCompletedPreviousInnings(request.matchId(), request.inningsNumber())) {
-            throw new IllegalArgumentException("Previous innings must be completed before starting this innings");
         }
 
         Integer count = jdbc.queryForObject(
@@ -61,10 +65,23 @@ public class StartInnings {
             throw new IllegalArgumentException("This innings already exists");
         }
 
-        if (match.totalOvers() == null || match.totalOvers() <= 0) {
-            throw new IllegalArgumentException("Match total overs are not configured");
+        UUID expectedBattingTeamId;
+        if (request.inningsNumber() == 1) {
+            expectedBattingTeamId = "BAT".equals(match.tossDecision())
+                    ? match.tossWinnerTeamId()
+                    : oppositeTeam(match.tossWinnerTeamId(), match);
+        } else {
+            if (!hasCompletedPreviousInnings(request.matchId(), request.inningsNumber())) {
+                throw new IllegalArgumentException("Previous innings must be completed before starting this innings");
+            }
+            expectedBattingTeamId = oppositeTeam(match.tossWinnerTeamId(), match);
         }
 
+        if (!request.battingTeamId().equals(expectedBattingTeamId)) {
+            throw new IllegalArgumentException("Batting team does not match the toss/innings order");
+        }
+
+        UUID bowlingTeamId = oppositeTeam(request.battingTeamId(), match);
         UUID id = UUID.randomUUID();
         Integer targetRuns = null;
 
@@ -116,6 +133,10 @@ public class StartInnings {
         );
     }
 
+    private UUID oppositeTeam(UUID teamId, MatchState match) {
+        return teamId.equals(match.teamAId()) ? match.teamBId() : match.teamAId();
+    }
+
     private boolean hasCompletedPreviousInnings(UUID matchId, int inningsNumber) {
         Integer completed = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM innings WHERE match_id = ? AND innings_number = ? AND status = 'COMPLETED'",
@@ -126,7 +147,15 @@ public class StartInnings {
         return completed != null && completed > 0;
     }
 
-    private record MatchState(UUID id, UUID teamAId, UUID teamBId, Integer totalOvers, String status) {}
+    private record MatchState(
+            UUID id,
+            UUID teamAId,
+            UUID teamBId,
+            Integer totalOvers,
+            String status,
+            UUID tossWinnerTeamId,
+            String tossDecision
+    ) {}
 
     public record Request(
             @NotNull UUID matchId,
