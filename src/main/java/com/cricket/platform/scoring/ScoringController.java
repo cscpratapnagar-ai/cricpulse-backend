@@ -1,8 +1,8 @@
 package com.cricket.platform.scoring;
 
 import jakarta.validation.Valid;
-import org.springframework.web.bind.annotation.*;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
 
@@ -13,15 +13,21 @@ public class ScoringController {
     private final RecordDelivery recordDelivery;
     private final GetLiveScore getLiveScore;
     private final UndoDelivery undoDelivery;
+    private final InningsLifecycle inningsLifecycle;
     private final SimpMessagingTemplate messaging;
 
-    public ScoringController(StartInnings startInnings, RecordDelivery recordDelivery, GetLiveScore getLiveScore,
-                             SimpMessagingTemplate messaging, UndoDelivery undoDelivery) {
+    public ScoringController(StartInnings startInnings,
+                             RecordDelivery recordDelivery,
+                             GetLiveScore getLiveScore,
+                             UndoDelivery undoDelivery,
+                             InningsLifecycle inningsLifecycle,
+                             SimpMessagingTemplate messaging) {
         this.startInnings = startInnings;
         this.recordDelivery = recordDelivery;
         this.getLiveScore = getLiveScore;
-        this.messaging = messaging;
         this.undoDelivery = undoDelivery;
+        this.inningsLifecycle = inningsLifecycle;
+        this.messaging = messaging;
     }
 
     @PostMapping("/innings")
@@ -32,15 +38,22 @@ public class ScoringController {
     @PostMapping("/innings/{inningsId}/deliveries")
     RecordDelivery.DeliveryResponse delivery(@PathVariable UUID inningsId,
                                                @Valid @RequestBody RecordDelivery.Request request) {
-        if (!inningsId.equals(request.inningsId())) throw new IllegalArgumentException("Innings ID does not match URL");
+        if (!inningsId.equals(request.inningsId())) {
+            throw new IllegalArgumentException("Innings ID does not match URL");
+        }
+
         RecordDelivery.DeliveryResponse response = recordDelivery.execute(request);
+        inningsLifecycle.evaluate(inningsId);
+
         GetLiveScore.Score score = getLiveScore.execute(inningsId);
         messaging.convertAndSend("/topic/innings/" + inningsId, score);
         return response;
     }
 
     @GetMapping("/innings/{inningsId}")
-    GetLiveScore.Score live(@PathVariable UUID inningsId) { return getLiveScore.execute(inningsId); }
+    GetLiveScore.Score live(@PathVariable UUID inningsId) {
+        return getLiveScore.execute(inningsId);
+    }
 
     @PostMapping("/innings/{inningsId}/undo")
     GetLiveScore.Score undo(@PathVariable UUID inningsId) {
