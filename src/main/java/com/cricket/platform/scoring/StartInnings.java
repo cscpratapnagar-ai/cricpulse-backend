@@ -1,5 +1,6 @@
 package com.cricket.platform.scoring;
 
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -17,19 +18,36 @@ public class StartInnings {
 
     @Transactional
     public InningsResponse execute(Request request) {
-        requireExists("matches", request.matchId(), "Match was not found");
-        requireExists("teams", request.battingTeamId(), "Batting team was not found");
-
-        Integer participant = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM matches WHERE id = ? AND (team_a_id = ? OR team_b_id = ?)",
-                Integer.class,
-                request.matchId(),
-                request.battingTeamId(),
-                request.battingTeamId()
+        MatchState match = jdbc.queryForObject(
+                "SELECT id, team_a_id, team_b_id, total_overs, status FROM matches WHERE id = ?",
+                (rs, row) -> new MatchState(
+                        rs.getObject("id", UUID.class),
+                        rs.getObject("team_a_id", UUID.class),
+                        rs.getObject("team_b_id", UUID.class),
+                        (Integer) rs.getObject("total_overs"),
+                        rs.getString("status")
+                ),
+                request.matchId()
         );
 
-        if (participant == null || participant == 0) {
+        if (match == null) {
+            throw new IllegalArgumentException("Match was not found");
+        }
+
+        if (!request.battingTeamId().equals(match.teamAId()) && !request.battingTeamId().equals(match.teamBId())) {
             throw new IllegalArgumentException("Batting team is not part of this match");
+        }
+
+        UUID bowlingTeamId = request.battingTeamId().equals(match.teamAId())
+                ? match.teamBId()
+                : match.teamAId();
+
+        if (request.inningsNumber() < 1) {
+            throw new IllegalArgumentException("Innings number must be positive");
+        }
+
+        if (request.inningsNumber() > 1 && !hasCompletedPreviousInnings(request.matchId(), request.inningsNumber())) {
+            throw new IllegalArgumentException("Previous innings must be completed before starting this innings");
         }
 
         Integer count = jdbc.queryForObject(
@@ -43,29 +61,54 @@ public class StartInnings {
             throw new IllegalArgumentException("This innings already exists");
         }
 
+        if (match.totalOvers() == null || match.totalOvers() <= 0) {
+            throw new IllegalArgumentException("Match total overs are not configured");
+        }
+
         UUID id = UUID.randomUUID();
+        Integer targetRuns = null;
+
+        if (request.inningsNumber() > 1) {
+            targetRuns = jdbc.queryForObject(
+                    "SELECT total_runs + 1 FROM innings WHERE match_id = ? AND innings_number = ?",
+                    Integer.class,
+                    request.matchId(),
+                    request.inningsNumber() - 1
+            );
+        }
 
         jdbc.update(
                 """
                 INSERT INTO innings(
-                    id, match_id, innings_number, batting_team_id,
-                    total_runs, wickets, legal_balls, status,
-                    current_over, current_ball
+                    id, match_id, innings_number, batting_team_id, bowling_team_id,
+                    total_runs, wickets, legal_balls, total_overs, status, target_runs,
+                    current_over, current_ball, declared, is_super_over
                 )
-                VALUES (?, ?, ?, ?, 0, 0, 0, 'LIVE', 0, 0)
+                VALUES (?, ?, ?, ?, ?, 0, 0, 0, ?, 'LIVE', ?, 0, 0, FALSE, FALSE)
                 """,
                 id,
                 request.matchId(),
                 request.inningsNumber(),
-                request.battingTeamId()
+                request.battingTeamId(),
+                bowlingTeamId,
+                match.totalOvers(),
+                targetRuns
         );
 
-        jdbc.update("UPDATE matches SET status = 'LIVE' WHERE id = ?", request.matchId());
+        jdbc.update(
+                "UPDATE matches SET status = 'LIVE', current_innings_id = ? WHERE id = ?",
+                id,
+                request.matchId()
+        );
 
         return new InningsResponse(
                 id,
                 request.matchId(),
                 request.inningsNumber(),
+                request.battingTeamId(),
+                bowlingTeamId,
+                match.totalOvers(),
+                targetRuns,
                 0,
                 0,
                 0,
@@ -73,20 +116,21 @@ public class StartInnings {
         );
     }
 
-    private void requireExists(String table, UUID id, String message) {
-        Integer count = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM " + table + " WHERE id = ?",
+    private boolean hasCompletedPreviousInnings(UUID matchId, int inningsNumber) {
+        Integer completed = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM innings WHERE match_id = ? AND innings_number = ? AND status = 'COMPLETED'",
                 Integer.class,
-                id
+                matchId,
+                inningsNumber - 1
         );
-        if (count == null || count == 0) {
-            throw new IllegalArgumentException(message);
-        }
+        return completed != null && completed > 0;
     }
+
+    private record MatchState(UUID id, UUID teamAId, UUID teamBId, Integer totalOvers, String status) {}
 
     public record Request(
             @NotNull UUID matchId,
-            @NotNull Integer inningsNumber,
+            @NotNull @Min(1) Integer inningsNumber,
             @NotNull UUID battingTeamId
     ) {}
 
@@ -94,6 +138,10 @@ public class StartInnings {
             UUID id,
             UUID matchId,
             int inningsNumber,
+            UUID battingTeamId,
+            UUID bowlingTeamId,
+            int totalOvers,
+            Integer targetRuns,
             int runs,
             int wickets,
             int legalBalls,
