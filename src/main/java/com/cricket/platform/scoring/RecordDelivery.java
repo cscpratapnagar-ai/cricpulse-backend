@@ -6,8 +6,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.Set;
 import java.util.UUID;
 
@@ -63,11 +61,11 @@ public class RecordDelivery {
         int legalBalls = innings.legalBalls() + (legal ? 1 : 0);
         int wickets = innings.wickets() + (request.wicketType() == null ? 0 : 1);
 
-        int overNumber = legal ? legalBalls / 6 : Math.max(0, innings.current_over());
-        int ballNumber = legal ? ((legalBalls - 1) % 6) + 1 : Math.max(1, innings.current_ball());
+        int overNumber = legal ? legalBalls / 6 : Math.max(0, innings.currentOver());
+        int ballNumber = legal ? ((legalBalls - 1) % 6) + 1 : Math.max(1, innings.currentBall());
 
-        int previousBall = innings.current_ball();
-        int previousOver = innings.current_over();
+        int previousBall = innings.currentBall();
+        int previousOver = innings.currentOver();
 
         UUID deliveryId = UUID.randomUUID();
         Integer sequence = jdbc.queryForObject(
