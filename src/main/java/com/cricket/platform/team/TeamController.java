@@ -45,7 +45,7 @@ public class TeamController {
         );
     }
 
-    @GetMapping("/{id}")
+    @GetMapping("/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}")
     GetTeam.TeamView get(@PathVariable UUID id) { return getTeam.execute(id); }
 
     @GetMapping
