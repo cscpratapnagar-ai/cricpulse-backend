@@ -30,9 +30,12 @@ public class SecurityConfig {
     @Bean
     CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOriginPatterns(List.of("http://localhost:4200", "https://*.cricketpulse.app"));
+        configuration.setAllowedOriginPatterns(List.of(
+                "http://localhost:4200",
+                "https://*.app.github.dev",
+                "https://*.cricketpulse.app"));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept"));
         configuration.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
@@ -57,17 +60,23 @@ public class SecurityConfig {
     static class JwtFilter extends OncePerRequestFilter {
         private final JwtService jwt;
         JwtFilter(JwtService jwt) { this.jwt = jwt; }
-        @Override protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
+
+        @Override
+        protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
                 throws ServletException, IOException {
             String header = request.getHeader("Authorization");
             if (header != null && header.startsWith("Bearer ")) {
                 try {
-                    String subject = jwt.subject(header.substring(7));
-                    String role = jwt.role(header.substring(7)).toUpperCase();
-                    var authentication = new UsernamePasswordAuthenticationToken(subject, null,
-                            List.of(new SimpleGrantedAuthority("ROLE_" + role)));
-                    org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(authentication);
-                } catch (RuntimeException ignored) { }
+                    String token = header.substring(7);
+                    String subject = jwt.subject(token);
+                    String role = jwt.role(token).toUpperCase();
+                    var authentication = new UsernamePasswordAuthenticationToken(
+                            subject, null, List.of(new SimpleGrantedAuthority("ROLE_" + role)));
+                    org.springframework.security.core.context.SecurityContextHolder.getContext()
+                            .setAuthentication(authentication);
+                } catch (RuntimeException ignored) {
+                    org.springframework.security.core.context.SecurityContextHolder.clearContext();
+                }
             }
             chain.doFilter(request, response);
         }
