@@ -7,7 +7,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
-import java.util.Map;
 import java.util.UUID;
 
 @Component
@@ -19,9 +18,7 @@ public class CreatePlayer {
     public PlayerResponse create(Authentication authentication, Request request) {
         UUID userId = userId(authentication);
         Integer existing = jdbc.queryForObject("SELECT COUNT(*) FROM players WHERE user_id = ?", Integer.class, userId);
-        if (existing != null && existing > 0) {
-            throw new IllegalStateException("Player profile already exists");
-        }
+        if (existing != null && existing > 0) throw new PlayerProfileAlreadyExistsException();
         UUID id = UUID.randomUUID();
         jdbc.update("""
                 INSERT INTO players(id, user_id, batting_style, bowling_style, date_of_birth, city, playing_role, jersey_number, bio, profile_photo_url)
@@ -38,7 +35,7 @@ public class CreatePlayer {
                 playing_role = ?, jersey_number = ?, bio = ?, profile_photo_url = ? WHERE user_id = ?
                 """, request.battingStyle(), request.bowlingStyle(), request.dateOfBirth(), request.city(),
                 request.playingRole(), request.jerseyNumber(), request.bio(), request.profilePhotoUrl(), userId);
-        if (updated == 0) throw new IllegalStateException("Player profile was not found");
+        if (updated == 0) throw new PlayerProfileNotFoundException();
         return findByUserId(userId);
     }
 
@@ -47,7 +44,7 @@ public class CreatePlayer {
     }
 
     private PlayerResponse findByUserId(UUID userId) {
-        return jdbc.queryForObject("""
+        var result = jdbc.query("""
                 SELECT p.id, p.user_id, u.full_name, p.batting_style, p.bowling_style, p.date_of_birth,
                 p.city, p.playing_role, p.jersey_number, p.bio, p.profile_photo_url
                 FROM players p JOIN users u ON u.id = p.user_id WHERE p.user_id = ?
@@ -56,11 +53,15 @@ public class CreatePlayer {
                 rs.getString("batting_style"), rs.getString("bowling_style"), rs.getObject("date_of_birth", LocalDate.class),
                 rs.getString("city"), rs.getString("playing_role"),
                 (Integer) rs.getObject("jersey_number"), rs.getString("bio"), rs.getString("profile_photo_url")), userId);
+        if (result.isEmpty()) throw new PlayerProfileNotFoundException();
+        return result.get(0);
     }
 
     private UUID userId(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()) throw new IllegalStateException("Authentication required");
-        return jdbc.queryForObject("SELECT id FROM users WHERE lower(email) = lower(?)", UUID.class, authentication.getName());
+        UUID id = jdbc.queryForObject("SELECT id FROM users WHERE lower(email) = lower(?)", UUID.class, authentication.getName());
+        if (id == null) throw new IllegalStateException("Authenticated user was not found");
+        return id;
     }
 
     public record Request(
@@ -85,4 +86,12 @@ public class CreatePlayer {
             Integer jerseyNumber,
             String bio,
             String profilePhotoUrl) {}
+
+    public static final class PlayerProfileAlreadyExistsException extends RuntimeException {
+        public PlayerProfileAlreadyExistsException() { super("Player profile already exists"); }
+    }
+
+    public static final class PlayerProfileNotFoundException extends RuntimeException {
+        public PlayerProfileNotFoundException() { super("Player profile was not found"); }
+    }
 }
