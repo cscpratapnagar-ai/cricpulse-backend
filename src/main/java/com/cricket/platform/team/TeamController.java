@@ -29,6 +29,22 @@ public class TeamController {
         return createTeam.execute(request, authentication.getName());
     }
 
+    @GetMapping("/mine")
+    List<GetTeam.TeamView> mine(Authentication authentication) {
+        return jdbc.query(
+                "SELECT t.id, t.name, t.city, t.owner_id " +
+                "FROM teams t JOIN users u ON u.id = t.owner_id " +
+                "WHERE LOWER(u.email) = LOWER(?) ORDER BY t.name",
+                (rs, row) -> new GetTeam.TeamView(
+                        rs.getObject("id", UUID.class),
+                        rs.getString("name"),
+                        rs.getString("city"),
+                        rs.getObject("owner_id", UUID.class)
+                ),
+                authentication.getName()
+        );
+    }
+
     @GetMapping("/{id}")
     GetTeam.TeamView get(@PathVariable UUID id) { return getTeam.execute(id); }
 
