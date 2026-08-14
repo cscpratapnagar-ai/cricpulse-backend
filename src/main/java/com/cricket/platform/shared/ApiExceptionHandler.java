@@ -1,8 +1,8 @@
 package com.cricket.platform.shared;
 
 import com.cricket.platform.identity.LoginUser;
+import com.cricket.platform.identity.RegisterUser;
 import com.cricket.platform.player.CreatePlayer;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -22,10 +22,16 @@ public class ApiExceptionHandler {
                 .body(new ApiError("INVALID_CREDENTIALS", ex.getMessage(), Instant.now()));
     }
 
-    @ExceptionHandler(DuplicateKeyException.class)
-    ResponseEntity<ApiError> duplicate(DuplicateKeyException ex) {
+    @ExceptionHandler(RegisterUser.EmailAlreadyExistsException.class)
+    ResponseEntity<ApiError> emailAlreadyExists(RegisterUser.EmailAlreadyExistsException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(new ApiError("EMAIL_ALREADY_EXISTS", "An account with this email already exists.", Instant.now()));
+                .body(new ApiError("EMAIL_ALREADY_EXISTS", ex.getMessage(), Instant.now()));
+    }
+
+    @ExceptionHandler(RegisterUser.PhoneAlreadyExistsException.class)
+    ResponseEntity<ApiError> phoneAlreadyExists(RegisterUser.PhoneAlreadyExistsException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ApiError("PHONE_ALREADY_EXISTS", ex.getMessage(), Instant.now()));
     }
 
     @ExceptionHandler(CreatePlayer.PlayerProfileAlreadyExistsException.class)
