@@ -2,6 +2,7 @@ package com.cricket.platform.team;
 
 import jakarta.validation.Valid;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -21,8 +22,11 @@ public class TeamController {
     }
 
     @PostMapping
-    CreateTeam.TeamResponse create(@Valid @RequestBody CreateTeam.Request request) {
-        return createTeam.execute(request);
+    CreateTeam.TeamResponse create(
+            @Valid @RequestBody CreateTeam.Request request,
+            Authentication authentication
+    ) {
+        return createTeam.execute(request, authentication.getName());
     }
 
     @GetMapping("/{id}")
@@ -31,7 +35,11 @@ public class TeamController {
     @GetMapping
     List<GetTeam.TeamView> list() {
         return jdbc.query("SELECT id, name, city, owner_id FROM teams ORDER BY name",
-                (rs, row) -> new GetTeam.TeamView(rs.getObject("id", UUID.class), rs.getString("name"),
-                        rs.getString("city"), rs.getObject("owner_id", UUID.class)));
+                (rs, row) -> new GetTeam.TeamView(
+                        rs.getObject("id", UUID.class),
+                        rs.getString("name"),
+                        rs.getString("city"),
+                        rs.getObject("owner_id", UUID.class)
+                ));
     }
 }
