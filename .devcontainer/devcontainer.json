@@ -1,0 +1,19 @@
+{
+  "name": "CricPulse Backend",
+  "image": "mcr.microsoft.com/devcontainers/java:1-25-bookworm",
+  "forwardPorts": [8080],
+  "portsAttributes": {
+    "8080": {
+      "label": "CricPulse Spring Boot API",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "vscjava.vscode-java-pack",
+        "vmware.vscode-spring-boot"
+      ]
+    }
+  }
+}
