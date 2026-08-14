@@ -1,6 +1,7 @@
 package com.cricket.platform.shared;
 
 import com.cricket.platform.identity.LoginUser;
+import com.cricket.platform.player.CreatePlayer;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -25,6 +26,18 @@ public class ApiExceptionHandler {
     ResponseEntity<ApiError> duplicate(DuplicateKeyException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new ApiError("EMAIL_ALREADY_EXISTS", "An account with this email already exists.", Instant.now()));
+    }
+
+    @ExceptionHandler(CreatePlayer.PlayerProfileAlreadyExistsException.class)
+    ResponseEntity<ApiError> playerProfileExists(CreatePlayer.PlayerProfileAlreadyExistsException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ApiError("PLAYER_PROFILE_ALREADY_EXISTS", ex.getMessage(), Instant.now()));
+    }
+
+    @ExceptionHandler(CreatePlayer.PlayerProfileNotFoundException.class)
+    ResponseEntity<ApiError> playerProfileNotFound(CreatePlayer.PlayerProfileNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ApiError("PLAYER_PROFILE_NOT_FOUND", ex.getMessage(), Instant.now()));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
