@@ -2,6 +2,7 @@ package com.cricket.platform.player;
 
 import jakarta.validation.Valid;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -21,8 +22,18 @@ public class PlayerController {
     }
 
     @PostMapping
-    CreatePlayer.PlayerResponse create(@Valid @RequestBody CreatePlayer.Request request) {
-        return createPlayer.execute(request);
+    CreatePlayer.PlayerResponse create(Authentication authentication, @Valid @RequestBody CreatePlayer.Request request) {
+        return createPlayer.create(authentication, request);
+    }
+
+    @GetMapping("/me")
+    CreatePlayer.PlayerResponse me(Authentication authentication) {
+        return createPlayer.current(authentication);
+    }
+
+    @PutMapping("/me")
+    CreatePlayer.PlayerResponse update(Authentication authentication, @Valid @RequestBody CreatePlayer.Request request) {
+        return createPlayer.update(authentication, request);
     }
 
     @PostMapping("/teams/{teamId}")
