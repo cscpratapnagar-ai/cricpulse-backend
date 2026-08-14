@@ -3,6 +3,10 @@
   "image": "mcr.microsoft.com/devcontainers/java:25-bookworm",
   "remoteUser": "vscode",
   "features": {
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "25",
+      "installMaven": "true"
+    },
     "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
   },
   "forwardPorts": [8080, 5432],
@@ -24,6 +28,6 @@
       ]
     }
   },
-  "postCreateCommand": "java -version && mvn -version && docker compose up -d postgres",
+  "postCreateCommand": "java -version && mvn -version && docker --version && docker compose version && docker compose up -d postgres",
   "postStartCommand": "docker compose up -d postgres"
 }
