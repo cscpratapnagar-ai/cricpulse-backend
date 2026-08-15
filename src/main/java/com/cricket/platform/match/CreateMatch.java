@@ -3,8 +3,11 @@ package com.cricket.platform.match;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.OffsetDateTime;
 import java.util.Locale;
@@ -25,12 +28,18 @@ public class CreateMatch {
         this.jdbc = jdbc;
     }
 
-    public MatchResponse execute(Request request) {
+    public MatchResponse execute(Request request, Authentication authentication) {
+        requireAuthenticated(authentication);
         requireTeam(request.teamAId());
         requireTeam(request.teamBId());
 
         if (request.teamAId().equals(request.teamBId())) {
             throw new IllegalArgumentException("A team cannot play against itself");
+        }
+
+        if (!canManageEitherTeam(request.teamAId(), request.teamBId(), authentication)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only a team owner, manager or captain can create a match for this team.");
         }
 
         String format = request.format().trim().toUpperCase(Locale.ROOT);
@@ -47,7 +56,7 @@ public class CreateMatch {
                 VALUES (?, ?, ?, ?, ?, ?, ?, 'SCHEDULED')
                 """,
                 id,
-                request.name(),
+                request.name().trim(),
                 request.teamAId(),
                 request.teamBId(),
                 format,
@@ -55,7 +64,40 @@ public class CreateMatch {
                 request.scheduledAt()
         );
 
-        return new MatchResponse(id, request.name(), format, totalOvers, "SCHEDULED");
+        return new MatchResponse(id, request.name().trim(), format, totalOvers, "SCHEDULED");
+    }
+
+    private boolean canManageEitherTeam(UUID teamAId, UUID teamBId, Authentication authentication) {
+        return canManageTeam(teamAId, authentication) || canManageTeam(teamBId, authentication);
+    }
+
+    private boolean canManageTeam(UUID teamId, Authentication authentication) {
+        String principal = authentication.getName();
+        Integer owner = jdbc.queryForObject("""
+                SELECT COUNT(*)
+                FROM teams t
+                JOIN users u ON u.id = t.owner_id
+                WHERE t.id = ?
+                  AND (LOWER(TRIM(u.email)) = LOWER(TRIM(?)) OR CAST(u.id AS TEXT) = ?)
+                """, Integer.class, teamId, principal, principal);
+        if (owner != null && owner > 0) return true;
+
+        Integer manager = jdbc.queryForObject("""
+                SELECT COUNT(*)
+                FROM team_members tm
+                JOIN players p ON p.id = tm.player_id
+                JOIN users u ON u.id = p.user_id
+                WHERE tm.team_id = ?
+                  AND tm.role IN ('MANAGER', 'CAPTAIN')
+                  AND (LOWER(TRIM(u.email)) = LOWER(TRIM(?)) OR CAST(u.id AS TEXT) = ?)
+                """, Integer.class, teamId, principal, principal);
+        return manager != null && manager > 0;
+    }
+
+    private void requireAuthenticated(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication is required.");
+        }
     }
 
     private int resolveOvers(String format, Integer customOvers) {
