@@ -48,8 +48,6 @@ public class TeamController {
     List<MemberView> members(@PathVariable UUID id, Authentication authentication) {
         requireTeamMemberOrOwner(id, authentication);
 
-        // A newly-created team can legitimately have no squad members yet.
-        // Keep the empty state a pure read and avoid unnecessary joins.
         Integer memberCount = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM team_members WHERE team_id = ?",
                 Integer.class, id);
@@ -78,7 +76,7 @@ public class TeamController {
         return new TeamAccess(id, role, canManage(role));
     }
 
-    @PostMapping("/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-F]{4}-[0-9a-fA-F]{12}}/members")
+    @PostMapping("/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-F]{4}-[0-9a-fA-F]{12}}/members")
     @ResponseStatus(HttpStatus.CREATED)
     MemberView addMember(@PathVariable UUID id, @Valid @RequestBody AddMemberRequest request, Authentication authentication) {
         requireTeamManager(id, authentication);
@@ -133,7 +131,7 @@ public class TeamController {
         return member(id, playerId);
     }
 
-    @DeleteMapping("/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/members/{playerId:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-F]{4}-[0-9a-fA-F]{12}}")
+    @DeleteMapping("/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/members/{playerId:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void removeMember(@PathVariable UUID id, @PathVariable UUID playerId, Authentication authentication) {
         requireTeamManager(id, authentication);
