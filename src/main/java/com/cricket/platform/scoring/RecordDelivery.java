@@ -26,6 +26,28 @@ public class RecordDelivery {
     public DeliveryResponse execute(Request request) {
         validate(request);
 
+        // Older/current scorer clients do not always send dismissedPlayerId.
+        // For a normal wicket, the striker is the dismissed batter by default.
+        // RUN_OUT can still explicitly provide dismissedPlayerId when the non-striker is out.
+        UUID dismissedPlayerId = request.dismissedPlayerId() != null
+                ? request.dismissedPlayerId()
+                : (request.wicketType() == null ? null : request.strikerId());
+
+        request = new Request(
+                request.inningsId(),
+                request.overNumber(),
+                request.ballNumber(),
+                request.strikerId(),
+                request.nonStrikerId(),
+                request.bowlerId(),
+                request.batRuns(),
+                request.extraRuns(),
+                request.extraType(),
+                request.wicketType(),
+                dismissedPlayerId,
+                request.newBatterId()
+        );
+
         InningsState innings = jdbc.queryForObject(
                 """
                 SELECT id, total_runs, wickets, legal_balls, current_over, current_ball,
@@ -128,21 +150,18 @@ public class RecordDelivery {
         UUID nextStriker = request.strikerId();
         UUID nextNonStriker = request.nonStrikerId();
 
-        // Odd completed runs change the strike. This also handles odd byes/leg-byes.
         if (totalRuns % 2 != 0) {
             UUID tmp = nextStriker;
             nextStriker = nextNonStriker;
             nextNonStriker = tmp;
         }
 
-        // End of a legal over changes strike again.
         if (legal && legalBalls % 6 == 0) {
             UUID tmp = nextStriker;
             nextStriker = nextNonStriker;
             nextNonStriker = tmp;
         }
 
-        // A dismissed striker leaves the active pair. The new batter is supplied by the scorer.
         if (request.wicketType() != null && request.newBatterId() != null) {
             if (request.dismissedPlayerId().equals(nextStriker)) {
                 nextStriker = request.newBatterId();
@@ -317,8 +336,8 @@ public class RecordDelivery {
         if (request.extraRuns() > 0 && request.extraType() == null) {
             throw new IllegalArgumentException("Extra type is required when extra runs are recorded");
         }
-        if (request.wicketType() != null && request.dismissedPlayerId() == null) {
-            throw new IllegalArgumentException("Dismissed player is required for a wicket");
+        if (request.wicketType() != null && request.newBatterId() == null) {
+            throw new IllegalArgumentException("New batter is required for a wicket");
         }
         if ("WIDE".equals(request.extraType()) && request.batRuns() != 0) {
             throw new IllegalArgumentException("Wide cannot contain bat runs");
