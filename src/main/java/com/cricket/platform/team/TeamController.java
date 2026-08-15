@@ -2,6 +2,8 @@ package com.cricket.platform.team;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.Authentication;
@@ -44,7 +46,8 @@ public class TeamController {
 
     @GetMapping("/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/members")
     List<MemberView> members(@PathVariable UUID id, Authentication authentication) {
-        requireTeamOwner(id, authentication);
+        requireTeamMemberOrOwner(id, authentication);
+        ensureOwnerMembership(id);
         return jdbc.query(
                 "SELECT tm.team_id, p.id AS player_id, u.id AS user_id, u.full_name, u.email, u.phone, tm.role " +
                 "FROM team_members tm " +
@@ -60,22 +63,31 @@ public class TeamController {
         );
     }
 
+    @GetMapping("/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/access")
+    TeamAccess access(@PathVariable UUID id, Authentication authentication) {
+        String role = currentTeamRole(id, authentication);
+        return new TeamAccess(id, role, canManage(role));
+    }
+
     @PostMapping("/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/members")
     @ResponseStatus(HttpStatus.CREATED)
     MemberView addMember(@PathVariable UUID id, @Valid @RequestBody AddMemberRequest request, Authentication authentication) {
-        requireTeamOwner(id, authentication);
+        requireTeamManager(id, authentication);
         String role = normalizeRole(request.role());
         if ("OWNER".equals(role)) {
-            throw new TeamMembershipException("OWNER_ROLE_NOT_ASSIGNABLE", "The team owner is assigned automatically when the team is created.");
+            throw new TeamMembershipException("OWNER_ROLE_NOT_ASSIGNABLE", "The team owner is assigned automatically.");
         }
 
-        UUID playerId = jdbc.query("SELECT p.id FROM players p JOIN users u ON u.id = p.user_id WHERE LOWER(u.email) = LOWER(?)",
-                rs -> rs.next() ? rs.getObject(1, UUID.class) : null, request.email().trim());
+        UUID playerId = jdbc.query(
+                "SELECT p.id FROM players p JOIN users u ON u.id = p.user_id WHERE LOWER(u.email) = LOWER(?)",
+                rs -> rs.next() ? rs.getObject(1, UUID.class) : null,
+                request.email().trim());
         if (playerId == null) {
             throw new TeamMembershipException("PLAYER_NOT_FOUND", "No registered player profile was found for this email.");
         }
 
-        Integer alreadyMember = jdbc.queryForObject("SELECT COUNT(*) FROM team_members WHERE team_id = ? AND player_id = ?",
+        Integer alreadyMember = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM team_members WHERE team_id = ? AND player_id = ?",
                 Integer.class, id, playerId);
         if (alreadyMember != null && alreadyMember > 0) {
             throw new TeamMembershipException("PLAYER_ALREADY_IN_TEAM", "This player is already a member of this team.");
@@ -83,9 +95,9 @@ public class TeamController {
 
         try {
             jdbc.update("INSERT INTO team_members(team_id, player_id, role) VALUES (?, ?, ?)", id, playerId, role);
-        } catch (org.springframework.dao.DuplicateKeyException ex) {
+        } catch (DuplicateKeyException ex) {
             throw new TeamMembershipException("PLAYER_ALREADY_IN_TEAM", "This player is already a member of this team.");
-        } catch (org.springframework.dao.DataIntegrityViolationException ex) {
+        } catch (DataIntegrityViolationException ex) {
             throw new TeamMembershipException("TEAM_ROLE_ALREADY_ASSIGNED", "That team role is already assigned to another member.");
         }
         return member(id, playerId);
@@ -93,18 +105,20 @@ public class TeamController {
 
     @PatchMapping("/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/members/{playerId:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}")
     MemberView changeRole(@PathVariable UUID id, @PathVariable UUID playerId, @Valid @RequestBody ChangeRoleRequest request, Authentication authentication) {
-        requireTeamOwner(id, authentication);
+        requireTeamManager(id, authentication);
         String role = normalizeRole(request.role());
         if ("OWNER".equals(role)) {
             throw new TeamMembershipException("OWNER_ROLE_NOT_ASSIGNABLE", "The team owner cannot be reassigned through squad role management.");
         }
-        Integer memberCount = jdbc.queryForObject("SELECT COUNT(*) FROM team_members WHERE team_id = ? AND player_id = ?", Integer.class, id, playerId);
+        Integer memberCount = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM team_members WHERE team_id = ? AND player_id = ?",
+                Integer.class, id, playerId);
         if (memberCount == null || memberCount == 0) {
             throw new TeamMembershipException("TEAM_MEMBER_NOT_FOUND", "This player is not a member of the team.");
         }
         try {
             jdbc.update("UPDATE team_members SET role = ? WHERE team_id = ? AND player_id = ?", role, id, playerId);
-        } catch (org.springframework.dao.DataIntegrityViolationException ex) {
+        } catch (DataIntegrityViolationException ex) {
             throw new TeamMembershipException("TEAM_ROLE_ALREADY_ASSIGNED", "That team role is already assigned to another member.");
         }
         return member(id, playerId);
@@ -113,8 +127,9 @@ public class TeamController {
     @DeleteMapping("/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/members/{playerId:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void removeMember(@PathVariable UUID id, @PathVariable UUID playerId, Authentication authentication) {
-        requireTeamOwner(id, authentication);
-        String role = jdbc.query("SELECT role FROM team_members WHERE team_id = ? AND player_id = ?",
+        requireTeamManager(id, authentication);
+        String role = jdbc.query(
+                "SELECT role FROM team_members WHERE team_id = ? AND player_id = ?",
                 rs -> rs.next() ? rs.getString(1) : null, id, playerId);
         if (role == null) throw new TeamMembershipException("TEAM_MEMBER_NOT_FOUND", "This player is not a member of the team.");
         if ("OWNER".equals(role)) throw new TeamMembershipException("OWNER_CANNOT_BE_REMOVED", "The team owner cannot be removed from the team.");
@@ -130,18 +145,63 @@ public class TeamController {
                 (rs, row) -> new GetTeam.TeamView(rs.getObject("id", UUID.class), rs.getString("name"), rs.getString("city"), rs.getObject("owner_id", UUID.class)));
     }
 
-    private void requireTeamOwner(UUID teamId, Authentication authentication) {
+    private void requireTeamMemberOrOwner(UUID teamId, Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication is required.");
         }
         Integer count = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM teams t JOIN users u ON u.id = t.owner_id " +
                 "WHERE t.id = ? AND (LOWER(u.email) = LOWER(?) OR CAST(u.id AS TEXT) = ?)",
-                Integer.class, teamId, authentication.getName(), authentication.getName()
-        );
-        if (count == null || count == 0) {
-            throw new TeamMembershipException("TEAM_ACCESS_DENIED", "Only the team owner can manage this team.");
+                Integer.class, teamId, authentication.getName(), authentication.getName());
+        if (count != null && count > 0) return;
+
+        Integer member = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM team_members tm JOIN players p ON p.id = tm.player_id JOIN users u ON u.id = p.user_id " +
+                "WHERE tm.team_id = ? AND (LOWER(u.email) = LOWER(?) OR CAST(u.id AS TEXT) = ?)",
+                Integer.class, teamId, authentication.getName(), authentication.getName());
+        if (member == null || member == 0) {
+            throw new TeamMembershipException("TEAM_ACCESS_DENIED", "You are not a member of this team.");
         }
+    }
+
+    private void requireTeamManager(UUID teamId, Authentication authentication) {
+        String role = currentTeamRole(teamId, authentication);
+        if (!canManage(role)) {
+            throw new TeamMembershipException("TEAM_MANAGE_ACCESS_DENIED", "Only the team owner, manager or captain can manage players.");
+        }
+    }
+
+    private String currentTeamRole(UUID teamId, Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication is required.");
+        }
+        ensureOwnerMembership(teamId);
+        String role = jdbc.query(
+                "SELECT tm.role FROM team_members tm JOIN players p ON p.id = tm.player_id JOIN users u ON u.id = p.user_id " +
+                "WHERE tm.team_id = ? AND (LOWER(u.email) = LOWER(?) OR CAST(u.id AS TEXT) = ?)",
+                rs -> rs.next() ? rs.getString(1) : null,
+                teamId, authentication.getName(), authentication.getName());
+        if (role == null) {
+            Integer owner = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM teams t JOIN users u ON u.id = t.owner_id WHERE t.id = ? AND (LOWER(u.email) = LOWER(?) OR CAST(u.id AS TEXT) = ?)",
+                    Integer.class, teamId, authentication.getName(), authentication.getName());
+            if (owner != null && owner > 0) return "OWNER";
+            throw new TeamMembershipException("TEAM_ACCESS_DENIED", "You are not a member of this team.");
+        }
+        return role;
+    }
+
+    private boolean canManage(String role) {
+        return "OWNER".equals(role) || "MANAGER".equals(role) || "CAPTAIN".equals(role);
+    }
+
+    private void ensureOwnerMembership(UUID teamId) {
+        jdbc.update(
+                "INSERT INTO team_members(team_id, player_id, role) " +
+                "SELECT t.id, p.id, 'OWNER' FROM teams t JOIN players p ON p.user_id = t.owner_id " +
+                "WHERE t.id = ? AND NOT EXISTS (SELECT 1 FROM team_members tm WHERE tm.team_id = t.id AND tm.player_id = p.id) " +
+                "ON CONFLICT (team_id, player_id) DO NOTHING",
+                teamId);
     }
 
     private MemberView member(UUID teamId, UUID playerId) {
@@ -149,9 +209,11 @@ public class TeamController {
                 "SELECT tm.team_id, p.id AS player_id, u.id AS user_id, u.full_name, u.email, u.phone, tm.role " +
                 "FROM team_members tm JOIN players p ON p.id = tm.player_id JOIN users u ON u.id = p.user_id " +
                 "WHERE tm.team_id = ? AND p.id = ?",
-                (rs, row) -> new MemberView(rs.getObject("team_id", UUID.class), rs.getObject("player_id", UUID.class), rs.getObject("user_id", UUID.class), rs.getString("full_name"), rs.getString("email"), rs.getString("phone"), rs.getString("role")),
-                teamId, playerId
-        );
+                (rs, row) -> new MemberView(
+                        rs.getObject("team_id", UUID.class), rs.getObject("player_id", UUID.class),
+                        rs.getObject("user_id", UUID.class), rs.getString("full_name"),
+                        rs.getString("email"), rs.getString("phone"), rs.getString("role")),
+                teamId, playerId);
     }
 
     private String normalizeRole(String role) {
@@ -165,6 +227,7 @@ public class TeamController {
     public record AddMemberRequest(@NotBlank String email, String role) {}
     public record ChangeRoleRequest(@NotBlank String role) {}
     public record MemberView(UUID teamId, UUID playerId, UUID userId, String fullName, String email, String phone, String role) {}
+    public record TeamAccess(UUID teamId, String role, boolean canManage) {}
 
     @ResponseStatus(HttpStatus.FORBIDDEN)
     public static class TeamMembershipException extends RuntimeException {
