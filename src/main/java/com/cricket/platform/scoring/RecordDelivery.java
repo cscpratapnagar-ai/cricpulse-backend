@@ -44,24 +44,17 @@ public class RecordDelivery {
                 """
                 SELECT id, total_runs, wickets, legal_balls, current_over, current_ball,
                        striker_id, non_striker_id, current_bowler_id, status
-                FROM innings
-                WHERE id = ?
-                FOR UPDATE
+                FROM innings WHERE id = ? FOR UPDATE
                 """,
                 (rs, row) -> new InningsState(
-                        rs.getObject("id", UUID.class),
-                        rs.getInt("total_runs"),
-                        rs.getInt("wickets"),
-                        rs.getInt("legal_balls"),
-                        rs.getInt("current_over"),
-                        rs.getInt("current_ball"),
+                        rs.getObject("id", UUID.class), rs.getInt("total_runs"),
+                        rs.getInt("wickets"), rs.getInt("legal_balls"),
+                        rs.getInt("current_over"), rs.getInt("current_ball"),
                         rs.getObject("striker_id", UUID.class),
                         rs.getObject("non_striker_id", UUID.class),
                         rs.getObject("current_bowler_id", UUID.class),
-                        rs.getString("status")
-                ),
-                request.inningsId()
-        );
+                        rs.getString("status")),
+                request.inningsId());
 
         if (innings == null) throw new IllegalArgumentException("Innings was not found");
         if (!"LIVE".equals(innings.status())) throw new IllegalArgumentException("Innings is not live");
@@ -88,15 +81,13 @@ public class RecordDelivery {
                     bat_runs, extra_runs, extra_type, wicket_type,
                     dismissed_player_id, sequence_number, legal_delivery,
                     total_runs, is_boundary, is_four, is_six
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 deliveryId, request.inningsId(), overNumber, ballNumber,
                 request.strikerId(), request.nonStrikerId(), request.bowlerId(),
                 request.batRuns(), request.extraRuns(), request.extraType(), request.wicketType(),
                 request.dismissedPlayerId(), sequence, legal, totalRuns,
-                request.batRuns() == 4, request.batRuns() == 4, request.batRuns() == 6
-        );
+                request.batRuns() == 4, request.batRuns() == 4, request.batRuns() == 6);
 
         jdbc.update(
                 """
@@ -107,8 +98,7 @@ public class RecordDelivery {
                 innings.totalRuns() + totalRuns, wickets, legalBalls,
                 legal ? legalBalls / 6 : innings.currentOver(),
                 legal ? ((legalBalls - 1) % 6) + 1 : Math.max(1, innings.currentBall()),
-                request.bowlerId(), request.inningsId()
-        );
+                request.bowlerId(), request.inningsId());
 
         updateOverSummary(request, overNumber, legal, totalRuns);
         updateBatterStats(request, deliveryId, legal);
@@ -140,16 +130,14 @@ public class RecordDelivery {
             } else {
                 if (request.dismissedPlayerId().equals(nextStriker)) nextStriker = request.newBatterId();
                 if (request.dismissedPlayerId().equals(nextNonStriker)) nextNonStriker = request.newBatterId();
-                createNewPartnership(nextStriker, nextNonStriker, request.inningsId());
+                createNewPartnership(nextStriker, nextNonStriker, request.inningsId(), wickets);
             }
         }
 
-        jdbc.update(
-                "UPDATE innings SET striker_id = ?, non_striker_id = ? WHERE id = ?",
+        jdbc.update("UPDATE innings SET striker_id = ?, non_striker_id = ? WHERE id = ?",
                 nextStriker, nextNonStriker, request.inningsId());
 
-        return new DeliveryResponse(
-                deliveryId, innings.totalRuns() + totalRuns, wickets, legalBalls,
+        return new DeliveryResponse(deliveryId, innings.totalRuns() + totalRuns, wickets, legalBalls,
                 overNumber, ballNumber, nextStriker, nextNonStriker);
     }
 
@@ -270,13 +258,10 @@ public class RecordDelivery {
     }
 
     private void updatePartnership(Request request, boolean legal, int totalRuns) {
-        jdbc.update(
-                """
-                UPDATE partnerships
-                SET runs = runs + ?, balls = balls + ?
+        jdbc.update("""
+                UPDATE partnerships SET runs = runs + ?, balls = balls + ?
                 WHERE innings_id = ? AND is_current = TRUE
-                """,
-                totalRuns, legal ? 1 : 0, request.inningsId());
+                """, totalRuns, legal ? 1 : 0, request.inningsId());
     }
 
     private void recordFallOfWicket(Request request, UUID deliveryId, int score, int overNumber, int ballNumber) {
@@ -286,16 +271,15 @@ public class RecordDelivery {
         jdbc.update(
                 "INSERT INTO fall_of_wickets(innings_id, wicket_number, player_id, runs, over_number, ball_number, delivery_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 request.inningsId(), wicketNumber, request.dismissedPlayerId(), score, overNumber, ballNumber, deliveryId);
-        jdbc.update(
-                "UPDATE partnerships SET is_current = FALSE WHERE innings_id = ? AND is_current = TRUE",
+        jdbc.update("UPDATE partnerships SET is_current = FALSE WHERE innings_id = ? AND is_current = TRUE",
                 request.inningsId());
     }
 
-    private void createNewPartnership(UUID batterOneId, UUID batterTwoId, UUID inningsId) {
+    private void createNewPartnership(UUID batterOneId, UUID batterTwoId, UUID inningsId, int wicketNumber) {
         if (batterOneId == null || batterTwoId == null || batterOneId.equals(batterTwoId)) return;
         jdbc.update(
-                "INSERT INTO partnerships(innings_id, batter_one_id, batter_two_id, runs, balls, is_current) VALUES (?, ?, ?, 0, 0, TRUE)",
-                inningsId, batterOneId, batterTwoId);
+                "INSERT INTO partnerships(innings_id, wicket_number, batter_one_id, batter_two_id, runs, balls, is_current) VALUES (?, ?, ?, ?, 0, 0, TRUE)",
+                inningsId, wicketNumber, batterOneId, batterTwoId);
     }
 
     private boolean isBowlerWicket(String wicketType) {
