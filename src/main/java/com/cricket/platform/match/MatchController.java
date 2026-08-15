@@ -1,9 +1,11 @@
 package com.cricket.platform.match;
 
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.UUID;
 import java.util.List;
@@ -13,11 +15,13 @@ import java.util.List;
 public class MatchController {
     private final CreateMatch createMatch;
     private final GetMatch getMatch;
+    private final RecordToss recordToss;
     private final JdbcTemplate jdbc;
 
-    public MatchController(CreateMatch createMatch, GetMatch getMatch, JdbcTemplate jdbc) {
+    public MatchController(CreateMatch createMatch, GetMatch getMatch, RecordToss recordToss, JdbcTemplate jdbc) {
         this.createMatch = createMatch;
         this.getMatch = getMatch;
+        this.recordToss = recordToss;
         this.jdbc = jdbc;
     }
 
@@ -29,6 +33,27 @@ public class MatchController {
 
     @GetMapping("/{id}")
     GetMatch.MatchView get(@PathVariable UUID id) { return getMatch.execute(id); }
+
+    @PostMapping("/{id}/toss")
+    RecordToss.TossResponse toss(@PathVariable UUID id,
+                                 @Valid @RequestBody TossRequest request,
+                                 Authentication authentication) {
+        requireAuthenticated(authentication);
+        if (!id.equals(request.matchId())) {
+            throw new IllegalArgumentException("Match id in URL and request body must match");
+        }
+        MatchTeams teams = jdbc.queryForObject("""
+                SELECT team_a_id, team_b_id FROM matches WHERE id = ?
+                """, (rs, row) -> new MatchTeams(
+                rs.getObject("team_a_id", UUID.class),
+                rs.getObject("team_b_id", UUID.class)), id);
+        if (teams == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Match was not found");
+        if (!canManageEitherTeam(teams.teamAId(), teams.teamBId(), authentication)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only a team owner, manager or captain can record the toss.");
+        }
+        return recordToss.execute(new RecordToss.Request(id, request.winnerTeamId(), request.decision()));
+    }
 
     @GetMapping
     List<GetMatch.MatchView> list() {
@@ -52,4 +77,36 @@ public class MatchController {
                         rs.getString("team_a_name"), rs.getString("team_b_name"),
                         rs.getString("format"), rs.getString("status"), rs.getObject("scheduled_at", java.time.OffsetDateTime.class)));
     }
+
+    private boolean canManageEitherTeam(UUID teamAId, UUID teamBId, Authentication authentication) {
+        return canManageTeam(teamAId, authentication) || canManageTeam(teamBId, authentication);
+    }
+
+    private boolean canManageTeam(UUID teamId, Authentication authentication) {
+        String principal = authentication.getName();
+        Integer owner = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM teams t JOIN users u ON u.id = t.owner_id
+                WHERE t.id = ? AND (LOWER(TRIM(u.email)) = LOWER(TRIM(?)) OR CAST(u.id AS TEXT) = ?)
+                """, Integer.class, teamId, principal, principal);
+        if (owner != null && owner > 0) return true;
+
+        Integer manager = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM team_members tm
+                JOIN players p ON p.id = tm.player_id
+                JOIN users u ON u.id = p.user_id
+                WHERE tm.team_id = ? AND tm.role IN ('MANAGER', 'CAPTAIN')
+                  AND (LOWER(TRIM(u.email)) = LOWER(TRIM(?)) OR CAST(u.id AS TEXT) = ?)
+                """, Integer.class, teamId, principal, principal);
+        return manager != null && manager > 0;
+    }
+
+    private void requireAuthenticated(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication is required.");
+        }
+    }
+
+    private record MatchTeams(UUID teamAId, UUID teamBId) {}
+
+    public record TossRequest(UUID matchId, UUID winnerTeamId, String decision) {}
 }
