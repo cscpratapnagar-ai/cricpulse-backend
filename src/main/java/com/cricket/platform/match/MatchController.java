@@ -2,6 +2,7 @@ package com.cricket.platform.match;
 
 import jakarta.validation.Valid;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -21,8 +22,9 @@ public class MatchController {
     }
 
     @PostMapping
-    CreateMatch.MatchResponse create(@Valid @RequestBody CreateMatch.Request request) {
-        return createMatch.execute(request);
+    CreateMatch.MatchResponse create(@Valid @RequestBody CreateMatch.Request request,
+                                     Authentication authentication) {
+        return createMatch.execute(request, authentication);
     }
 
     @GetMapping("/{id}")
