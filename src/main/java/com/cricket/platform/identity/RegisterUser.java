@@ -6,6 +6,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
 
@@ -19,6 +20,7 @@ public class RegisterUser {
         this.passwordEncoder = passwordEncoder;
     }
 
+    @Transactional
     public UserResponse execute(Request request) {
         String email = request.email().trim().toLowerCase();
         String fullName = request.fullName().trim();
@@ -47,15 +49,16 @@ public class RegisterUser {
         }
 
         UUID id = UUID.randomUUID();
-        // Public registration can never self-assign a privileged role.
-        // ADMIN, CAPTAIN and SCORER must be granted through protected flows.
         String role = "PLAYER";
         try {
             jdbc.update(
                     "INSERT INTO users(id, full_name, email, phone, role, password_hash) VALUES (?, ?, ?, ?, ?, ?)",
                     id, fullName, email, phone, role, passwordEncoder.encode(request.password()));
+
+            // Every public PLAYER account gets a registered player profile at signup.
+            // Profile details can be completed later through /api/players/me.
+            jdbc.update("INSERT INTO players(id, user_id) VALUES (?, ?)", UUID.randomUUID(), id);
         } catch (DuplicateKeyException ex) {
-            // Keep database uniqueness as the final race-condition guard.
             String message = ex.getMostSpecificCause() == null ? "" : ex.getMostSpecificCause().getMessage();
             if (message != null && message.toLowerCase().contains("phone")) {
                 throw new PhoneAlreadyExistsException();
