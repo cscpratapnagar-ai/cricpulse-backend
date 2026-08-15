@@ -54,15 +54,73 @@ public class StartInnings {
             throw new IllegalArgumentException("Innings number must be positive");
         }
 
-        Integer count = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM innings WHERE match_id = ? AND innings_number = ?",
-                Integer.class,
+        UUID existingId = jdbc.query(
+                """
+                SELECT id
+                FROM innings
+                WHERE match_id = ? AND innings_number = ?
+                ORDER BY id
+                LIMIT 1
+                """,
+                (rs, row) -> rs.getObject("id", UUID.class),
                 request.matchId(),
                 request.inningsNumber()
-        );
+        ).stream().findFirst().orElse(null);
 
-        if (count != null && count > 0) {
-            throw new IllegalArgumentException("This innings already exists");
+        if (existingId != null) {
+            ExistingState existing = jdbc.queryForObject(
+                    """
+                    SELECT id, batting_team_id, bowling_team_id, total_runs, wickets,
+                           legal_balls, total_overs, target_runs, status
+                    FROM innings
+                    WHERE id = ?
+                    FOR UPDATE
+                    """,
+                    (rs, row) -> new ExistingState(
+                            rs.getObject("id", UUID.class),
+                            rs.getObject("batting_team_id", UUID.class),
+                            rs.getObject("bowling_team_id", UUID.class),
+                            rs.getInt("total_runs"),
+                            rs.getInt("wickets"),
+                            rs.getInt("legal_balls"),
+                            (Integer) rs.getObject("total_overs"),
+                            (Integer) rs.getObject("target_runs"),
+                            rs.getString("status")
+                    ),
+                    existingId
+            );
+
+            if (existing == null) {
+                throw new IllegalArgumentException("Existing innings could not be loaded");
+            }
+
+            if (!request.battingTeamId().equals(existing.battingTeamId())) {
+                throw new IllegalArgumentException("Batting team does not match the existing innings");
+            }
+
+            if ("LIVE".equals(existing.status())) {
+                jdbc.update(
+                        "UPDATE matches SET status = 'LIVE', current_innings_id = ? WHERE id = ?",
+                        existing.id(),
+                        request.matchId()
+                );
+
+                return new InningsResponse(
+                        existing.id(),
+                        request.matchId(),
+                        request.inningsNumber(),
+                        existing.battingTeamId(),
+                        existing.bowlingTeamId(),
+                        existing.totalOvers() == null ? match.totalOvers() : existing.totalOvers(),
+                        existing.targetRuns(),
+                        existing.runs(),
+                        existing.wickets(),
+                        existing.legalBalls(),
+                        existing.status()
+                );
+            }
+
+            throw new IllegalArgumentException("This innings is already completed");
         }
 
         UUID expectedBattingTeamId;
@@ -155,6 +213,18 @@ public class StartInnings {
             String status,
             UUID tossWinnerTeamId,
             String tossDecision
+    ) {}
+
+    private record ExistingState(
+            UUID id,
+            UUID battingTeamId,
+            UUID bowlingTeamId,
+            int runs,
+            int wickets,
+            int legalBalls,
+            Integer totalOvers,
+            Integer targetRuns,
+            String status
     ) {}
 
     public record Request(
