@@ -47,13 +47,23 @@ public class TeamController {
     @GetMapping("/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/members")
     List<MemberView> members(@PathVariable UUID id, Authentication authentication) {
         requireTeamMemberOrOwner(id, authentication);
+
+        // A newly-created team can legitimately have no squad members yet.
+        // Keep the empty state a pure read and avoid unnecessary joins.
+        Integer memberCount = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM team_members WHERE team_id = ?",
+                Integer.class, id);
+        if (memberCount == null || memberCount == 0) {
+            return List.of();
+        }
+
         return jdbc.query(
-                "SELECT tm.team_id, p.id AS player_id, u.id AS user_id, u.full_name, u.email, u.phone, tm.role " +
+                "SELECT tm.team_id, tm.player_id, p.user_id, u.full_name, u.email, u.phone, tm.role " +
                 "FROM team_members tm " +
                 "JOIN players p ON p.id = tm.player_id " +
                 "JOIN users u ON u.id = p.user_id " +
                 "WHERE tm.team_id = ? " +
-                "ORDER BY CASE tm.role WHEN 'OWNER' THEN 0 WHEN 'MANAGER' THEN 1 WHEN 'CAPTAIN' THEN 2 WHEN 'VICE_CAPTAIN' THEN 3 ELSE 4 END, u.full_name",
+                "ORDER BY u.full_name",
                 (rs, row) -> new MemberView(
                         rs.getObject("team_id", UUID.class), rs.getObject("player_id", UUID.class),
                         rs.getObject("user_id", UUID.class), rs.getString("full_name"),
@@ -68,7 +78,7 @@ public class TeamController {
         return new TeamAccess(id, role, canManage(role));
     }
 
-    @PostMapping("/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/members")
+    @PostMapping("/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-F]{4}-[0-9a-fA-F]{12}}/members")
     @ResponseStatus(HttpStatus.CREATED)
     MemberView addMember(@PathVariable UUID id, @Valid @RequestBody AddMemberRequest request, Authentication authentication) {
         requireTeamManager(id, authentication);
@@ -123,7 +133,7 @@ public class TeamController {
         return member(id, playerId);
     }
 
-    @DeleteMapping("/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/members/{playerId:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}")
+    @DeleteMapping("/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/members/{playerId:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-F]{4}-[0-9a-fA-F]{12}}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void removeMember(@PathVariable UUID id, @PathVariable UUID playerId, Authentication authentication) {
         requireTeamManager(id, authentication);
@@ -134,7 +144,7 @@ public class TeamController {
         jdbc.update("DELETE FROM team_members WHERE team_id = ? AND player_id = ?", id, playerId);
     }
 
-    @GetMapping("/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}")
+    @GetMapping("/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}")
     GetTeam.TeamView get(@PathVariable UUID id) { return getTeam.execute(id); }
 
     @GetMapping
@@ -173,8 +183,6 @@ public class TeamController {
         if (authentication == null || !authentication.isAuthenticated()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication is required.");
         }
-
-        // Team ownership is authoritative. It is intentionally independent of the global account role.
         Integer owner = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM teams t JOIN users u ON u.id = t.owner_id " +
                 "WHERE t.id = ? AND (LOWER(u.email) = LOWER(?) OR CAST(u.id AS TEXT) = ?)",
