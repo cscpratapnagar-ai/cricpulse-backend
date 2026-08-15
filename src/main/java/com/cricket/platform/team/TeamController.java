@@ -47,7 +47,6 @@ public class TeamController {
     @GetMapping("/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/members")
     List<MemberView> members(@PathVariable UUID id, Authentication authentication) {
         requireTeamMemberOrOwner(id, authentication);
-        repairOwnerMembership(id);
         return jdbc.query(
                 "SELECT tm.team_id, p.id AS player_id, u.id AS user_id, u.full_name, u.email, u.phone, tm.role " +
                 "FROM team_members tm " +
@@ -148,11 +147,11 @@ public class TeamController {
         if (authentication == null || !authentication.isAuthenticated()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication is required.");
         }
-        Integer count = jdbc.queryForObject(
+        Integer owner = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM teams t JOIN users u ON u.id = t.owner_id " +
                 "WHERE t.id = ? AND (LOWER(u.email) = LOWER(?) OR CAST(u.id AS TEXT) = ?)",
                 Integer.class, teamId, authentication.getName(), authentication.getName());
-        if (count != null && count > 0) return;
+        if (owner != null && owner > 0) return;
 
         Integer member = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM team_members tm JOIN players p ON p.id = tm.player_id JOIN users u ON u.id = p.user_id " +
@@ -174,17 +173,20 @@ public class TeamController {
         if (authentication == null || !authentication.isAuthenticated()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication is required.");
         }
-        repairOwnerMembership(teamId);
+
+        // Team ownership is authoritative. It is intentionally independent of the global account role.
+        Integer owner = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM teams t JOIN users u ON u.id = t.owner_id " +
+                "WHERE t.id = ? AND (LOWER(u.email) = LOWER(?) OR CAST(u.id AS TEXT) = ?)",
+                Integer.class, teamId, authentication.getName(), authentication.getName());
+        if (owner != null && owner > 0) return "OWNER";
+
         String role = jdbc.query(
                 "SELECT tm.role FROM team_members tm JOIN players p ON p.id = tm.player_id JOIN users u ON u.id = p.user_id " +
                 "WHERE tm.team_id = ? AND (LOWER(u.email) = LOWER(?) OR CAST(u.id AS TEXT) = ?)",
                 rs -> rs.next() ? rs.getString(1) : null,
                 teamId, authentication.getName(), authentication.getName());
         if (role == null) {
-            Integer owner = jdbc.queryForObject(
-                    "SELECT COUNT(*) FROM teams t JOIN users u ON u.id = t.owner_id WHERE t.id = ? AND (LOWER(u.email) = LOWER(?) OR CAST(u.id AS TEXT) = ?)",
-                    Integer.class, teamId, authentication.getName(), authentication.getName());
-            if (owner != null && owner > 0) return "OWNER";
             throw new TeamMembershipException("TEAM_ACCESS_DENIED", "You are not a member of this team.");
         }
         return role;
@@ -192,29 +194,6 @@ public class TeamController {
 
     private boolean canManage(String role) {
         return "OWNER".equals(role) || "MANAGER".equals(role) || "CAPTAIN".equals(role);
-    }
-
-    /**
-     * The teams.owner_id relation is authoritative. Existing teams created before
-     * automatic owner membership was introduced may not have an OWNER row. Repair
-     * that state deterministically without allowing a stale OWNER row to make the
-     * partial unique index fail.
-     */
-    private void repairOwnerMembership(UUID teamId) {
-        UUID ownerPlayerId = jdbc.query(
-                "SELECT p.id FROM teams t JOIN players p ON p.user_id = t.owner_id WHERE t.id = ?",
-                rs -> rs.next() ? rs.getObject(1, UUID.class) : null,
-                teamId);
-        if (ownerPlayerId == null) return;
-
-        jdbc.update(
-                "DELETE FROM team_members WHERE team_id = ? AND role = 'OWNER' AND player_id <> ?",
-                teamId, ownerPlayerId);
-
-        jdbc.update(
-                "INSERT INTO team_members(team_id, player_id, role) VALUES (?, ?, 'OWNER') " +
-                "ON CONFLICT (team_id, player_id) DO UPDATE SET role = 'OWNER'",
-                teamId, ownerPlayerId);
     }
 
     private MemberView member(UUID teamId, UUID playerId) {
@@ -244,5 +223,6 @@ public class TeamController {
         private final String code;
         public TeamMembershipException(String code, String message) { super(message); this.code = code; }
         public String getCode() { return code; }
+        public String getMessageCode() { return code; }
     }
 }
