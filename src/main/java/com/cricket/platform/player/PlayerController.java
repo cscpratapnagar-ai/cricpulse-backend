@@ -37,8 +37,8 @@ public class PlayerController {
     }
 
     @PostMapping("/teams/{teamId}")
-    void addToTeam(@PathVariable UUID teamId, @Valid @RequestBody AddPlayerToTeam.Request request) {
-        addPlayerToTeam.execute(teamId, request);
+    void addToTeam(@PathVariable UUID teamId, @Valid @RequestBody AddPlayerToTeam.Request request, Authentication authentication) {
+        addPlayerToTeam.execute(teamId, request, authentication.getName());
     }
 
     @GetMapping("/teams/{teamId}")
