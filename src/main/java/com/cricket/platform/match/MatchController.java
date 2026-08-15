@@ -34,6 +34,37 @@ public class MatchController {
     @GetMapping("/{id}")
     GetMatch.MatchView get(@PathVariable UUID id) { return getMatch.execute(id); }
 
+    @GetMapping("/{id}/toss")
+    TossResponse getToss(@PathVariable UUID id, Authentication authentication) {
+        requireAuthenticated(authentication);
+        MatchTeams teams = jdbc.queryForObject("""
+                SELECT team_a_id, team_b_id FROM matches WHERE id = ?
+                """, (rs, row) -> new MatchTeams(
+                rs.getObject("team_a_id", UUID.class),
+                rs.getObject("team_b_id", UUID.class)), id);
+        if (teams == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Match was not found");
+        if (!canManageEitherTeam(teams.teamAId(), teams.teamBId(), authentication)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only a team owner, manager or captain can view the toss setup.");
+        }
+
+        return jdbc.queryForObject("""
+                SELECT toss_winner_team_id, toss_decision
+                FROM matches
+                WHERE id = ?
+                """, (rs, row) -> {
+            UUID winner = rs.getObject("toss_winner_team_id", UUID.class);
+            String decision = rs.getString("toss_decision");
+            if (winner == null || decision == null) {
+                return new TossResponse(id, null, null, null, null, false);
+            }
+            UUID otherTeamId = winner.equals(teams.teamAId()) ? teams.teamBId() : teams.teamAId();
+            UUID battingTeamId = "BAT".equalsIgnoreCase(decision) ? winner : otherTeamId;
+            UUID bowlingTeamId = "BOWL".equalsIgnoreCase(decision) ? winner : otherTeamId;
+            return new TossResponse(id, winner, decision, battingTeamId, bowlingTeamId, true);
+        }, id);
+    }
+
     @PostMapping("/{id}/toss")
     RecordToss.TossResponse toss(@PathVariable UUID id,
                                  @Valid @RequestBody TossRequest request,
@@ -109,4 +140,7 @@ public class MatchController {
     private record MatchTeams(UUID teamAId, UUID teamBId) {}
 
     public record TossRequest(UUID matchId, UUID winnerTeamId, String decision) {}
+
+    public record TossResponse(UUID matchId, UUID tossWinnerTeamId, String decision,
+                               UUID battingTeamId, UUID bowlingTeamId, boolean recorded) {}
 }
