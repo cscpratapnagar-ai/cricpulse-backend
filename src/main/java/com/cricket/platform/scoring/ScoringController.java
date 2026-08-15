@@ -1,6 +1,7 @@
 package com.cricket.platform.scoring;
 
 import jakarta.validation.Valid;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -17,6 +18,7 @@ public class ScoringController {
     private final InningsLifecycle inningsLifecycle;
     private final SimpMessagingTemplate messaging;
     private final ScoringAccess scoringAccess;
+    private final JdbcTemplate jdbc;
 
     public ScoringController(StartInnings startInnings,
                              RecordDelivery recordDelivery,
@@ -24,7 +26,8 @@ public class ScoringController {
                              UndoDelivery undoDelivery,
                              InningsLifecycle inningsLifecycle,
                              SimpMessagingTemplate messaging,
-                             ScoringAccess scoringAccess) {
+                             ScoringAccess scoringAccess,
+                             JdbcTemplate jdbc) {
         this.startInnings = startInnings;
         this.recordDelivery = recordDelivery;
         this.getLiveScore = getLiveScore;
@@ -32,6 +35,7 @@ public class ScoringController {
         this.inningsLifecycle = inningsLifecycle;
         this.messaging = messaging;
         this.scoringAccess = scoringAccess;
+        this.jdbc = jdbc;
     }
 
     @PostMapping("/innings")
@@ -50,7 +54,28 @@ public class ScoringController {
         }
         scoringAccess.requireMatchManager(scoringAccess.matchIdForInnings(inningsId), authentication);
 
-        RecordDelivery.DeliveryResponse response = recordDelivery.execute(request);
+        BallPosition position = jdbc.queryForObject(
+                "SELECT legal_balls FROM innings WHERE id = ? FOR UPDATE",
+                (rs, row) -> {
+                    int legalBalls = rs.getInt("legal_balls");
+                    return new BallPosition(legalBalls / 6, (legalBalls % 6) + 1);
+                },
+                inningsId
+        );
+        if (position == null) {
+            throw new IllegalArgumentException("Innings was not found");
+        }
+
+        // Backend is the single source of truth for over/ball labels. This prevents
+        // stale UI state after reconnects, undo, wides/no-balls and over completion.
+        RecordDelivery.Request normalized = new RecordDelivery.Request(
+                request.inningsId(), position.overNumber(), position.ballNumber(),
+                request.strikerId(), request.nonStrikerId(), request.bowlerId(),
+                request.batRuns(), request.extraRuns(), request.extraType(),
+                request.wicketType(), request.dismissedPlayerId(), request.newBatterId()
+        );
+
+        RecordDelivery.DeliveryResponse response = recordDelivery.execute(normalized);
         inningsLifecycle.evaluate(inningsId);
 
         GetLiveScore.Score score = getLiveScore.execute(inningsId);
@@ -73,4 +98,6 @@ public class ScoringController {
         messaging.convertAndSend("/topic/innings/" + inningsId, score);
         return score;
     }
+
+    private record BallPosition(int overNumber, int ballNumber) {}
 }
