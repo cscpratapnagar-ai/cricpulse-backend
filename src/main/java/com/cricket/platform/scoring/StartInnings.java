@@ -40,30 +40,23 @@ public class StartInnings {
                 request.matchId()
         );
 
-        if (match == null) {
-            throw new IllegalArgumentException("Match was not found");
-        }
+        if (match == null) throw new IllegalArgumentException("Match was not found");
         if (match.tossWinnerTeamId() == null || match.tossDecision() == null) {
             throw new IllegalArgumentException("Toss must be recorded before starting an innings");
         }
         if (match.totalOvers() == null || match.totalOvers() <= 0) {
             throw new IllegalArgumentException("Match total overs are not configured");
         }
-        if (request.inningsNumber() < 1) {
-            throw new IllegalArgumentException("Innings number must be positive");
-        }
+        if (request.inningsNumber() < 1) throw new IllegalArgumentException("Innings number must be positive");
 
         UUID existingId = jdbc.query(
                 """
-                SELECT id
-                FROM innings
+                SELECT id FROM innings
                 WHERE match_id = ? AND innings_number = ?
-                ORDER BY id
-                LIMIT 1
+                ORDER BY id LIMIT 1
                 """,
                 (rs, row) -> rs.getObject("id", UUID.class),
-                request.matchId(),
-                request.inningsNumber()
+                request.matchId(), request.inningsNumber()
         ).stream().findFirst().orElse(null);
 
         if (existingId != null) {
@@ -71,27 +64,19 @@ public class StartInnings {
                     """
                     SELECT id, batting_team_id, bowling_team_id, total_runs, wickets,
                            legal_balls, total_overs, target_runs, status
-                    FROM innings
-                    WHERE id = ?
-                    FOR UPDATE
+                    FROM innings WHERE id = ? FOR UPDATE
                     """,
                     (rs, row) -> new ExistingState(
                             rs.getObject("id", UUID.class),
                             rs.getObject("batting_team_id", UUID.class),
                             rs.getObject("bowling_team_id", UUID.class),
-                            rs.getInt("total_runs"),
-                            rs.getInt("wickets"),
-                            rs.getInt("legal_balls"),
+                            rs.getInt("total_runs"), rs.getInt("wickets"), rs.getInt("legal_balls"),
                             (Integer) rs.getObject("total_overs"),
-                            (Integer) rs.getObject("target_runs"),
-                            rs.getString("status")
-                    ),
-                    existingId
+                            (Integer) rs.getObject("target_runs"), rs.getString("status")
+                    ), existingId
             );
 
-            if (existing == null) {
-                throw new IllegalArgumentException("Existing innings could not be loaded");
-            }
+            if (existing == null) throw new IllegalArgumentException("Existing innings could not be loaded");
             if (!request.battingTeamId().equals(existing.battingTeamId())) {
                 throw new IllegalArgumentException("Batting team does not match the existing innings");
             }
@@ -99,14 +84,12 @@ public class StartInnings {
             if ("LIVE".equals(existing.status())) {
                 jdbc.update(
                         "UPDATE matches SET status = 'LIVE', current_innings_id = ? WHERE id = ?",
-                        existing.id(),
-                        request.matchId()
+                        existing.id(), request.matchId()
                 );
 
-                // IMPORTANT: Resume must return the complete persisted live state.
-                // Do not rebuild/reset striker, non-striker, bowler or partnership here.
+                // Resume returns the complete persisted live state instead of resetting it.
                 GetLiveScore.Score live = getLiveScore.execute(existing.id());
-                return InningsResponse.fromLiveScore(live);
+                return InningsResponse.fromLiveScore(live, existing);
             }
 
             throw new IllegalArgumentException("This innings is already completed");
@@ -135,9 +118,7 @@ public class StartInnings {
         if (request.inningsNumber() > 1) {
             targetRuns = jdbc.queryForObject(
                     "SELECT total_runs + 1 FROM innings WHERE match_id = ? AND innings_number = ?",
-                    Integer.class,
-                    request.matchId(),
-                    request.inningsNumber() - 1
+                    Integer.class, request.matchId(), request.inningsNumber() - 1
             );
         }
 
@@ -150,37 +131,19 @@ public class StartInnings {
                 )
                 VALUES (?, ?, ?, ?, ?, 0, 0, 0, ?, 'LIVE', ?, 0, 0, FALSE, FALSE)
                 """,
-                id,
-                request.matchId(),
-                request.inningsNumber(),
-                request.battingTeamId(),
-                bowlingTeamId,
-                match.totalOvers(),
-                targetRuns
+                id, request.matchId(), request.inningsNumber(), request.battingTeamId(),
+                bowlingTeamId, match.totalOvers(), targetRuns
         );
 
         jdbc.update(
                 "UPDATE matches SET status = 'LIVE', current_innings_id = ? WHERE id = ?",
-                id,
-                request.matchId()
+                id, request.matchId()
         );
 
         return new InningsResponse(
-                id,
-                request.matchId(),
-                request.inningsNumber(),
-                request.battingTeamId(),
-                bowlingTeamId,
-                match.totalOvers(),
-                targetRuns,
-                0,
-                0,
-                0,
-                "LIVE",
-                null,
-                null,
-                null,
-                null
+                id, request.matchId(), request.inningsNumber(), request.battingTeamId(), bowlingTeamId,
+                match.totalOvers(), targetRuns, 0, 0, 0, "LIVE",
+                null, null, null, null
         );
     }
 
@@ -191,77 +154,33 @@ public class StartInnings {
     private boolean hasCompletedPreviousInnings(UUID matchId, int inningsNumber) {
         Integer completed = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM innings WHERE match_id = ? AND innings_number = ? AND status = 'COMPLETED'",
-                Integer.class,
-                matchId,
-                inningsNumber - 1
+                Integer.class, matchId, inningsNumber - 1
         );
         return completed != null && completed > 0;
     }
 
-    private record MatchState(
-            UUID id,
-            UUID teamAId,
-            UUID teamBId,
-            Integer totalOvers,
-            String status,
-            UUID tossWinnerTeamId,
-            String tossDecision
-    ) {}
+    private record MatchState(UUID id, UUID teamAId, UUID teamBId, Integer totalOvers,
+                              String status, UUID tossWinnerTeamId, String tossDecision) {}
 
-    private record ExistingState(
-            UUID id,
-            UUID battingTeamId,
-            UUID bowlingTeamId,
-            int runs,
-            int wickets,
-            int legalBalls,
-            Integer totalOvers,
-            Integer targetRuns,
-            String status
-    ) {}
+    private record ExistingState(UUID id, UUID battingTeamId, UUID bowlingTeamId, int runs,
+                                 int wickets, int legalBalls, Integer totalOvers,
+                                 Integer targetRuns, String status) {}
 
-    public record Request(
-            @NotNull UUID matchId,
-            @NotNull @Min(1) Integer inningsNumber,
-            @NotNull UUID battingTeamId
-    ) {}
+    public record Request(@NotNull UUID matchId, @NotNull @Min(1) Integer inningsNumber,
+                          @NotNull UUID battingTeamId) {}
 
-    public record InningsResponse(
-            UUID id,
-            UUID matchId,
-            int inningsNumber,
-            UUID battingTeamId,
-            UUID bowlingTeamId,
-            int totalOvers,
-            Integer targetRuns,
-            int runs,
-            int wickets,
-            int legalBalls,
-            String status,
-            UUID strikerId,
-            UUID nonStrikerId,
-            UUID currentBowlerId,
-            GetLiveScore.Partnership partnership
-    ) {
-        static InningsResponse fromLiveScore(GetLiveScore.Score live) {
+    public record InningsResponse(UUID id, UUID matchId, int inningsNumber,
+                                  UUID battingTeamId, UUID bowlingTeamId, int totalOvers,
+                                  Integer targetRuns, int runs, int wickets, int legalBalls,
+                                  String status, UUID strikerId, UUID nonStrikerId,
+                                  UUID currentBowlerId, GetLiveScore.Partnership partnership) {
+        static InningsResponse fromLiveScore(GetLiveScore.Score live, ExistingState existing) {
             return new InningsResponse(
-                    live.inningsId(),
-                    live.matchId(),
-                    live.inningsNumber(),
-                    live.batters().stream().findFirst().map(GetLiveScore.Batter::playerId).isPresent()
-                            ? live.batters().stream().findFirst().map(GetLiveScore.Batter::playerId).orElse(null)
-                            : null,
-                    null,
-                    live.totalOvers() == null ? 0 : live.totalOvers(),
-                    live.targetRuns(),
-                    live.runs(),
-                    live.wickets(),
-                    live.legalBalls(),
-                    live.status(),
-                    live.strikerId(),
-                    live.nonStrikerId(),
-                    live.currentBowlerId(),
-                    live.partnership()
+                    live.inningsId(), live.matchId(), live.inningsNumber(),
+                    existing.battingTeamId(), existing.bowlingTeamId(),
+                    live.totalOvers() == null ? 0 : live.totalOvers(), live.targetRuns(),
+                    live.runs(), live.wickets(), live.legalBalls(), live.status(),
+                    live.strikerId(), live.nonStrikerId(), live.currentBowlerId(), live.partnership()
             );
         }
     }
