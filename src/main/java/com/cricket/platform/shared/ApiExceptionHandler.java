@@ -3,6 +3,7 @@ package com.cricket.platform.shared;
 import com.cricket.platform.identity.LoginUser;
 import com.cricket.platform.identity.RegisterUser;
 import com.cricket.platform.player.CreatePlayer;
+import com.cricket.platform.team.TeamController;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -44,6 +45,18 @@ public class ApiExceptionHandler {
     ResponseEntity<ApiError> playerProfileNotFound(CreatePlayer.PlayerProfileNotFoundException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(new ApiError("PLAYER_PROFILE_NOT_FOUND", ex.getMessage(), Instant.now()));
+    }
+
+    @ExceptionHandler(TeamController.TeamMembershipException.class)
+    ResponseEntity<ApiError> teamMembership(TeamController.TeamMembershipException ex) {
+        HttpStatus status = switch (ex.getCode()) {
+            case "PLAYER_NOT_FOUND", "TEAM_MEMBER_NOT_FOUND" -> HttpStatus.NOT_FOUND;
+            case "PLAYER_ALREADY_IN_TEAM", "OWNER_ROLE_NOT_ASSIGNABLE" -> HttpStatus.CONFLICT;
+            case "TEAM_ACCESS_DENIED", "OWNER_CANNOT_BE_REMOVED" -> HttpStatus.FORBIDDEN;
+            default -> HttpStatus.BAD_REQUEST;
+        };
+        return ResponseEntity.status(status)
+                .body(new ApiError(ex.getCode(), ex.getMessage(), Instant.now()));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
