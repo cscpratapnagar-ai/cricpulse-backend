@@ -47,7 +47,7 @@ public class TeamController {
     @GetMapping("/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/members")
     List<MemberView> members(@PathVariable UUID id, Authentication authentication) {
         requireTeamMemberOrOwner(id, authentication);
-        ensureOwnerMembership(id);
+        repairOwnerMembership(id);
         return jdbc.query(
                 "SELECT tm.team_id, p.id AS player_id, u.id AS user_id, u.full_name, u.email, u.phone, tm.role " +
                 "FROM team_members tm " +
@@ -128,8 +128,7 @@ public class TeamController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void removeMember(@PathVariable UUID id, @PathVariable UUID playerId, Authentication authentication) {
         requireTeamManager(id, authentication);
-        String role = jdbc.query(
-                "SELECT role FROM team_members WHERE team_id = ? AND player_id = ?",
+        String role = jdbc.query("SELECT role FROM team_members WHERE team_id = ? AND player_id = ?",
                 rs -> rs.next() ? rs.getString(1) : null, id, playerId);
         if (role == null) throw new TeamMembershipException("TEAM_MEMBER_NOT_FOUND", "This player is not a member of the team.");
         if ("OWNER".equals(role)) throw new TeamMembershipException("OWNER_CANNOT_BE_REMOVED", "The team owner cannot be removed from the team.");
@@ -175,7 +174,7 @@ public class TeamController {
         if (authentication == null || !authentication.isAuthenticated()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication is required.");
         }
-        ensureOwnerMembership(teamId);
+        repairOwnerMembership(teamId);
         String role = jdbc.query(
                 "SELECT tm.role FROM team_members tm JOIN players p ON p.id = tm.player_id JOIN users u ON u.id = p.user_id " +
                 "WHERE tm.team_id = ? AND (LOWER(u.email) = LOWER(?) OR CAST(u.id AS TEXT) = ?)",
@@ -195,13 +194,27 @@ public class TeamController {
         return "OWNER".equals(role) || "MANAGER".equals(role) || "CAPTAIN".equals(role);
     }
 
-    private void ensureOwnerMembership(UUID teamId) {
-        jdbc.update(
-                "INSERT INTO team_members(team_id, player_id, role) " +
-                "SELECT t.id, p.id, 'OWNER' FROM teams t JOIN players p ON p.user_id = t.owner_id " +
-                "WHERE t.id = ? AND NOT EXISTS (SELECT 1 FROM team_members tm WHERE tm.team_id = t.id AND tm.player_id = p.id) " +
-                "ON CONFLICT (team_id, player_id) DO NOTHING",
+    /**
+     * The teams.owner_id relation is authoritative. Existing teams created before
+     * automatic owner membership was introduced may not have an OWNER row. Repair
+     * that state deterministically without allowing a stale OWNER row to make the
+     * partial unique index fail.
+     */
+    private void repairOwnerMembership(UUID teamId) {
+        UUID ownerPlayerId = jdbc.query(
+                "SELECT p.id FROM teams t JOIN players p ON p.user_id = t.owner_id WHERE t.id = ?",
+                rs -> rs.next() ? rs.getObject(1, UUID.class) : null,
                 teamId);
+        if (ownerPlayerId == null) return;
+
+        jdbc.update(
+                "DELETE FROM team_members WHERE team_id = ? AND role = 'OWNER' AND player_id <> ?",
+                teamId, ownerPlayerId);
+
+        jdbc.update(
+                "INSERT INTO team_members(team_id, player_id, role) VALUES (?, ?, 'OWNER') " +
+                "ON CONFLICT (team_id, player_id) DO UPDATE SET role = 'OWNER'",
+                teamId, ownerPlayerId);
     }
 
     private MemberView member(UUID teamId, UUID playerId) {
@@ -209,10 +222,7 @@ public class TeamController {
                 "SELECT tm.team_id, p.id AS player_id, u.id AS user_id, u.full_name, u.email, u.phone, tm.role " +
                 "FROM team_members tm JOIN players p ON p.id = tm.player_id JOIN users u ON u.id = p.user_id " +
                 "WHERE tm.team_id = ? AND p.id = ?",
-                (rs, row) -> new MemberView(
-                        rs.getObject("team_id", UUID.class), rs.getObject("player_id", UUID.class),
-                        rs.getObject("user_id", UUID.class), rs.getString("full_name"),
-                        rs.getString("email"), rs.getString("phone"), rs.getString("role")),
+                (rs, row) -> new MemberView(rs.getObject("team_id", UUID.class), rs.getObject("player_id", UUID.class), rs.getObject("user_id", UUID.class), rs.getString("full_name"), rs.getString("email"), rs.getString("phone"), rs.getString("role")),
                 teamId, playerId);
     }
 
