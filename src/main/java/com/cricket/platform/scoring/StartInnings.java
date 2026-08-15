@@ -11,9 +11,11 @@ import java.util.UUID;
 @Component
 public class StartInnings {
     private final JdbcTemplate jdbc;
+    private final GetLiveScore getLiveScore;
 
-    public StartInnings(JdbcTemplate jdbc) {
+    public StartInnings(JdbcTemplate jdbc, GetLiveScore getLiveScore) {
         this.jdbc = jdbc;
+        this.getLiveScore = getLiveScore;
     }
 
     @Transactional
@@ -41,15 +43,12 @@ public class StartInnings {
         if (match == null) {
             throw new IllegalArgumentException("Match was not found");
         }
-
         if (match.tossWinnerTeamId() == null || match.tossDecision() == null) {
             throw new IllegalArgumentException("Toss must be recorded before starting an innings");
         }
-
         if (match.totalOvers() == null || match.totalOvers() <= 0) {
             throw new IllegalArgumentException("Match total overs are not configured");
         }
-
         if (request.inningsNumber() < 1) {
             throw new IllegalArgumentException("Innings number must be positive");
         }
@@ -93,7 +92,6 @@ public class StartInnings {
             if (existing == null) {
                 throw new IllegalArgumentException("Existing innings could not be loaded");
             }
-
             if (!request.battingTeamId().equals(existing.battingTeamId())) {
                 throw new IllegalArgumentException("Batting team does not match the existing innings");
             }
@@ -105,19 +103,10 @@ public class StartInnings {
                         request.matchId()
                 );
 
-                return new InningsResponse(
-                        existing.id(),
-                        request.matchId(),
-                        request.inningsNumber(),
-                        existing.battingTeamId(),
-                        existing.bowlingTeamId(),
-                        existing.totalOvers() == null ? match.totalOvers() : existing.totalOvers(),
-                        existing.targetRuns(),
-                        existing.runs(),
-                        existing.wickets(),
-                        existing.legalBalls(),
-                        existing.status()
-                );
+                // IMPORTANT: Resume must return the complete persisted live state.
+                // Do not rebuild/reset striker, non-striker, bowler or partnership here.
+                GetLiveScore.Score live = getLiveScore.execute(existing.id());
+                return InningsResponse.fromLiveScore(live);
             }
 
             throw new IllegalArgumentException("This innings is already completed");
@@ -187,7 +176,11 @@ public class StartInnings {
                 0,
                 0,
                 0,
-                "LIVE"
+                "LIVE",
+                null,
+                null,
+                null,
+                null
         );
     }
 
@@ -244,6 +237,32 @@ public class StartInnings {
             int runs,
             int wickets,
             int legalBalls,
-            String status
-    ) {}
+            String status,
+            UUID strikerId,
+            UUID nonStrikerId,
+            UUID currentBowlerId,
+            GetLiveScore.Partnership partnership
+    ) {
+        static InningsResponse fromLiveScore(GetLiveScore.Score live) {
+            return new InningsResponse(
+                    live.inningsId(),
+                    live.matchId(),
+                    live.inningsNumber(),
+                    live.batters().stream().findFirst().map(GetLiveScore.Batter::playerId).isPresent()
+                            ? live.batters().stream().findFirst().map(GetLiveScore.Batter::playerId).orElse(null)
+                            : null,
+                    null,
+                    live.totalOvers() == null ? 0 : live.totalOvers(),
+                    live.targetRuns(),
+                    live.runs(),
+                    live.wickets(),
+                    live.legalBalls(),
+                    live.status(),
+                    live.strikerId(),
+                    live.nonStrikerId(),
+                    live.currentBowlerId(),
+                    live.partnership()
+            );
+        }
+    }
 }
