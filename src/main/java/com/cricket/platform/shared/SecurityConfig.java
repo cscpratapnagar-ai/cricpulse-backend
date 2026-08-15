@@ -50,7 +50,10 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**", "/api/users", "/ws/**", "/actuator/health", "/error").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                        .requestMatchers("/api/scoring/**").hasAnyRole("ADMIN", "CAPTAIN", "SCORER")
+                        // Scoring uses match/team membership authorization in ScoringAccess.
+                        // This is required because a user can be globally PLAYER while being
+                        // OWNER/MANAGER/CAPTAIN of a specific team.
+                        .requestMatchers("/api/scoring/**").authenticated()
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/matches/**").hasAnyRole("ADMIN", "CAPTAIN", "PLAYER")
                         .anyRequest().authenticated())
                 .addFilterBefore(new JwtFilter(jwtService), UsernamePasswordAuthenticationFilter.class);
