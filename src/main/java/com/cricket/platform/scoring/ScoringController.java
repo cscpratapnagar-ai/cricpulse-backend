@@ -45,9 +45,9 @@ public class ScoringController {
     }
 
     @PostMapping("/innings/{inningsId}/deliveries")
-    RecordDelivery.DeliveryResponse delivery(@PathVariable UUID inningsId,
-                                               @RequestBody RecordDelivery.Request request,
-                                               Authentication authentication) {
+    GetLiveScore.Score delivery(@PathVariable UUID inningsId,
+                                @RequestBody RecordDelivery.Request request,
+                                Authentication authentication) {
         scoringAccess.requireMatchManager(scoringAccess.matchIdForInnings(inningsId), authentication);
 
         DeliveryState state = jdbc.queryForObject(
@@ -74,9 +74,8 @@ public class ScoringController {
             throw new IllegalArgumentException("Innings is not live");
         }
 
-        // The backend is the source of truth. Older scorer UI requests only send
-        // the delivery action (runs/extras/wicket/new batter), so restore the
-        // current innings context when those fields are omitted.
+        // The database is the source of truth. UI requests may omit the current
+        // player context, so restore it from the locked innings row.
         UUID requestInningsId = request.inningsId() != null ? request.inningsId() : inningsId;
         if (!inningsId.equals(requestInningsId)) {
             throw new IllegalArgumentException("Innings ID does not match URL");
@@ -107,12 +106,15 @@ public class ScoringController {
                 request.newBatterId()
         );
 
-        RecordDelivery.DeliveryResponse response = recordDelivery.execute(normalized);
+        recordDelivery.execute(normalized);
         inningsLifecycle.evaluate(inningsId);
 
+        // Always return the complete persisted score, not the small delivery
+        // acknowledgement. This keeps the scorer UI, resume state and WebSocket
+        // payload on exactly the same contract.
         GetLiveScore.Score score = getLiveScore.execute(inningsId);
         messaging.convertAndSend("/topic/innings/" + inningsId, score);
-        return response;
+        return score;
     }
 
     @GetMapping("/innings/{inningsId}")
