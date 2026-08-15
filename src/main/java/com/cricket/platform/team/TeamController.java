@@ -44,7 +44,10 @@ public class TeamController {
         );
     }
 
-    @GetMapping("/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/members")
+    // Spring Boot 4 / Spring Framework 7 uses PathPatternParser by default.
+    // Do not use inline regex constraints such as {id:...} in mappings.
+    // UUID conversion is handled by @PathVariable UUID id.
+    @GetMapping("/{id}/members")
     List<MemberView> members(@PathVariable UUID id, Authentication authentication) {
         requireTeamMemberOrOwner(id, authentication);
 
@@ -70,13 +73,13 @@ public class TeamController {
         );
     }
 
-    @GetMapping("/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/access")
+    @GetMapping("/{id}/access")
     TeamAccess access(@PathVariable UUID id, Authentication authentication) {
         String role = currentTeamRole(id, authentication);
         return new TeamAccess(id, role, canManage(role));
     }
 
-    @PostMapping("/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-F]{4}-[0-9a-fA-F]{12}}/members")
+    @PostMapping("/{id}/members")
     @ResponseStatus(HttpStatus.CREATED)
     MemberView addMember(@PathVariable UUID id, @Valid @RequestBody AddMemberRequest request, Authentication authentication) {
         requireTeamManager(id, authentication);
@@ -110,7 +113,7 @@ public class TeamController {
         return member(id, playerId);
     }
 
-    @PatchMapping("/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/members/{playerId:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}")
+    @PatchMapping("/{id}/members/{playerId}")
     MemberView changeRole(@PathVariable UUID id, @PathVariable UUID playerId, @Valid @RequestBody ChangeRoleRequest request, Authentication authentication) {
         requireTeamManager(id, authentication);
         String role = normalizeRole(request.role());
@@ -131,7 +134,7 @@ public class TeamController {
         return member(id, playerId);
     }
 
-    @DeleteMapping("/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/members/{playerId:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}")
+    @DeleteMapping("/{id}/members/{playerId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void removeMember(@PathVariable UUID id, @PathVariable UUID playerId, Authentication authentication) {
         requireTeamManager(id, authentication);
@@ -142,7 +145,7 @@ public class TeamController {
         jdbc.update("DELETE FROM team_members WHERE team_id = ? AND player_id = ?", id, playerId);
     }
 
-    @GetMapping("/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}")
+    @GetMapping("/{id}")
     GetTeam.TeamView get(@PathVariable UUID id) { return getTeam.execute(id); }
 
     @GetMapping
