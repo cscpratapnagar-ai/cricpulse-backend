@@ -1,6 +1,5 @@
 package com.cricket.platform.scoring;
 
-import jakarta.validation.Valid;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.Authentication;
@@ -39,7 +38,7 @@ public class ScoringController {
     }
 
     @PostMapping("/innings")
-    StartInnings.InningsResponse start(@Valid @RequestBody StartInnings.Request request,
+    StartInnings.InningsResponse start(@org.springframework.web.bind.annotation.RequestBody @jakarta.validation.Valid StartInnings.Request request,
                                        Authentication authentication) {
         scoringAccess.requireMatchManager(request.matchId(), authentication);
         return startInnings.execute(request);
@@ -47,32 +46,65 @@ public class ScoringController {
 
     @PostMapping("/innings/{inningsId}/deliveries")
     RecordDelivery.DeliveryResponse delivery(@PathVariable UUID inningsId,
-                                               @Valid @RequestBody RecordDelivery.Request request,
+                                               @RequestBody RecordDelivery.Request request,
                                                Authentication authentication) {
-        if (!inningsId.equals(request.inningsId())) {
-            throw new IllegalArgumentException("Innings ID does not match URL");
-        }
         scoringAccess.requireMatchManager(scoringAccess.matchIdForInnings(inningsId), authentication);
 
-        BallPosition position = jdbc.queryForObject(
-                "SELECT legal_balls FROM innings WHERE id = ? FOR UPDATE",
-                (rs, row) -> {
-                    int legalBalls = rs.getInt("legal_balls");
-                    return new BallPosition(legalBalls / 6, (legalBalls % 6) + 1);
-                },
+        DeliveryState state = jdbc.queryForObject(
+                """
+                SELECT legal_balls, striker_id, non_striker_id, current_bowler_id, status
+                FROM innings
+                WHERE id = ?
+                FOR UPDATE
+                """,
+                (rs, row) -> new DeliveryState(
+                        rs.getInt("legal_balls"),
+                        rs.getObject("striker_id", UUID.class),
+                        rs.getObject("non_striker_id", UUID.class),
+                        rs.getObject("current_bowler_id", UUID.class),
+                        rs.getString("status")
+                ),
                 inningsId
         );
-        if (position == null) {
+
+        if (state == null) {
             throw new IllegalArgumentException("Innings was not found");
         }
+        if (!"LIVE".equals(state.status())) {
+            throw new IllegalArgumentException("Innings is not live");
+        }
 
-        // Backend is the single source of truth for over/ball labels. This prevents
-        // stale UI state after reconnects, undo, wides/no-balls and over completion.
+        // The backend is the source of truth. Older scorer UI requests only send
+        // the delivery action (runs/extras/wicket/new batter), so restore the
+        // current innings context when those fields are omitted.
+        UUID requestInningsId = request.inningsId() != null ? request.inningsId() : inningsId;
+        if (!inningsId.equals(requestInningsId)) {
+            throw new IllegalArgumentException("Innings ID does not match URL");
+        }
+
+        UUID strikerId = request.strikerId() != null ? request.strikerId() : state.strikerId();
+        UUID nonStrikerId = request.nonStrikerId() != null ? request.nonStrikerId() : state.nonStrikerId();
+        UUID bowlerId = request.bowlerId() != null ? request.bowlerId() : state.currentBowlerId();
+
+        if (strikerId == null || nonStrikerId == null || bowlerId == null) {
+            throw new IllegalArgumentException("Current striker, non-striker and bowler must be set before recording a delivery");
+        }
+
+        BallPosition position = new BallPosition(state.legalBalls() / 6, (state.legalBalls() % 6) + 1);
+
         RecordDelivery.Request normalized = new RecordDelivery.Request(
-                request.inningsId(), position.overNumber(), position.ballNumber(),
-                request.strikerId(), request.nonStrikerId(), request.bowlerId(),
-                request.batRuns(), request.extraRuns(), request.extraType(),
-                request.wicketType(), request.dismissedPlayerId(), request.newBatterId()
+                inningsId,
+                position.overNumber(),
+                position.ballNumber(),
+                strikerId,
+                nonStrikerId,
+                bowlerId,
+                request.batRuns(),
+                request.extraRuns(),
+                request.extraType(),
+                request.wicketType(),
+                request.dismissedPlayerId(),
+                request.newBatterId()
         );
 
         RecordDelivery.DeliveryResponse response = recordDelivery.execute(normalized);
@@ -98,6 +130,14 @@ public class ScoringController {
         messaging.convertAndSend("/topic/innings/" + inningsId, score);
         return score;
     }
+
+    private record DeliveryState(
+            int legalBalls,
+            UUID strikerId,
+            UUID nonStrikerId,
+            UUID currentBowlerId,
+            String status
+    ) {}
 
     private record BallPosition(int overNumber, int ballNumber) {}
 }
