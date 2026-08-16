@@ -47,10 +47,12 @@ public class SetupInningsOpening {
                 "UPDATE innings SET striker_id = ?, non_striker_id = ?, current_bowler_id = ? WHERE id = ?",
                 request.strikerId(), request.nonStrikerId(), request.bowlerId(), request.inningsId());
 
+        // Partnership 0 is the opening partnership. Wicket 1 starts the
+        // next partnership after the first dismissal.
         jdbc.update(
                 """
-                INSERT INTO partnerships(innings_id, batter_one_id, batter_two_id, runs, balls, is_current)
-                VALUES (?, ?, ?, 0, 0, TRUE)
+                INSERT INTO partnerships(innings_id, wicket_number, batter_one_id, batter_two_id, runs, balls, is_current)
+                VALUES (?, 0, ?, ?, 0, 0, TRUE)
                 """,
                 request.inningsId(), request.strikerId(), request.nonStrikerId());
 

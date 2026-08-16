@@ -38,7 +38,24 @@ public class RecordDelivery {
         if(r.wicketType()!=null){
             recordFow(r,delivery,s.totalRuns()+total,over,ball);
             if(newWickets>=10){if(r.dismissedPlayerId().equals(ns))ns=null;if(r.dismissedPlayerId().equals(nn))nn=null;}
-            else{if(r.dismissedPlayerId().equals(ns))ns=r.newBatterId();if(r.dismissedPlayerId().equals(nn))nn=r.newBatterId();jdbc.update("INSERT INTO partnerships(innings_id,wicket_number,batter_one_id,batter_two_id,runs,balls,is_current) VALUES(?,?,?, ?,0,0,TRUE)",r.inningsId(),newWickets,ns,nn);}
+            else{
+                if(r.dismissedPlayerId().equals(ns))ns=r.newBatterId();
+                if(r.dismissedPlayerId().equals(nn))nn=r.newBatterId();
+                if(newWickets==1){
+                    jdbc.update("""
+                            UPDATE partnerships p
+                            SET wicket_number=0
+                            WHERE p.innings_id=?
+                              AND p.wicket_number=1
+                              AND p.is_current=FALSE
+                              AND NOT EXISTS (
+                                  SELECT 1 FROM partnerships p0
+                                  WHERE p0.innings_id=? AND p0.wicket_number=0
+                              )
+                            """,r.inningsId(),r.inningsId());
+                }
+                jdbc.update("INSERT INTO partnerships(innings_id,wicket_number,batter_one_id,batter_two_id,runs,balls,is_current) VALUES(?,?,?, ?,0,0,TRUE)",r.inningsId(),newWickets,ns,nn);
+            }
         }
         if(legal&&newLegal%6==0&&newWickets<10){UUID t=ns;ns=nn;nn=t;}
         jdbc.update("UPDATE innings SET striker_id=?,non_striker_id=? WHERE id=?",ns,nn,r.inningsId());
