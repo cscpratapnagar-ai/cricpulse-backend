@@ -27,15 +27,17 @@ public class UndoDelivery {
             throw new IllegalArgumentException("No delivery available to undo");
         }
 
-        jdbc.update("DELETE FROM deliveries WHERE id = ?", deliveryId);
-
-        // Aggregates are derived from the remaining delivery history.
+        // Delete dependent rows before deliveries. fall_of_wickets.delivery_id
+        // references deliveries.id, so deleting the delivery first causes a FK 500.
         jdbc.update("DELETE FROM fall_of_wickets WHERE innings_id = ?", inningsId);
         jdbc.update("DELETE FROM partnerships WHERE innings_id = ?", inningsId);
         jdbc.update("DELETE FROM innings_bowlers WHERE innings_id = ?", inningsId);
         jdbc.update("DELETE FROM innings_batters WHERE innings_id = ?", inningsId);
         jdbc.update("DELETE FROM innings_overs WHERE innings_id = ?", inningsId);
+        jdbc.update("DELETE FROM deliveries WHERE id = ?", deliveryId);
 
+        // Rebuild the innings state from the remaining delivery history.
+        // Keep the persisted opening player context when undo removes the first delivery.
         jdbc.update("""
                 UPDATE innings SET
                     total_runs = COALESCE((SELECT SUM(bat_runs + extra_runs) FROM deliveries WHERE innings_id = ?), 0),
@@ -43,9 +45,9 @@ public class UndoDelivery {
                     legal_balls = COALESCE((SELECT COUNT(*) FROM deliveries WHERE innings_id = ? AND legal_delivery = TRUE), 0),
                     current_over = COALESCE((SELECT MAX(over_number) FROM deliveries WHERE innings_id = ?), 0),
                     current_ball = COALESCE((SELECT MAX(ball_number) FROM deliveries WHERE innings_id = ? AND legal_delivery = TRUE), 0),
-                    striker_id = (SELECT striker_id FROM deliveries WHERE innings_id = ? ORDER BY sequence_number DESC LIMIT 1),
-                    non_striker_id = (SELECT non_striker_id FROM deliveries WHERE innings_id = ? ORDER BY sequence_number DESC LIMIT 1),
-                    current_bowler_id = (SELECT bowler_id FROM deliveries WHERE innings_id = ? ORDER BY sequence_number DESC LIMIT 1)
+                    striker_id = COALESCE((SELECT striker_id FROM deliveries WHERE innings_id = ? ORDER BY sequence_number DESC, created_at DESC LIMIT 1), striker_id),
+                    non_striker_id = COALESCE((SELECT non_striker_id FROM deliveries WHERE innings_id = ? ORDER BY sequence_number DESC, created_at DESC LIMIT 1), non_striker_id),
+                    current_bowler_id = COALESCE((SELECT bowler_id FROM deliveries WHERE innings_id = ? ORDER BY sequence_number DESC, created_at DESC LIMIT 1), current_bowler_id)
                 WHERE id = ?
                 """, inningsId, inningsId, inningsId, inningsId, inningsId,
                 inningsId, inningsId, inningsId, inningsId);
