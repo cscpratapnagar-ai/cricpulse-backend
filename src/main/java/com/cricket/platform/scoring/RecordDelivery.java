@@ -38,7 +38,29 @@ public class RecordDelivery {
         if(r.wicketType()!=null){
             recordFow(r,delivery,s.totalRuns()+total,over,ball);
             if(newWickets>=10){if(r.dismissedPlayerId().equals(ns))ns=null;if(r.dismissedPlayerId().equals(nn))nn=null;}
-            else{if(r.dismissedPlayerId().equals(ns))ns=r.newBatterId();if(r.dismissedPlayerId().equals(nn))nn=r.newBatterId();jdbc.update("INSERT INTO partnerships(innings_id,wicket_number,batter_one_id,batter_two_id,runs,balls,is_current) VALUES(?,?,?, ?,0,0,TRUE)",r.inningsId(),newWickets,ns,nn);}
+            else{
+                if(r.dismissedPlayerId().equals(ns))ns=r.newBatterId();
+                if(r.dismissedPlayerId().equals(nn))nn=r.newBatterId();
+
+                // Older innings could have the opening partnership stored as
+                // wicket #1. Normalize that legacy row to wicket #0 before
+                // creating the first post-wicket partnership (#1).
+                if(newWickets==1){
+                    jdbc.update("""
+                            UPDATE partnerships p
+                            SET wicket_number=0
+                            WHERE p.innings_id=?
+                              AND p.wicket_number=1
+                              AND p.is_current=FALSE
+                              AND NOT EXISTS (
+                                  SELECT 1 FROM partnerships p0
+                                  WHERE p0.innings_id=? AND p0.wicket_number=0
+                              )
+                            """,r.inningsId(),r.inningsId());
+                }
+
+                jdbc.update("INSERT INTO partnerships(innings_id,wicket_number,batter_one_id,batter_two_id,runs,balls,is_current) VALUES(?,?,?, ?,0,0,TRUE)",r.inningsId(),newWickets,ns,nn);
+            }
         }
         if(legal&&newLegal%6==0&&newWickets<10){UUID t=ns;ns=nn;nn=t;}
         jdbc.update("UPDATE innings SET striker_id=?,non_striker_id=? WHERE id=?",ns,nn,r.inningsId());
@@ -52,7 +74,7 @@ public class RecordDelivery {
         if(s.currentBowlerId()!=null){if(boundary&&s.currentBowlerId().equals(r.bowlerId()))throw new IllegalArgumentException("A new bowler must be selected for the next over");if(!boundary&&!s.currentBowlerId().equals(r.bowlerId()))throw new IllegalArgumentException("Bowler cannot change before the over is completed");}
         if(r.wicketType()!=null){if(!r.dismissedPlayerId().equals(r.strikerId())&&!r.dismissedPlayerId().equals(r.nonStrikerId()))throw new IllegalArgumentException("Dismissed player must be the current striker or non-striker");int next=s.wickets()+1;if(next<10&&r.newBatterId()==null)throw new IllegalArgumentException("New batter is required after a wicket");if(next>=10&&r.newBatterId()!=null)throw new IllegalArgumentException("No new batter is allowed after the 10th wicket");if(r.newBatterId()!=null&&(r.newBatterId().equals(r.strikerId())||r.newBatterId().equals(r.nonStrikerId())||r.newBatterId().equals(r.dismissedPlayerId())))throw new IllegalArgumentException("New batter must be a different available player");}else if(r.newBatterId()!=null||r.dismissedPlayerId()!=null)throw new IllegalArgumentException("Wicket fields can only be supplied for a wicket delivery");
     }
-    private void updateOver(Request r,int over,boolean legal,int runs){jdbc.update("INSERT INTO innings_overs(innings_id,over_number,bowler_id,runs,wickets,legal_balls,wides,no_balls,byes,leg_byes) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(innings_id,over_number) DO UPDATE SET runs=innings_overs.runs+EXCLUDED.runs,wickets=innings_overs.wickets+EXCLUDED.wickets,legal_balls=innings_overs.legal_balls+EXCLUDED.legal_balls,wides=innings_overs.wides+EXCLUDED.wides,no_balls=innings_overs.no_balls+EXCLUDED.no_balls,byes=innings_overs.byes+EXCLUDED.byes,leg_byes=innings_overs.leg_byes+EXCLUDED.leg_byes,completed=innings_overs.legal_balls+EXCLUDED.legal_balls>=6",r.inningsId(),over,r.bowlerId(),runs,r.wicketType()==null?0:1,legal?1:0,"WIDE".equals(r.extraType())?r.extraRuns():0,"NO_BALL".equals(r.extraType())?r.extraRuns():0,"BYE".equals(r.extraType())?r.extraRuns():0,"LEG_BYE".equals(r.extraType())?r.extraRuns():0);}
+    private void updateOver(Request r,int over,boolean legal,int runs){jdbc.update("INSERT INTO innings_overs(innings_id,over_number,bowler_id,runs,wickets,legal_balls,wides,no_balls,byes,leg_byes) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(innings_id,over_number) DO UPDATE SET runs=innings_overs.runs+EXCLUDED.runs,wickets=innings_overs.wickets+EXCLUDED.wickets,legal_balls=innings_overs.legal_balls+EXCLUDED.legal_balls,wides=innings_overs.wides+EXCLUDED.wides,no_balls=innings_overs.no_balls+EXCLUDED.no_balls,byes=innings_overs.byes+EXCLUDED.byes,leg_byes=innings_overs.leg_byes+EXCLUDED.leg_balls>=6",r.inningsId(),over,r.bowlerId(),runs,r.wicketType()==null?0:1,legal?1:0,"WIDE".equals(r.extraType())?r.extraRuns():0,"NO_BALL".equals(r.extraType())?r.extraRuns():0,"BYE".equals(r.extraType())?r.extraRuns():0,"LEG_BYE".equals(r.extraType())?r.extraRuns():0);}
     private void updateBatter(Request r,UUID d,boolean legal){jdbc.update("INSERT INTO innings_batters(innings_id,player_id,runs,balls_faced,fours,sixes,is_out,dismissal_type,dismissal_delivery_id,strike_rate) VALUES(?,?,?,?,?,?,?,?,?,0) ON CONFLICT(innings_id,player_id) DO UPDATE SET runs=innings_batters.runs+EXCLUDED.runs,balls_faced=innings_batters.balls_faced+EXCLUDED.balls_faced,fours=innings_batters.fours+EXCLUDED.fours,sixes=innings_batters.sixes+EXCLUDED.sixes,is_out=innings_batters.is_out OR EXCLUDED.is_out,dismissal_type=COALESCE(EXCLUDED.dismissal_type,innings_batters.dismissal_type),dismissal_delivery_id=COALESCE(EXCLUDED.dismissal_delivery_id,innings_batters.dismissal_delivery_id),strike_rate=CASE WHEN innings_batters.balls_faced+EXCLUDED.balls_faced=0 THEN 0 ELSE ROUND(((innings_batters.runs+EXCLUDED.runs)::numeric*100)/(innings_batters.balls_faced+EXCLUDED.balls_faced),2) END",r.inningsId(),r.strikerId(),r.batRuns(),legal?1:0,r.batRuns()==4?1:0,r.batRuns()==6?1:0,r.wicketType()!=null&&r.dismissedPlayerId().equals(r.strikerId()),r.wicketType(),r.wicketType()==null?null:d);if(r.wicketType()!=null&&!r.dismissedPlayerId().equals(r.strikerId()))jdbc.update("INSERT INTO innings_batters(innings_id,player_id,runs,balls_faced,fours,sixes,is_out,dismissal_type,dismissal_delivery_id,strike_rate) VALUES(?,?,0,0,0,0,TRUE,?,?,0) ON CONFLICT(innings_id,player_id) DO UPDATE SET is_out=TRUE,dismissal_type=EXCLUDED.dismissal_type,dismissal_delivery_id=EXCLUDED.dismissal_delivery_id",r.inningsId(),r.dismissedPlayerId(),r.wicketType(),d);}
     private void updateBowler(Request r,boolean legal,int total){int conceded=switch(r.extraType()==null?"":r.extraType()){case "BYE","LEG_BYE"->0;default->total;};jdbc.update("INSERT INTO innings_bowlers(innings_id,player_id,legal_balls,runs_conceded,wickets,wides,no_balls,economy) VALUES(?,?,?,?,?,?,?,0) ON CONFLICT(innings_id,player_id) DO UPDATE SET legal_balls=innings_bowlers.legal_balls+EXCLUDED.legal_balls,runs_conceded=innings_bowlers.runs_conceded+EXCLUDED.runs_conceded,wickets=innings_bowlers.wickets+EXCLUDED.wickets,wides=innings_bowlers.wides+EXCLUDED.wides,no_balls=innings_bowlers.no_balls+EXCLUDED.no_balls,economy=CASE WHEN innings_bowlers.legal_balls+EXCLUDED.legal_balls=0 THEN 0 ELSE ROUND(((innings_bowlers.runs_conceded+EXCLUDED.runs_conceded)::numeric*6)/(innings_bowlers.legal_balls+EXCLUDED.legal_balls),2) END",r.inningsId(),r.bowlerId(),legal?1:0,conceded,isBowlerWicket(r.wicketType())?1:0,"WIDE".equals(r.extraType())?r.extraRuns():0,"NO_BALL".equals(r.extraType())?r.extraRuns():0);}
     private void updatePartnership(Request r,boolean legal,int total){jdbc.update("UPDATE partnerships SET runs=runs+?,balls=balls+? WHERE innings_id=? AND is_current=TRUE",total,legal?1:0,r.inningsId());}
