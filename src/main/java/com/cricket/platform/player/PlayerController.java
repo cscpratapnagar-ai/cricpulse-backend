@@ -13,11 +13,14 @@ import java.util.UUID;
 public class PlayerController {
     private final CreatePlayer createPlayer;
     private final AddPlayerToTeam addPlayerToTeam;
+    private final GetPlayerStatistics getPlayerStatistics;
     private final JdbcTemplate jdbc;
 
-    public PlayerController(CreatePlayer createPlayer, AddPlayerToTeam addPlayerToTeam, JdbcTemplate jdbc) {
+    public PlayerController(CreatePlayer createPlayer, AddPlayerToTeam addPlayerToTeam,
+                            GetPlayerStatistics getPlayerStatistics, JdbcTemplate jdbc) {
         this.createPlayer = createPlayer;
         this.addPlayerToTeam = addPlayerToTeam;
+        this.getPlayerStatistics = getPlayerStatistics;
         this.jdbc = jdbc;
     }
 
@@ -45,6 +48,16 @@ public class PlayerController {
     List<PlayerView> teamPlayers(@PathVariable UUID teamId) {
         return jdbc.query("SELECT p.id, p.user_id, u.full_name, p.batting_style, p.bowling_style, tm.role FROM team_members tm JOIN players p ON p.id = tm.player_id JOIN users u ON u.id = p.user_id WHERE tm.team_id = ? ORDER BY u.full_name",
                 (rs, row) -> new PlayerView(rs.getObject("id", UUID.class), rs.getObject("user_id", UUID.class), rs.getString("full_name"), rs.getString("batting_style"), rs.getString("bowling_style"), rs.getString("role")), teamId);
+    }
+
+    @GetMapping("/statistics")
+    List<GetPlayerStatistics.PlayerStatistics> statistics() {
+        return getPlayerStatistics.all();
+    }
+
+    @GetMapping("/{playerId}/statistics")
+    GetPlayerStatistics.PlayerStatistics playerStatistics(@PathVariable UUID playerId) {
+        return getPlayerStatistics.one(playerId);
     }
 
     public record PlayerView(UUID id, UUID userId, String name, String battingStyle, String bowlingStyle, String role) {}
