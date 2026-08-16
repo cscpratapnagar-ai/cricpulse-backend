@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Creates a complete local tournament test dataset and then marks all six
-generated fixtures as completed with deterministic innings/result data.
-# This is intended for local/dev analytics and qualification testing only.
+# Creates a complete local tournament dataset for Analytics and Qualification UI testing.
+# It uses the public tournament/team/fixture APIs, then seeds only the score aggregates
+# required by the existing points-table implementation. It intentionally does not create
+# players or call an unverified team-members endpoint.
 
 BASE_URL="${BASE_URL:-http://localhost:8080/api}"
 POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-cricketpulse-postgres}"
@@ -29,23 +30,25 @@ json() {
   curl -sS --fail-with-body -H "Content-Type: application/json" "$@"
 }
 
-echo "== CricPulse Analytics Dashboard Test Data Seeder =="
+echo "== CricPulse Analytics / Qualification Test Data Seeder =="
 echo "API: $BASE_URL"
 echo "PostgreSQL: $POSTGRES_CONTAINER / $DB_NAME"
 echo
 
-owner_register=$(jq -nc \
+# The test owner is expected to exist in a local database. If it does not, create it.
+owner_payload=$(jq -nc \
   --arg fullName "$OWNER_NAME" \
   --arg email "$OWNER_EMAIL" \
   --arg phone "$OWNER_PHONE" \
   --arg password "$OWNER_PASSWORD" \
   '{fullName:$fullName,email:$email,phone:$phone,password:$password}')
 
-if ! json -X POST "$BASE_URL/users" -d "$owner_register" >/tmp/cricpulse_analytics_owner.json 2>/tmp/cricpulse_analytics_owner.err; then
+if ! json -X POST "$BASE_URL/users" -d "$owner_payload" >/tmp/cricpulse_analytics_owner.json 2>/tmp/cricpulse_analytics_owner.err; then
   echo "Owner registration skipped (account may already exist)."
 fi
 
-owner_login=$(json -X POST "$BASE_URL/auth/login" -d "$(jq -nc --arg email "$OWNER_EMAIL" --arg password "$OWNER_PASSWORD" '{email:$email,password:$password}')")
+owner_login=$(json -X POST "$BASE_URL/auth/login" \
+  -d "$(jq -nc --arg email "$OWNER_EMAIL" --arg password "$OWNER_PASSWORD" '{email:$email,password:$password}')")
 OWNER_TOKEN=$(jq -r '.accessToken' <<<"$owner_login")
 [[ -n "$OWNER_TOKEN" && "$OWNER_TOKEN" != "null" ]] || {
   echo "ERROR: owner login failed"
@@ -59,50 +62,32 @@ tournament_payload=$(jq -nc \
   '{name:$name,format:"T20",overs:20,location:"Pratapnagar",startDate:"2026-08-20"}')
 tournament=$(json -X POST "$BASE_URL/tournaments" "${AUTH[@]}" -d "$tournament_payload")
 TOURNAMENT_ID=$(jq -r '.id' <<<"$tournament")
-[[ -n "$TOURNAMENT_ID" && "$TOURNAMENT_ID" != "null" ]] || { echo "$tournament"; exit 1; }
+[[ -n "$TOURNAMENT_ID" && "$TOURNAMENT_ID" != "null" ]] || {
+  echo "ERROR: tournament creation failed"
+  echo "$tournament"
+  exit 1
+}
 echo "Tournament: $TOURNAMENT_ID"
 
 declare -a TEAM_IDS
 declare -a TEAM_NAMES=("Rahul Warriors" "Pratap Kings" "Test Strikers" "Digital Challengers")
 
 for name in "${TEAM_NAMES[@]}"; do
-  team_payload=$(jq -nc --arg name "$name $SUFFIX" '{name:$name,city:"Pratapnagar"}')
+  team_payload=$(jq -nc \
+    --arg name "$name $SUFFIX" \
+    '{name:$name,city:"Pratapnagar"}')
   team=$(json -X POST "$BASE_URL/teams" "${AUTH[@]}" -d "$team_payload")
   team_id=$(jq -r '.id' <<<"$team")
-  [[ -n "$team_id" && "$team_id" != "null" ]] || { echo "$team"; exit 1; }
+  [[ -n "$team_id" && "$team_id" != "null" ]] || {
+    echo "ERROR: team creation failed for $name"
+    echo "$team"
+    exit 1
+  }
   TEAM_IDS+=("$team_id")
   echo "Team: $name -> $team_id"
 done
 
-for team_index in 0 1 2 3; do
-  team_id="${TEAM_IDS[$team_index]}"
-  team_name="${TEAM_NAMES[$team_index]}"
-
-  for player_index in $(seq 1 11); do
-    code=$(printf '%02d' "$player_index")
-    email_prefix=$(echo "$team_name" | tr '[:upper:] ' '[:lower:]_' | tr -cd '[:alnum:]_')
-    email="${email_prefix}.${SUFFIX}.${code}@example.com"
-    phone="700000$(printf '%04d' $((team_index * 11 + player_index)))"
-    full_name="${team_name} Player ${code}"
-
-    register_payload=$(jq -nc \
-      --arg fullName "$full_name" \
-      --arg email "$email" \
-      --arg phone "$phone" \
-      --arg password "$OWNER_PASSWORD" \
-      '{fullName:$fullName,email:$email,phone:$phone,password:$password}')
-
-    if ! json -X POST "$BASE_URL/users" -d "$register_payload" >/dev/null 2>/tmp/cricpulse_analytics_player.err; then
-      echo "Player registration skipped: $email"
-    fi
-
-    member_payload=$(jq -nc --arg email "$email" '{email:$email,role:"PLAYER"}')
-    json -X POST "$BASE_URL/teams/$team_id/members" "${AUTH[@]}" -d "$member_payload" >/dev/null
-  done
-
-  echo "Added 11 players to $team_name"
-done
-
+# Register all four teams in the tournament and generate the six round-robin fixtures.
 for team_id in "${TEAM_IDS[@]}"; do
   json -X POST "$BASE_URL/tournaments/$TOURNAMENT_ID/teams/$team_id" "${AUTH[@]}" -d '{}' >/dev/null
 done
@@ -114,46 +99,50 @@ generated=$(jq -r '.generated // 0' <<<"$fixtures")
   echo "$fixtures"
   exit 1
 }
-
 echo "Fixtures generated: $generated"
 
+# Seed two completed innings per fixture. The points-table endpoint derives
+# played/wins/losses/points/NRR directly from these rows.
 docker exec -i "$POSTGRES_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" <<SQL
 BEGIN;
 
-DO \\$\$
+DO \\\$\\$
 DECLARE
     tid uuid := '$TOURNAMENT_ID'::uuid;
     rec record;
-    ia_id uuid;
-    ib_id uuid;
     winner_runs integer;
     loser_runs integer;
-    team_a_wins boolean;
     first_runs integer;
     second_runs integer;
+    first_wickets integer;
+    second_wickets integer;
+    winning_team uuid;
 BEGIN
     IF (SELECT COUNT(*) FROM tournament_matches WHERE tournament_id = tid) <> 6 THEN
         RAISE EXCEPTION 'Expected exactly 6 fixtures for tournament %', tid;
     END IF;
 
+    -- This makes the script safe to rerun for the same tournament ID.
     DELETE FROM deliveries
-      WHERE innings_id IN (
-        SELECT id FROM innings WHERE match_id IN (
-          SELECT match_id FROM tournament_matches WHERE tournament_id = tid
-        )
-      );
+     WHERE innings_id IN (
+       SELECT i.id
+       FROM innings i
+       JOIN tournament_matches tm ON tm.match_id = i.match_id
+       WHERE tm.tournament_id = tid
+     );
 
     DELETE FROM partnerships
-      WHERE innings_id IN (
-        SELECT id FROM innings WHERE match_id IN (
-          SELECT match_id FROM tournament_matches WHERE tournament_id = tid
-        )
-      );
+     WHERE innings_id IN (
+       SELECT i.id
+       FROM innings i
+       JOIN tournament_matches tm ON tm.match_id = i.match_id
+       WHERE tm.tournament_id = tid
+     );
 
     DELETE FROM innings
-      WHERE match_id IN (
-        SELECT match_id FROM tournament_matches WHERE tournament_id = tid
-      );
+     WHERE match_id IN (
+       SELECT match_id FROM tournament_matches WHERE tournament_id = tid
+     );
 
     FOR rec IN
         SELECT tm.match_id, tm.fixture_number, m.team_a_id, m.team_b_id
@@ -162,36 +151,52 @@ BEGIN
         WHERE tm.tournament_id = tid
         ORDER BY tm.fixture_number
     LOOP
-        team_a_wins := rec.fixture_number IN (1, 3, 5);
+        -- Fixtures 1, 3 and 5 are won by Team A; 2, 4 and 6 by Team B.
+        IF rec.fixture_number IN (1, 3, 5) THEN
+            winning_team := rec.team_a_id;
+            winner_runs := CASE rec.fixture_number
+                WHEN 1 THEN 150
+                WHEN 3 THEN 160
+                ELSE 155
+            END;
+            loser_runs := CASE rec.fixture_number
+                WHEN 1 THEN 120
+                WHEN 3 THEN 140
+                ELSE 100
+            END;
+        ELSE
+            winning_team := rec.team_b_id;
+            winner_runs := CASE rec.fixture_number
+                WHEN 2 THEN 145
+                WHEN 4 THEN 135
+                ELSE 170
+            END;
+            loser_runs := CASE rec.fixture_number
+                WHEN 2 THEN 130
+                WHEN 4 THEN 125
+                ELSE 165
+            END;
+        END IF;
 
-        CASE rec.fixture_number
-            WHEN 1 THEN winner_runs := 150; loser_runs := 120;
-            WHEN 2 THEN winner_runs := 145; loser_runs := 130;
-            WHEN 3 THEN winner_runs := 160; loser_runs := 140;
-            WHEN 4 THEN winner_runs := 135; loser_runs := 125;
-            WHEN 5 THEN winner_runs := 155; loser_runs := 100;
-            WHEN 6 THEN winner_runs := 170; loser_runs := 165;
-            ELSE RAISE EXCEPTION 'Unexpected fixture number %', rec.fixture_number;
-        END CASE;
-
-        IF team_a_wins THEN
+        IF winning_team = rec.team_a_id THEN
             first_runs := winner_runs;
             second_runs := loser_runs;
+            first_wickets := 4;
+            second_wickets := 6;
         ELSE
             first_runs := loser_runs;
             second_runs := winner_runs;
+            first_wickets := 6;
+            second_wickets := 4;
         END IF;
-
-        ia_id := gen_random_uuid();
-        ib_id := gen_random_uuid();
 
         INSERT INTO innings (
             id, match_id, innings_number, batting_team_id, bowling_team_id,
             total_runs, wickets, legal_balls, total_overs, status, target_runs,
             current_over, current_ball, declared, is_super_over
         ) VALUES (
-            ia_id, rec.match_id, 1, rec.team_a_id, rec.team_b_id,
-            first_runs, 4, 120, 20, 'COMPLETED', NULL,
+            gen_random_uuid(), rec.match_id, 1, rec.team_a_id, rec.team_b_id,
+            first_runs, first_wickets, 120, 20, 'COMPLETED', NULL,
             20, 0, FALSE, FALSE
         );
 
@@ -200,25 +205,25 @@ BEGIN
             total_runs, wickets, legal_balls, total_overs, status, target_runs,
             current_over, current_ball, declared, is_super_over
         ) VALUES (
-            ib_id, rec.match_id, 2, rec.team_b_id, rec.team_a_id,
-            second_runs, CASE WHEN second_runs >= first_runs THEN 4 ELSE 6 END,
-            120, 20, 'COMPLETED', first_runs + 1,
+            gen_random_uuid(), rec.match_id, 2, rec.team_b_id, rec.team_a_id,
+            second_runs, second_wickets, 120, 20, 'COMPLETED', first_runs + 1,
             20, 0, FALSE, FALSE
         );
 
         UPDATE matches
            SET status = 'COMPLETED',
-               winning_team_id = CASE WHEN second_runs > first_runs THEN rec.team_b_id ELSE rec.team_a_id END,
+               winning_team_id = winning_team,
                result_type = 'WIN',
                result_text = CASE
-                   WHEN second_runs > first_runs THEN 'Team B won by 6 wickets'
-                   ELSE 'Team A won by ' || (first_runs - second_runs) || ' runs'
+                   WHEN winning_team = rec.team_a_id
+                     THEN (SELECT name FROM teams WHERE id = rec.team_a_id) || ' won by ' || (first_runs - second_runs) || ' runs'
+                   ELSE (SELECT name FROM teams WHERE id = rec.team_b_id) || ' won by ' || (second_runs - first_runs) || ' runs'
                END,
                completed_at = COALESCE(completed_at, now()),
                current_innings_id = NULL
          WHERE id = rec.match_id;
     END LOOP;
-END \\$\$;
+END \\\$\\$;
 
 COMMIT;
 SQL
@@ -233,5 +238,5 @@ echo "Schedule      : http://localhost:4200/tournaments/$TOURNAMENT_ID/schedule"
 echo "Fixtures      : 6 completed"
 echo "Login         : $OWNER_EMAIL / $OWNER_PASSWORD"
 echo
-echo "NOTE: This is test data for Analytics/Qualification UI."
-echo "It does NOT simulate ball-by-ball scoring-engine events."
+echo "NOTE: This dataset is intentionally aggregate-only for Analytics/Qualification UI testing."
+echo "It does not simulate player-level or ball-by-ball scoring events."
