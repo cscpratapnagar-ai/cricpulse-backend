@@ -114,8 +114,6 @@ public class UndoDelivery {
     }
 
     private void rebuildPartnership(UUID inningsId) {
-        // A UUID cannot be passed to MAX(). Find the last wicket by ordered row
-        // selection, then rebuild only deliveries after that wicket.
         jdbc.update("""
                 INSERT INTO partnerships(innings_id, batter_one_id, batter_two_id, runs, balls, is_current)
                 SELECT ?, latest.striker_id, latest.non_striker_id,
@@ -129,14 +127,16 @@ public class UndoDelivery {
                     WHERE x.innings_id = ?
                     ORDER BY x.sequence_number DESC NULLS LAST, x.created_at DESC LIMIT 1
                 ) latest
+                LEFT JOIN LATERAL (
+                    SELECT w.created_at AS wicket_created_at, w.id AS wicket_id
+                    FROM deliveries w
+                    WHERE w.innings_id = ? AND w.wicket_type IS NOT NULL
+                    ORDER BY w.sequence_number DESC NULLS LAST, w.created_at DESC LIMIT 1
+                ) last_wicket ON TRUE
                 WHERE d.innings_id = ?
-                  AND NOT EXISTS (
-                      SELECT 1 FROM deliveries w
-                      WHERE w.innings_id = ?
-                        AND w.wicket_type IS NOT NULL
-                        AND (w.created_at > d.created_at
-                             OR (w.created_at = d.created_at AND w.id > d.id))
-                  )
+                  AND (last_wicket.wicket_created_at IS NULL
+                       OR d.created_at > last_wicket.wicket_created_at
+                       OR (d.created_at = last_wicket.wicket_created_at AND d.id > last_wicket.wicket_id))
                 GROUP BY latest.striker_id, latest.non_striker_id
                 """, inningsId, inningsId, inningsId, inningsId);
     }
