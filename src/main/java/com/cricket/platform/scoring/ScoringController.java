@@ -4,6 +4,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import com.cricket.platform.match.MatchResultService;
 
 import java.util.UUID;
 
@@ -18,6 +19,7 @@ public class ScoringController {
     private final SimpMessagingTemplate messaging;
     private final ScoringAccess scoringAccess;
     private final JdbcTemplate jdbc;
+    private final MatchResultService matchResultService;
 
     public ScoringController(StartInnings startInnings,
                              RecordDelivery recordDelivery,
@@ -26,7 +28,8 @@ public class ScoringController {
                              InningsLifecycle inningsLifecycle,
                              SimpMessagingTemplate messaging,
                              ScoringAccess scoringAccess,
-                             JdbcTemplate jdbc) {
+                             JdbcTemplate jdbc,
+                             MatchResultService matchResultService) {
         this.startInnings = startInnings;
         this.recordDelivery = recordDelivery;
         this.getLiveScore = getLiveScore;
@@ -35,6 +38,7 @@ public class ScoringController {
         this.messaging = messaging;
         this.scoringAccess = scoringAccess;
         this.jdbc = jdbc;
+        this.matchResultService = matchResultService;
     }
 
     @PostMapping("/innings")
@@ -52,12 +56,13 @@ public class ScoringController {
 
         DeliveryState state = jdbc.queryForObject(
                 """
-                SELECT legal_balls, striker_id, non_striker_id, current_bowler_id, status
+                SELECT innings_number, legal_balls, striker_id, non_striker_id, current_bowler_id, status
                 FROM innings
                 WHERE id = ?
                 FOR UPDATE
                 """,
                 (rs, row) -> new DeliveryState(
+                        rs.getInt("innings_number"),
                         rs.getInt("legal_balls"),
                         rs.getObject("striker_id", UUID.class),
                         rs.getObject("non_striker_id", UUID.class),
@@ -74,8 +79,6 @@ public class ScoringController {
             throw new IllegalArgumentException("Innings is not live");
         }
 
-        // The database is the source of truth. UI requests may omit the current
-        // player context, so restore it from the locked innings row.
         UUID requestInningsId = request.inningsId() != null ? request.inningsId() : inningsId;
         if (!inningsId.equals(requestInningsId)) {
             throw new IllegalArgumentException("Innings ID does not match URL");
@@ -107,11 +110,12 @@ public class ScoringController {
         );
 
         recordDelivery.execute(normalized);
-        inningsLifecycle.evaluate(inningsId);
+        InningsLifecycle.Completion completion = inningsLifecycle.evaluate(inningsId);
 
-        // Always return the complete persisted score, not the small delivery
-        // acknowledgement. This keeps the scorer UI, resume state and WebSocket
-        // payload on exactly the same contract.
+        if (completion.completed() && state.inningsNumber() == 2) {
+            matchResultService.execute(scoringAccess.matchIdForInnings(inningsId));
+        }
+
         GetLiveScore.Score score = getLiveScore.execute(inningsId);
         messaging.convertAndSend("/topic/innings/" + inningsId, score);
         return score;
@@ -134,6 +138,7 @@ public class ScoringController {
     }
 
     private record DeliveryState(
+            int inningsNumber,
             int legalBalls,
             UUID strikerId,
             UUID nonStrikerId,
