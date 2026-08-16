@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Creates a complete local tournament test dataset and then marks all six
-a generated fixtures as completed with deterministic innings/result data.
+generated fixtures as completed with deterministic innings/result data.
 # This is intended for local/dev analytics and qualification testing only.
 
 BASE_URL="${BASE_URL:-http://localhost:8080/api}"
@@ -117,11 +117,10 @@ generated=$(jq -r '.generated // 0' <<<"$fixtures")
 
 echo "Fixtures generated: $generated"
 
-# Use an unquoted heredoc so the shell substitutes the safe UUID before psql.
 docker exec -i "$POSTGRES_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" <<SQL
 BEGIN;
 
-DO \$\$
+DO \\$\$
 DECLARE
     tid uuid := '$TOURNAMENT_ID'::uuid;
     rec record;
@@ -219,7 +218,7 @@ BEGIN
                current_innings_id = NULL
          WHERE id = rec.match_id;
     END LOOP;
-END \$\$;
+END \\$\$;
 
 COMMIT;
 SQL
