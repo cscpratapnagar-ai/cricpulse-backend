@@ -115,30 +115,57 @@ public class UndoDelivery {
 
     private void rebuildPartnership(UUID inningsId) {
         jdbc.update("""
-                INSERT INTO partnerships(innings_id, batter_one_id, batter_two_id, runs, balls, is_current)
-                SELECT ?, latest.striker_id, latest.non_striker_id,
-                       COALESCE(SUM(d.bat_runs + d.extra_runs), 0),
-                       COALESCE(SUM(CASE WHEN d.legal_delivery THEN 1 ELSE 0 END), 0),
-                       TRUE
+                INSERT INTO partnerships(
+                    innings_id,
+                    wicket_number,
+                    batter_one_id,
+                    batter_two_id,
+                    runs,
+                    balls,
+                    is_current
+                )
+                SELECT
+                    ?,
+                    (
+                        SELECT COUNT(*)
+                        FROM deliveries w
+                        WHERE w.innings_id = ?
+                          AND w.wicket_type IS NOT NULL
+                          AND w.dismissed_player_id IS NOT NULL
+                    ) + 1,
+                    latest.striker_id,
+                    latest.non_striker_id,
+                    COALESCE(SUM(d.bat_runs + d.extra_runs), 0),
+                    COALESCE(SUM(CASE WHEN d.legal_delivery THEN 1 ELSE 0 END), 0),
+                    TRUE
                 FROM deliveries d
                 CROSS JOIN LATERAL (
                     SELECT x.striker_id, x.non_striker_id
                     FROM deliveries x
                     WHERE x.innings_id = ?
-                    ORDER BY x.sequence_number DESC NULLS LAST, x.created_at DESC LIMIT 1
+                    ORDER BY x.sequence_number DESC NULLS LAST, x.created_at DESC
+                    LIMIT 1
                 ) latest
                 LEFT JOIN LATERAL (
                     SELECT w.created_at AS wicket_created_at, w.id AS wicket_id
                     FROM deliveries w
-                    WHERE w.innings_id = ? AND w.wicket_type IS NOT NULL
-                    ORDER BY w.sequence_number DESC NULLS LAST, w.created_at DESC LIMIT 1
+                    WHERE w.innings_id = ?
+                      AND w.wicket_type IS NOT NULL
+                      AND w.dismissed_player_id IS NOT NULL
+                    ORDER BY w.sequence_number DESC NULLS LAST, w.created_at DESC
+                    LIMIT 1
                 ) last_wicket ON TRUE
                 WHERE d.innings_id = ?
-                  AND (last_wicket.wicket_created_at IS NULL
-                       OR d.created_at > last_wicket.wicket_created_at
-                       OR (d.created_at = last_wicket.wicket_created_at AND d.id > last_wicket.wicket_id))
+                  AND (
+                      last_wicket.wicket_created_at IS NULL
+                      OR d.created_at > last_wicket.wicket_created_at
+                      OR (
+                          d.created_at = last_wicket.wicket_created_at
+                          AND d.id > last_wicket.wicket_id
+                      )
+                  )
                 GROUP BY latest.striker_id, latest.non_striker_id
-                """, inningsId, inningsId, inningsId, inningsId);
+                """, inningsId, inningsId, inningsId, inningsId, inningsId);
     }
 
     private void rebuildFallOfWickets(UUID inningsId) {
