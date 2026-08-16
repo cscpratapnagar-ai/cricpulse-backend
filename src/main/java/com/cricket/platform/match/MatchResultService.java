@@ -22,7 +22,8 @@ public class MatchResultService {
                 SELECT m.id, m.name, m.format, m.status,
                        m.team_a_id, ta.name AS team_a_name,
                        m.team_b_id, tb.name AS team_b_name,
-                       m.total_overs, m.winning_team_id, m.result_type, m.result_text
+                       m.total_overs, m.winning_team_id, m.result_type, m.result_text,
+                       m.toss_winner_team_id, m.toss_decision
                 FROM matches m
                 JOIN teams ta ON ta.id = m.team_a_id
                 JOIN teams tb ON tb.id = m.team_b_id
@@ -41,7 +42,9 @@ public class MatchResultService {
                         (Integer) rs.getObject("total_overs"),
                         rs.getObject("winning_team_id", UUID.class),
                         rs.getString("result_type"),
-                        rs.getString("result_text")
+                        rs.getString("result_text"),
+                        rs.getObject("toss_winner_team_id", UUID.class),
+                        rs.getString("toss_decision")
                 ),
                 matchId
         );
@@ -60,6 +63,10 @@ public class MatchResultService {
         if (!"COMPLETED".equals(first.status()) || !"COMPLETED".equals(second.status())) {
             throw new IllegalArgumentException("Both innings must be completed before calculating the match result");
         }
+
+        validateMatchSetup(match, first, second);
+        validateInnings(match, first);
+        validateInnings(match, second);
 
         if (match.resultType() != null && match.resultText() != null) {
             return toResult(match, first, second);
@@ -109,6 +116,46 @@ public class MatchResultService {
         );
     }
 
+    private void validateMatchSetup(MatchState match, InningsScore first, InningsScore second) {
+        if (match.teamAId() == null || match.teamBId() == null || match.teamAId().equals(match.teamBId())) {
+            throw new IllegalArgumentException("A match must have two different teams before calculating the result");
+        }
+        if (match.totalOvers() == null || match.totalOvers() <= 0) {
+            throw new IllegalArgumentException("Match total overs must be configured before calculating the result");
+        }
+        if (match.tossWinnerTeamId() == null || match.tossDecision() == null || match.tossDecision().isBlank()) {
+            throw new IllegalArgumentException("Toss must be recorded before calculating the match result");
+        }
+        if (!match.tossWinnerTeamId().equals(match.teamAId()) && !match.tossWinnerTeamId().equals(match.teamBId())) {
+            throw new IllegalArgumentException("Toss winner must be one of the match teams");
+        }
+        if (!"BAT".equalsIgnoreCase(match.tossDecision()) && !"BOWL".equalsIgnoreCase(match.tossDecision())) {
+            throw new IllegalArgumentException("Toss decision must be BAT or BOWL");
+        }
+        if (first.battingTeamId().equals(second.battingTeamId())) {
+            throw new IllegalArgumentException("The two innings must have different batting teams");
+        }
+    }
+
+    private void validateInnings(MatchState match, InningsScore innings) {
+        if (!match.teamAId().equals(innings.battingTeamId()) && !match.teamBId().equals(innings.battingTeamId())) {
+            throw new IllegalArgumentException("Innings batting team must belong to the match");
+        }
+        if (innings.runs() < 0) {
+            throw new IllegalArgumentException("Innings runs cannot be negative");
+        }
+        if (innings.wickets() < 0 || innings.wickets() > 10) {
+            throw new IllegalArgumentException("Innings wickets must be between 0 and 10");
+        }
+        int maxLegalBalls = match.totalOvers() * 6;
+        if (innings.legalBalls() < 0 || innings.legalBalls() > maxLegalBalls) {
+            throw new IllegalArgumentException("Innings legal balls exceed the configured match overs");
+        }
+        if (innings.totalOvers() == null || innings.totalOvers() < 0 || innings.totalOvers() > match.totalOvers()) {
+            throw new IllegalArgumentException("Innings overs exceed the configured match overs");
+        }
+    }
+
     private InningsScore findInnings(UUID matchId, int inningsNumber) {
         return jdbc.query(
                 """
@@ -145,7 +192,8 @@ public class MatchResultService {
     private record MatchState(
             UUID id, String name, String format, String status,
             UUID teamAId, String teamAName, UUID teamBId, String teamBName,
-            Integer totalOvers, UUID winningTeamId, String resultType, String resultText
+            Integer totalOvers, UUID winningTeamId, String resultType, String resultText,
+            UUID tossWinnerTeamId, String tossDecision
     ) {}
 
     private record InningsScore(
