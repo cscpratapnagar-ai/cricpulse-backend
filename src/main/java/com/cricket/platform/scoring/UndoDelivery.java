@@ -1,43 +1,73 @@
 package com.cricket.platform.scoring;
 
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.UUID;
 
 @Component
 public class UndoDelivery {
     private final JdbcTemplate jdbc;
     private final GetLiveScore getLiveScore;
+    private final InningsLifecycle inningsLifecycle;
 
-    public UndoDelivery(JdbcTemplate jdbc, GetLiveScore getLiveScore) {
+    public UndoDelivery(JdbcTemplate jdbc, GetLiveScore getLiveScore, InningsLifecycle inningsLifecycle) {
         this.jdbc = jdbc;
         this.getLiveScore = getLiveScore;
+        this.inningsLifecycle = inningsLifecycle;
     }
 
     @Transactional
     public GetLiveScore.Score execute(UUID inningsId) {
-        jdbc.queryForObject("SELECT id FROM innings WHERE id = ? FOR UPDATE", UUID.class, inningsId);
-
-        UUID deliveryId = jdbc.queryForObject(
-                "SELECT id FROM deliveries WHERE innings_id = ? ORDER BY sequence_number DESC NULLS LAST, created_at DESC LIMIT 1",
-                UUID.class, inningsId);
-        if (deliveryId == null) {
-            throw new IllegalArgumentException("No delivery available to undo");
+        // Lock the innings so an undo cannot race with a delivery request.
+        List<UUID> innings = jdbc.query(
+                "SELECT id FROM innings WHERE id = ? FOR UPDATE",
+                (rs, rowNum) -> rs.getObject("id", UUID.class),
+                inningsId
+        );
+        if (innings.isEmpty()) {
+            throw new IllegalArgumentException("Innings was not found");
         }
 
-        // Delete dependent rows before deliveries. fall_of_wickets.delivery_id
-        // references deliveries.id, so deleting the delivery first causes a FK 500.
-        jdbc.update("DELETE FROM fall_of_wickets WHERE innings_id = ?", inningsId);
-        jdbc.update("DELETE FROM partnerships WHERE innings_id = ?", inningsId);
-        jdbc.update("DELETE FROM innings_bowlers WHERE innings_id = ?", inningsId);
-        jdbc.update("DELETE FROM innings_batters WHERE innings_id = ?", inningsId);
-        jdbc.update("DELETE FROM innings_overs WHERE innings_id = ?", inningsId);
-        jdbc.update("DELETE FROM deliveries WHERE id = ?", deliveryId);
+        // No request body is required for undo. The URL innings id is the source
+        // of truth, and an empty-body POST is therefore valid.
+        List<UUID> deliveries = jdbc.query(
+                """
+                SELECT id
+                FROM deliveries
+                WHERE innings_id = ?
+                ORDER BY sequence_number DESC NULLS LAST, created_at DESC
+                LIMIT 1
+                """,
+                (rs, rowNum) -> rs.getObject("id", UUID.class),
+                inningsId
+        );
 
-        // Rebuild the innings state from the remaining delivery history.
-        // Keep the persisted opening player context when undo removes the first delivery.
+        // Make Undo idempotent: if there is nothing to undo, simply return the
+        // current persisted score instead of producing a 500.
+        if (deliveries.isEmpty()) {
+            return getLiveScore.execute(inningsId);
+        }
+
+        UUID deliveryId = deliveries.get(0);
+
+        // Remove every aggregate row that can reference the delivery before the
+        // delivery itself. In particular, FOW and batter dismissal rows contain
+        // delivery foreign keys.
+        jdbc.update("DELETE FROM fall_of_wickets WHERE innings_id = ?", inningsId);
+        jdbc.update("DELETE FROM innings_batters WHERE innings_id = ?", inningsId);
+        jdbc.update("DELETE FROM innings_bowlers WHERE innings_id = ?", inningsId);
+        jdbc.update("DELETE FROM innings_overs WHERE innings_id = ?", inningsId);
+        jdbc.update("DELETE FROM partnerships WHERE innings_id = ?", inningsId);
+
+        jdbc.update("DELETE FROM deliveries WHERE id = ? AND innings_id = ?", deliveryId, inningsId);
+
+        // Restore the exact pre-delivery state from the last remaining delivery.
+        // If this was the first delivery, retain the opening player context that
+        // was already persisted on the innings row.
         jdbc.update("""
                 UPDATE innings SET
                     total_runs = COALESCE((SELECT SUM(bat_runs + extra_runs) FROM deliveries WHERE innings_id = ?), 0),
@@ -45,9 +75,10 @@ public class UndoDelivery {
                     legal_balls = COALESCE((SELECT COUNT(*) FROM deliveries WHERE innings_id = ? AND legal_delivery = TRUE), 0),
                     current_over = COALESCE((SELECT MAX(over_number) FROM deliveries WHERE innings_id = ?), 0),
                     current_ball = COALESCE((SELECT MAX(ball_number) FROM deliveries WHERE innings_id = ? AND legal_delivery = TRUE), 0),
-                    striker_id = COALESCE((SELECT striker_id FROM deliveries WHERE innings_id = ? ORDER BY sequence_number DESC, created_at DESC LIMIT 1), striker_id),
-                    non_striker_id = COALESCE((SELECT non_striker_id FROM deliveries WHERE innings_id = ? ORDER BY sequence_number DESC, created_at DESC LIMIT 1), non_striker_id),
-                    current_bowler_id = COALESCE((SELECT bowler_id FROM deliveries WHERE innings_id = ? ORDER BY sequence_number DESC, created_at DESC LIMIT 1), current_bowler_id)
+                    striker_id = COALESCE((SELECT striker_id FROM deliveries WHERE innings_id = ? ORDER BY sequence_number DESC NULLS LAST, created_at DESC LIMIT 1), striker_id),
+                    non_striker_id = COALESCE((SELECT non_striker_id FROM deliveries WHERE innings_id = ? ORDER BY sequence_number DESC NULLS LAST, created_at DESC LIMIT 1), non_striker_id),
+                    current_bowler_id = COALESCE((SELECT bowler_id FROM deliveries WHERE innings_id = ? ORDER BY sequence_number DESC NULLS LAST, created_at DESC LIMIT 1), current_bowler_id),
+                    status = 'LIVE'
                 WHERE id = ?
                 """, inningsId, inningsId, inningsId, inningsId, inningsId,
                 inningsId, inningsId, inningsId, inningsId);
@@ -56,6 +87,7 @@ public class UndoDelivery {
         rebuildBatterSummaries(inningsId);
         rebuildBowlerSummaries(inningsId);
         rebuildFallOfWickets(inningsId);
+        inningsLifecycle.evaluate(inningsId);
 
         return getLiveScore.execute(inningsId);
     }
