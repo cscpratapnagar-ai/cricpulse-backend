@@ -2,8 +2,7 @@
 set -euo pipefail
 
 # Creates a complete local tournament dataset for Analytics and Qualification UI testing.
-# Uses only verified tournament/team/fixture APIs, then seeds the aggregate innings data
-# consumed by the existing points-table and qualification implementations.
+# Uses only verified tournament/team/fixture APIs, then seeds aggregate innings data.
 
 BASE_URL="${BASE_URL:-http://localhost:8080/api}"
 POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-cricketpulse-postgres}"
@@ -19,39 +18,26 @@ command -v curl >/dev/null || { echo "ERROR: curl is required"; exit 1; }
 command -v jq >/dev/null || { echo "ERROR: jq is required"; exit 1; }
 command -v docker >/dev/null || { echo "ERROR: docker is required"; exit 1; }
 
-docker inspect "$POSTGRES_CONTAINER" >/dev/null 2>&1 || {
-  echo "ERROR: PostgreSQL container '$POSTGRES_CONTAINER' was not found."; exit 1;
-}
+docker inspect "$POSTGRES_CONTAINER" >/dev/null 2>&1 || { echo "ERROR: PostgreSQL container '$POSTGRES_CONTAINER' was not found."; exit 1; }
 
-json() {
-  curl -sS --fail-with-body -H "Content-Type: application/json" "$@"
-}
+json() { curl -sS --fail-with-body -H "Content-Type: application/json" "$@"; }
 
 echo "== CricPulse Analytics / Qualification Test Data Seeder =="
 echo "API: $BASE_URL"
 echo "PostgreSQL: $POSTGRES_CONTAINER / $DB_NAME"
 echo
 
-owner_payload=$(jq -nc \
-  --arg fullName "$OWNER_NAME" \
-  --arg email "$OWNER_EMAIL" \
-  --arg phone "$OWNER_PHONE" \
-  --arg password "$OWNER_PASSWORD" \
-  '{fullName:$fullName,email:$email,phone:$phone,password:$password}')
-
+owner_payload=$(jq -nc --arg fullName "$OWNER_NAME" --arg email "$OWNER_EMAIL" --arg phone "$OWNER_PHONE" --arg password "$OWNER_PASSWORD" '{fullName:$fullName,email:$email,phone:$phone,password:$password}')
 if ! json -X POST "$BASE_URL/users" -d "$owner_payload" >/tmp/cricpulse_analytics_owner.json 2>/tmp/cricpulse_analytics_owner.err; then
   echo "Owner registration skipped (account may already exist)."
 fi
 
-owner_login=$(json -X POST "$BASE_URL/auth/login" \
-  -d "$(jq -nc --arg email "$OWNER_EMAIL" --arg password "$OWNER_PASSWORD" '{email:$email,password:$password}')")
+owner_login=$(json -X POST "$BASE_URL/auth/login" -d "$(jq -nc --arg email "$OWNER_EMAIL" --arg password "$OWNER_PASSWORD" '{email:$email,password:$password}')")
 OWNER_TOKEN=$(jq -r '.accessToken' <<<"$owner_login")
 [[ -n "$OWNER_TOKEN" && "$OWNER_TOKEN" != "null" ]] || { echo "ERROR: owner login failed"; echo "$owner_login"; exit 1; }
 AUTH=(-H "Authorization: Bearer $OWNER_TOKEN")
 
-tournament_payload=$(jq -nc \
-  --arg name "Analytics Test Tournament $SUFFIX" \
-  '{name:$name,format:"T20",overs:20,location:"Pratapnagar",startDate:"2026-08-20"}')
+tournament_payload=$(jq -nc --arg name "Analytics Test Tournament $SUFFIX" '{name:$name,format:"T20",overs:20,location:"Pratapnagar",startDate:"2026-08-20"}')
 tournament=$(json -X POST "$BASE_URL/tournaments" "${AUTH[@]}" -d "$tournament_payload")
 TOURNAMENT_ID=$(jq -r '.id' <<<"$tournament")
 [[ -n "$TOURNAMENT_ID" && "$TOURNAMENT_ID" != "null" ]] || { echo "ERROR: tournament creation failed"; echo "$tournament"; exit 1; }
@@ -59,7 +45,6 @@ echo "Tournament: $TOURNAMENT_ID"
 
 declare -a TEAM_IDS
 declare -a TEAM_NAMES=("Rahul Warriors" "Pratap Kings" "Test Strikers" "Digital Challengers")
-
 for name in "${TEAM_NAMES[@]}"; do
   team_payload=$(jq -nc --arg name "$name $SUFFIX" '{name:$name,city:"Pratapnagar"}')
   team=$(json -X POST "$BASE_URL/teams" "${AUTH[@]}" -d "$team_payload")
@@ -81,93 +66,64 @@ echo "Fixtures generated: $generated"
 docker exec -i "$POSTGRES_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" <<SQL
 BEGIN;
 
--- Remove any aggregate data if this exact tournament is ever seeded again.
-DELETE FROM deliveries
- WHERE innings_id IN (
-   SELECT i.id FROM innings i
-   JOIN tournament_matches tm ON tm.match_id = i.match_id
-   WHERE tm.tournament_id = '$TOURNAMENT_ID'::uuid
- );
-DELETE FROM partnerships
- WHERE innings_id IN (
-   SELECT i.id FROM innings i
-   JOIN tournament_matches tm ON tm.match_id = i.match_id
-   WHERE tm.tournament_id = '$TOURNAMENT_ID'::uuid
- );
-DELETE FROM innings
- WHERE match_id IN (
-   SELECT match_id FROM tournament_matches WHERE tournament_id = '$TOURNAMENT_ID'::uuid
- );
+DELETE FROM deliveries WHERE innings_id IN (
+  SELECT i.id FROM innings i JOIN tournament_matches tm ON tm.match_id = i.match_id
+  WHERE tm.tournament_id = '$TOURNAMENT_ID'::uuid
+);
+DELETE FROM partnerships WHERE innings_id IN (
+  SELECT i.id FROM innings i JOIN tournament_matches tm ON tm.match_id = i.match_id
+  WHERE tm.tournament_id = '$TOURNAMENT_ID'::uuid
+);
+DELETE FROM innings WHERE match_id IN (
+  SELECT match_id FROM tournament_matches WHERE tournament_id = '$TOURNAMENT_ID'::uuid
+);
 
--- First innings: Team A bats first in every generated fixture.
 INSERT INTO innings (
-    id, match_id, innings_number, batting_team_id, bowling_team_id,
-    total_runs, wickets, legal_balls, total_overs, status, target_runs,
-    current_over, current_ball, declared, is_super_over
+  id, match_id, innings_number, batting_team_id, bowling_team_id,
+  total_runs, wickets, legal_balls, total_overs, status, target_runs,
+  current_over, current_ball, declared, is_super_over
 )
-SELECT
-    gen_random_uuid(), tm.match_id, 1, m.team_a_id, m.team_b_id,
-    CASE tm.fixture_number
-        WHEN 1 THEN 150 WHEN 2 THEN 130 WHEN 3 THEN 160
-        WHEN 4 THEN 125 WHEN 5 THEN 155 WHEN 6 THEN 165
-    END,
-    CASE tm.fixture_number
-        WHEN 1 THEN 4 WHEN 2 THEN 6 WHEN 3 THEN 4
-        WHEN 4 THEN 6 WHEN 5 THEN 4 WHEN 6 THEN 6
-    END,
-    120, 20, 'COMPLETED', NULL, 20, 0, FALSE, FALSE
-FROM tournament_matches tm
-JOIN matches m ON m.id = tm.match_id
+SELECT gen_random_uuid(), tm.match_id, 1, m.team_a_id, m.team_b_id,
+  CASE tm.fixture_number WHEN 1 THEN 150 WHEN 2 THEN 130 WHEN 3 THEN 160 WHEN 4 THEN 125 WHEN 5 THEN 155 WHEN 6 THEN 165 END,
+  CASE tm.fixture_number WHEN 1 THEN 4 WHEN 2 THEN 6 WHEN 3 THEN 4 WHEN 4 THEN 6 WHEN 5 THEN 4 WHEN 6 THEN 6 END,
+  120, 20, 'COMPLETED', NULL, 20, 0, FALSE, FALSE
+FROM tournament_matches tm JOIN matches m ON m.id = tm.match_id
 WHERE tm.tournament_id = '$TOURNAMENT_ID'::uuid;
 
--- Second innings. Fixtures 1/3/5 are won by Team A; 2/4/6 by Team B.
 INSERT INTO innings (
-    id, match_id, innings_number, batting_team_id, bowling_team_id,
-    total_runs, wickets, legal_balls, total_overs, status, target_runs,
-    current_over, current_ball, declared, is_super_over
+  id, match_id, innings_number, batting_team_id, bowling_team_id,
+  total_runs, wickets, legal_balls, total_overs, status, target_runs,
+  current_over, current_ball, declared, is_super_over
 )
-SELECT
-    gen_random_uuid(), tm.match_id, 2, m.team_b_id, m.team_a_id,
-    CASE tm.fixture_number
-        WHEN 1 THEN 120 WHEN 2 THEN 145 WHEN 3 THEN 140
-        WHEN 4 THEN 135 WHEN 5 THEN 100 WHEN 6 THEN 170
-    END,
-    CASE tm.fixture_number
-        WHEN 1 THEN 6 WHEN 2 THEN 4 WHEN 3 THEN 6
-        WHEN 4 THEN 4 WHEN 5 THEN 6 WHEN 6 THEN 4
-    END,
-    120, 20, 'COMPLETED',
-    CASE tm.fixture_number
-        WHEN 1 THEN 151 WHEN 2 THEN 131 WHEN 3 THEN 161
-        WHEN 4 THEN 126 WHEN 5 THEN 156 WHEN 6 THEN 166
-    END,
-    20, 0, FALSE, FALSE
-FROM tournament_matches tm
-JOIN matches m ON m.id = tm.match_id
+SELECT gen_random_uuid(), tm.match_id, 2, m.team_b_id, m.team_a_id,
+  CASE tm.fixture_number WHEN 1 THEN 120 WHEN 2 THEN 145 WHEN 3 THEN 140 WHEN 4 THEN 135 WHEN 5 THEN 100 WHEN 6 THEN 170 END,
+  CASE tm.fixture_number WHEN 1 THEN 6 WHEN 2 THEN 4 WHEN 3 THEN 6 WHEN 4 THEN 4 WHEN 5 THEN 6 WHEN 6 THEN 4 END,
+  120, 20, 'COMPLETED',
+  CASE tm.fixture_number WHEN 1 THEN 151 WHEN 2 THEN 131 WHEN 3 THEN 161 WHEN 4 THEN 126 WHEN 5 THEN 156 WHEN 6 THEN 166 END,
+  20, 0, FALSE, FALSE
+FROM tournament_matches tm JOIN matches m ON m.id = tm.match_id
 WHERE tm.tournament_id = '$TOURNAMENT_ID'::uuid;
 
+-- PostgreSQL-safe UPDATE: target alias m is not referenced inside JOIN ... ON.
 UPDATE matches m
 SET status = 'COMPLETED',
-    winning_team_id = CASE
-        WHEN tm.fixture_number IN (1,3,5) THEN m.team_a_id
-        ELSE m.team_b_id
-    END,
+    winning_team_id = CASE WHEN tm.fixture_number IN (1,3,5) THEN m.team_a_id ELSE m.team_b_id END,
     result_type = 'WIN',
     result_text = CASE
-        WHEN tm.fixture_number IN (1,3,5) THEN
-            (SELECT name FROM teams WHERE id = m.team_a_id) || ' won by ' ||
-            (i1.total_runs - i2.total_runs) || ' runs'
-        ELSE
-            (SELECT name FROM teams WHERE id = m.team_b_id) || ' won by ' ||
-            (i2.total_runs - i1.total_runs) || ' runs'
+      WHEN tm.fixture_number IN (1,3,5) THEN
+        (SELECT name FROM teams WHERE id = m.team_a_id) || ' won by ' || (i1.total_runs - i2.total_runs) || ' runs'
+      ELSE
+        (SELECT name FROM teams WHERE id = m.team_b_id) || ' won by ' || (i2.total_runs - i1.total_runs) || ' runs'
     END,
     completed_at = COALESCE(m.completed_at, now()),
     current_innings_id = NULL
-FROM tournament_matches tm
-JOIN innings i1 ON i1.match_id = m.id AND i1.innings_number = 1
-JOIN innings i2 ON i2.match_id = m.id AND i2.innings_number = 2
+FROM tournament_matches tm, innings i1, innings i2
 WHERE tm.tournament_id = '$TOURNAMENT_ID'::uuid
-  AND tm.match_id = m.id;
+  AND tm.match_id = m.id
+  AND i1.match_id = m.id
+  AND i1.innings_number = 1
+  AND i2.match_id = m.id
+  AND i2.innings_number = 2;
 
 COMMIT;
 SQL
