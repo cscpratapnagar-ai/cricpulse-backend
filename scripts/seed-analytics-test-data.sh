@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Creates a complete local tournament test dataset and then marks all six
-# generated fixtures as completed with deterministic innings/result data.
+a generated fixtures as completed with deterministic innings/result data.
 # This is intended for local/dev analytics and qualification testing only.
 
 BASE_URL="${BASE_URL:-http://localhost:8080/api}"
@@ -34,7 +34,6 @@ echo "API: $BASE_URL"
 echo "PostgreSQL: $POSTGRES_CONTAINER / $DB_NAME"
 echo
 
-# Register the owner if this local database does not already contain the user.
 owner_register=$(jq -nc \
   --arg fullName "$OWNER_NAME" \
   --arg email "$OWNER_EMAIL" \
@@ -55,7 +54,6 @@ OWNER_TOKEN=$(jq -r '.accessToken' <<<"$owner_login")
 }
 AUTH=(-H "Authorization: Bearer $OWNER_TOKEN")
 
-# 1) Tournament.
 tournament_payload=$(jq -nc \
   --arg name "Analytics Test Tournament $SUFFIX" \
   '{name:$name,format:"T20",overs:20,location:"Pratapnagar",startDate:"2026-08-20"}')
@@ -64,7 +62,6 @@ TOURNAMENT_ID=$(jq -r '.id' <<<"$tournament")
 [[ -n "$TOURNAMENT_ID" && "$TOURNAMENT_ID" != "null" ]] || { echo "$tournament"; exit 1; }
 echo "Tournament: $TOURNAMENT_ID"
 
-# 2) Four teams.
 declare -a TEAM_IDS
 declare -a TEAM_NAMES=("Rahul Warriors" "Pratap Kings" "Test Strikers" "Digital Challengers")
 
@@ -77,7 +74,6 @@ for name in "${TEAM_NAMES[@]}"; do
   echo "Team: $name -> $team_id"
 done
 
-# 3) Eleven players per team and team membership.
 for team_index in 0 1 2 3; do
   team_id="${TEAM_IDS[$team_index]}"
   team_name="${TEAM_NAMES[$team_index]}"
@@ -107,7 +103,6 @@ for team_index in 0 1 2 3; do
   echo "Added 11 players to $team_name"
 done
 
-# 4) Add all teams to the tournament and generate the six round-robin fixtures.
 for team_id in "${TEAM_IDS[@]}"; do
   json -X POST "$BASE_URL/tournaments/$TOURNAMENT_ID/teams/$team_id" "${AUTH[@]}" -d '{}' >/dev/null
 done
@@ -122,15 +117,13 @@ generated=$(jq -r '.generated // 0' <<<"$fixtures")
 
 echo "Fixtures generated: $generated"
 
-# 5) Seed deterministic completed innings/results for the generated fixtures.
-#    This intentionally bypasses ball-by-ball scoring because this script is
-#    for analytics/qualification UI test data, not scoring-engine validation.
-docker exec -i "$POSTGRES_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" -v tid="$TOURNAMENT_ID" <<'SQL'
+# Use an unquoted heredoc so the shell substitutes the safe UUID before psql.
+docker exec -i "$POSTGRES_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" <<SQL
 BEGIN;
 
-DO $$
+DO \$\$
 DECLARE
-    tid uuid := :'tid';
+    tid uuid := '$TOURNAMENT_ID'::uuid;
     rec record;
     ia_id uuid;
     ib_id uuid;
@@ -226,7 +219,7 @@ BEGIN
                current_innings_id = NULL
          WHERE id = rec.match_id;
     END LOOP;
-END $$;
+END \$\$;
 
 COMMIT;
 SQL
