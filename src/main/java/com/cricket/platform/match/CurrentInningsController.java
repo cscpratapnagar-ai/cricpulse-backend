@@ -44,12 +44,7 @@ public class CurrentInningsController {
                        i.non_striker_id,
                        i.current_bowler_id
                 FROM innings i
-                JOIN matches m ON m.id = i.match_id
                 WHERE i.match_id = ?
-                  AND (
-                      i.id = m.current_innings_id
-                      OR (m.current_innings_id IS NULL AND i.status = 'LIVE')
-                  )
                 ORDER BY i.innings_number DESC
                 LIMIT 1
                 """,
@@ -69,7 +64,10 @@ public class CurrentInningsController {
                 matchId
         ).stream().findFirst().orElse(null);
 
-        if (innings == null || !"LIVE".equals(innings.status())) {
+        // A completed first innings is still the latest innings until the
+        // second innings is created. The opening-players flow needs this state
+        // to continue the match instead of receiving a misleading 404.
+        if (innings == null) {
             response.setStatus(HttpServletResponse.SC_NOT_FOUND);
             return null;
         }
