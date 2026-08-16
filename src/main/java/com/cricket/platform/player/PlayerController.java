@@ -14,51 +14,33 @@ public class PlayerController {
     private final CreatePlayer createPlayer;
     private final AddPlayerToTeam addPlayerToTeam;
     private final GetPlayerStatistics getPlayerStatistics;
+    private final GetPlayerProfile getPlayerProfile;
     private final JdbcTemplate jdbc;
 
     public PlayerController(CreatePlayer createPlayer, AddPlayerToTeam addPlayerToTeam,
-                            GetPlayerStatistics getPlayerStatistics, JdbcTemplate jdbc) {
+                            GetPlayerStatistics getPlayerStatistics, GetPlayerProfile getPlayerProfile, JdbcTemplate jdbc) {
         this.createPlayer = createPlayer;
         this.addPlayerToTeam = addPlayerToTeam;
         this.getPlayerStatistics = getPlayerStatistics;
+        this.getPlayerProfile = getPlayerProfile;
         this.jdbc = jdbc;
     }
 
     @PostMapping
-    CreatePlayer.PlayerResponse create(Authentication authentication, @Valid @RequestBody CreatePlayer.Request request) {
-        return createPlayer.create(authentication, request);
-    }
-
+    CreatePlayer.PlayerResponse create(Authentication authentication, @Valid @RequestBody CreatePlayer.Request request) { return createPlayer.create(authentication, request); }
     @GetMapping("/me")
-    CreatePlayer.PlayerResponse me(Authentication authentication) {
-        return createPlayer.current(authentication);
-    }
-
+    CreatePlayer.PlayerResponse me(Authentication authentication) { return createPlayer.current(authentication); }
     @PutMapping("/me")
-    CreatePlayer.PlayerResponse update(Authentication authentication, @Valid @RequestBody CreatePlayer.Request request) {
-        return createPlayer.update(authentication, request);
-    }
-
+    CreatePlayer.PlayerResponse update(Authentication authentication, @Valid @RequestBody CreatePlayer.Request request) { return createPlayer.update(authentication, request); }
     @PostMapping("/teams/{teamId}")
-    void addToTeam(@PathVariable UUID teamId, @Valid @RequestBody AddPlayerToTeam.Request request, Authentication authentication) {
-        addPlayerToTeam.execute(teamId, request, authentication.getName());
-    }
-
+    void addToTeam(@PathVariable UUID teamId, @Valid @RequestBody AddPlayerToTeam.Request request, Authentication authentication) { addPlayerToTeam.execute(teamId, request, authentication.getName()); }
     @GetMapping("/teams/{teamId}")
-    List<PlayerView> teamPlayers(@PathVariable UUID teamId) {
-        return jdbc.query("SELECT p.id, p.user_id, u.full_name, p.batting_style, p.bowling_style, tm.role FROM team_members tm JOIN players p ON p.id = tm.player_id JOIN users u ON u.id = p.user_id WHERE tm.team_id = ? ORDER BY u.full_name",
-                (rs, row) -> new PlayerView(rs.getObject("id", UUID.class), rs.getObject("user_id", UUID.class), rs.getString("full_name"), rs.getString("batting_style"), rs.getString("bowling_style"), rs.getString("role")), teamId);
-    }
-
+    List<PlayerView> teamPlayers(@PathVariable UUID teamId) { return jdbc.query("SELECT p.id, p.user_id, u.full_name, p.batting_style, p.bowling_style, tm.role FROM team_members tm JOIN players p ON p.id = tm.player_id JOIN users u ON u.id = p.user_id WHERE tm.team_id = ? ORDER BY u.full_name", (rs, row) -> new PlayerView(rs.getObject("id", UUID.class), rs.getObject("user_id", UUID.class), rs.getString("full_name"), rs.getString("batting_style"), rs.getString("bowling_style"), rs.getString("role")), teamId); }
     @GetMapping("/statistics")
-    List<GetPlayerStatistics.PlayerStatistics> statistics() {
-        return getPlayerStatistics.all();
-    }
-
+    List<GetPlayerStatistics.PlayerStatistics> statistics() { return getPlayerStatistics.all(); }
     @GetMapping("/{playerId}/statistics")
-    GetPlayerStatistics.PlayerStatistics playerStatistics(@PathVariable UUID playerId) {
-        return getPlayerStatistics.one(playerId);
-    }
-
+    GetPlayerStatistics.PlayerStatistics playerStatistics(@PathVariable UUID playerId) { return getPlayerStatistics.one(playerId); }
+    @GetMapping("/{playerId}")
+    GetPlayerProfile.Profile profile(@PathVariable UUID playerId) { return getPlayerProfile.get(playerId); }
     public record PlayerView(UUID id, UUID userId, String name, String battingStyle, String bowlingStyle, String role) {}
 }
