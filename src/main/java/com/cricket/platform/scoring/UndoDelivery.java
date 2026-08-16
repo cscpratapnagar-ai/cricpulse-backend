@@ -21,24 +21,17 @@ public class UndoDelivery {
 
     @Transactional
     public GetLiveScore.Score execute(UUID inningsId) {
-        List<UUID> innings = jdbc.query(
-                "SELECT id FROM innings WHERE id = ? FOR UPDATE",
+        List<UUID> innings = jdbc.query("SELECT id FROM innings WHERE id = ? FOR UPDATE",
                 (rs, rowNum) -> rs.getObject("id", UUID.class), inningsId);
         if (innings.isEmpty()) throw new IllegalArgumentException("Innings was not found");
 
-        List<UUID> deliveries = jdbc.query(
-                """
-                SELECT id FROM deliveries
-                WHERE innings_id = ?
-                ORDER BY sequence_number DESC NULLS LAST, created_at DESC
-                LIMIT 1
-                """,
-                (rs, rowNum) -> rs.getObject("id", UUID.class), inningsId);
-
+        List<UUID> deliveries = jdbc.query("""
+                SELECT id FROM deliveries WHERE innings_id = ?
+                ORDER BY sequence_number DESC NULLS LAST, created_at DESC LIMIT 1
+                """, (rs, rowNum) -> rs.getObject("id", UUID.class), inningsId);
         if (deliveries.isEmpty()) return getLiveScore.execute(inningsId);
 
         UUID deliveryId = deliveries.get(0);
-
         jdbc.update("DELETE FROM fall_of_wickets WHERE innings_id = ?", inningsId);
         jdbc.update("DELETE FROM innings_batters WHERE innings_id = ?", inningsId);
         jdbc.update("DELETE FROM innings_bowlers WHERE innings_id = ?", inningsId);
@@ -67,17 +60,13 @@ public class UndoDelivery {
         rebuildPartnership(inningsId);
         rebuildFallOfWickets(inningsId);
         inningsLifecycle.evaluate(inningsId);
-
         return getLiveScore.execute(inningsId);
     }
 
     private void rebuildOverSummaries(UUID inningsId) {
-        // Do not aggregate UUID columns with MAX/array_agg. Select the bowler from
-        // the latest delivery in each over using a correlated LIMIT 1 instead.
         jdbc.update("""
                 INSERT INTO innings_overs(innings_id, over_number, bowler_id, runs, wickets, legal_balls, wides, no_balls, byes, leg_byes, completed)
-                SELECT d.innings_id,
-                       d.over_number,
+                SELECT d.innings_id, d.over_number,
                        (SELECT x.bowler_id FROM deliveries x
                         WHERE x.innings_id = d.innings_id AND x.over_number = d.over_number
                         ORDER BY x.sequence_number DESC NULLS LAST, x.created_at DESC LIMIT 1),
@@ -89,9 +78,7 @@ public class UndoDelivery {
                        SUM(CASE WHEN d.extra_type = 'BYE' THEN d.extra_runs ELSE 0 END),
                        SUM(CASE WHEN d.extra_type = 'LEG_BYE' THEN d.extra_runs ELSE 0 END),
                        SUM(CASE WHEN d.legal_delivery THEN 1 ELSE 0 END) >= 6
-                FROM deliveries d
-                WHERE d.innings_id = ?
-                GROUP BY d.innings_id, d.over_number
+                FROM deliveries d WHERE d.innings_id = ? GROUP BY d.innings_id, d.over_number
                 """, inningsId);
     }
 
@@ -127,11 +114,11 @@ public class UndoDelivery {
     }
 
     private void rebuildPartnership(UUID inningsId) {
+        // A UUID cannot be passed to MAX(). Find the last wicket by ordered row
+        // selection, then rebuild only deliveries after that wicket.
         jdbc.update("""
                 INSERT INTO partnerships(innings_id, batter_one_id, batter_two_id, runs, balls, is_current)
-                SELECT ?,
-                       latest.striker_id,
-                       latest.non_striker_id,
+                SELECT ?, latest.striker_id, latest.non_striker_id,
                        COALESCE(SUM(d.bat_runs + d.extra_runs), 0),
                        COALESCE(SUM(CASE WHEN d.legal_delivery THEN 1 ELSE 0 END), 0),
                        TRUE
@@ -140,15 +127,15 @@ public class UndoDelivery {
                     SELECT x.striker_id, x.non_striker_id
                     FROM deliveries x
                     WHERE x.innings_id = ?
-                    ORDER BY x.sequence_number DESC NULLS LAST, x.created_at DESC
-                    LIMIT 1
+                    ORDER BY x.sequence_number DESC NULLS LAST, x.created_at DESC LIMIT 1
                 ) latest
                 WHERE d.innings_id = ?
-                  AND d.sequence_number > COALESCE(
-                      (SELECT MAX(w.sequence_number)
-                       FROM deliveries w
-                       WHERE w.innings_id = ? AND w.wicket_type IS NOT NULL),
-                      -1
+                  AND NOT EXISTS (
+                      SELECT 1 FROM deliveries w
+                      WHERE w.innings_id = ?
+                        AND w.wicket_type IS NOT NULL
+                        AND (w.created_at > d.created_at
+                             OR (w.created_at = d.created_at AND w.id > d.id))
                   )
                 GROUP BY latest.striker_id, latest.non_striker_id
                 """, inningsId, inningsId, inningsId, inningsId);
