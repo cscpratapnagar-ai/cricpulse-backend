@@ -1,6 +1,5 @@
 package com.cricket.platform.scoring;
 
-import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,7 +21,6 @@ public class UndoDelivery {
 
     @Transactional
     public GetLiveScore.Score execute(UUID inningsId) {
-        // Lock the innings so an undo cannot race with a delivery request.
         List<UUID> innings = jdbc.query(
                 "SELECT id FROM innings WHERE id = ? FOR UPDATE",
                 (rs, rowNum) -> rs.getObject("id", UUID.class),
@@ -32,8 +30,6 @@ public class UndoDelivery {
             throw new IllegalArgumentException("Innings was not found");
         }
 
-        // No request body is required for undo. The URL innings id is the source
-        // of truth, and an empty-body POST is therefore valid.
         List<UUID> deliveries = jdbc.query(
                 """
                 SELECT id
@@ -46,28 +42,19 @@ public class UndoDelivery {
                 inningsId
         );
 
-        // Make Undo idempotent: if there is nothing to undo, simply return the
-        // current persisted score instead of producing a 500.
         if (deliveries.isEmpty()) {
             return getLiveScore.execute(inningsId);
         }
 
         UUID deliveryId = deliveries.get(0);
 
-        // Remove every aggregate row that can reference the delivery before the
-        // delivery itself. In particular, FOW and batter dismissal rows contain
-        // delivery foreign keys.
         jdbc.update("DELETE FROM fall_of_wickets WHERE innings_id = ?", inningsId);
         jdbc.update("DELETE FROM innings_batters WHERE innings_id = ?", inningsId);
         jdbc.update("DELETE FROM innings_bowlers WHERE innings_id = ?", inningsId);
         jdbc.update("DELETE FROM innings_overs WHERE innings_id = ?", inningsId);
         jdbc.update("DELETE FROM partnerships WHERE innings_id = ?", inningsId);
-
         jdbc.update("DELETE FROM deliveries WHERE id = ? AND innings_id = ?", deliveryId, inningsId);
 
-        // Restore the exact pre-delivery state from the last remaining delivery.
-        // If this was the first delivery, retain the opening player context that
-        // was already persisted on the innings row.
         jdbc.update("""
                 UPDATE innings SET
                     total_runs = COALESCE((SELECT SUM(bat_runs + extra_runs) FROM deliveries WHERE innings_id = ?), 0),
@@ -95,7 +82,8 @@ public class UndoDelivery {
     private void rebuildOverSummaries(UUID inningsId) {
         jdbc.update("""
                 INSERT INTO innings_overs(innings_id, over_number, bowler_id, runs, wickets, legal_balls, wides, no_balls, byes, leg_byes, completed)
-                SELECT innings_id, over_number, MAX(bowler_id),
+                SELECT innings_id, over_number,
+                       (array_agg(bowler_id ORDER BY sequence_number DESC NULLS LAST, created_at DESC))[1],
                        SUM(bat_runs + extra_runs),
                        SUM(CASE WHEN wicket_type IS NOT NULL THEN 1 ELSE 0 END),
                        SUM(CASE WHEN legal_delivery THEN 1 ELSE 0 END),
@@ -117,7 +105,7 @@ public class UndoDelivery {
                        SUM(CASE WHEN bat_runs = 6 THEN 1 ELSE 0 END),
                        BOOL_OR(wicket_type IS NOT NULL AND dismissed_player_id = striker_id),
                        MAX(CASE WHEN wicket_type IS NOT NULL AND dismissed_player_id = striker_id THEN wicket_type END),
-                       MAX(CASE WHEN wicket_type IS NOT NULL AND dismissed_player_id = striker_id THEN id END),
+                       (array_agg(id ORDER BY sequence_number DESC NULLS LAST, created_at DESC) FILTER (WHERE wicket_type IS NOT NULL AND dismissed_player_id = striker_id))[1],
                        CASE WHEN SUM(CASE WHEN legal_delivery THEN 1 ELSE 0 END) = 0 THEN 0
                             ELSE ROUND(SUM(bat_runs)::numeric * 100 / SUM(CASE WHEN legal_delivery THEN 1 ELSE 0 END), 2) END
                 FROM deliveries WHERE innings_id = ? GROUP BY innings_id, striker_id
