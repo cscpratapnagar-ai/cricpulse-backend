@@ -73,8 +73,24 @@ public class RecordDelivery {
             if(duplicate!=null&&duplicate>0)throw new IllegalArgumentException("This delivery position has already been recorded. Expected over "+expectedOver+", ball "+expectedBall);
             throw new IllegalArgumentException("Invalid delivery position. Expected over "+expectedOver+", ball "+expectedBall);
         }
-        boolean boundary=s.legalBalls()>0&&s.legalBalls()%6==0;
-        if(s.currentBowlerId()!=null){if(boundary&&s.currentBowlerId().equals(r.bowlerId()))throw new IllegalArgumentException("A new bowler must be selected for the next over");if(!boundary&&!s.currentBowlerId().equals(r.bowlerId()))throw new IllegalArgumentException("Bowler cannot change before the over is completed");}
+
+        boolean overCompleted=s.legalBalls()>0&&s.legalBalls()%6==0;
+        if(s.currentBowlerId()!=null){
+            if(overCompleted){
+                Integer deliveriesInCurrentOver=jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM deliveries WHERE innings_id=? AND over_number=?",
+                    Integer.class,
+                    r.inningsId(),
+                    r.overNumber()
+                );
+                boolean currentOverAlreadyStarted=deliveriesInCurrentOver!=null&&deliveriesInCurrentOver>0;
+                if(!currentOverAlreadyStarted&&s.currentBowlerId().equals(r.bowlerId())){
+                    throw new IllegalArgumentException("A new bowler must be selected for the next over");
+                }
+            }else if(!s.currentBowlerId().equals(r.bowlerId())){
+                throw new IllegalArgumentException("Bowler cannot change before the over is completed");
+            }
+        }
         if(r.wicketType()!=null){if(!r.dismissedPlayerId().equals(r.strikerId())&&!r.dismissedPlayerId().equals(r.nonStrikerId()))throw new IllegalArgumentException("Dismissed player must be the current striker or non-striker");int next=s.wickets()+1;if(next<10&&r.newBatterId()==null)throw new IllegalArgumentException("New batter is required after a wicket");if(next>=10&&r.newBatterId()!=null)throw new IllegalArgumentException("No new batter is allowed after the 10th wicket");if(r.newBatterId()!=null&&(r.newBatterId().equals(r.strikerId())||r.newBatterId().equals(r.nonStrikerId())||r.newBatterId().equals(r.dismissedPlayerId())))throw new IllegalArgumentException("New batter must be a different available player");}else if(r.newBatterId()!=null||r.dismissedPlayerId()!=null)throw new IllegalArgumentException("Wicket fields can only be supplied for a wicket delivery");
     }
 
