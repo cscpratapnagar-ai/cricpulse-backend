@@ -33,6 +33,8 @@ public class RecordDelivery {
         jdbc.update("INSERT INTO deliveries(id,innings_id,over_number,ball_number,striker_id,non_striker_id,bowler_id,bat_runs,extra_runs,extra_type,wicket_type,dismissed_player_id,sequence_number,legal_delivery,total_runs,is_boundary,is_four,is_six) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",delivery,r.inningsId(),over,ball,r.strikerId(),r.nonStrikerId(),r.bowlerId(),r.batRuns(),r.extraRuns(),r.extraType(),r.wicketType(),r.dismissedPlayerId(),seq,legal,total,r.batRuns()==4,r.batRuns()==4,r.batRuns()==6);
         jdbc.update("UPDATE innings SET total_runs=?,wickets=?,legal_balls=?,current_over=?,current_ball=?,current_bowler_id=? WHERE id=?",s.totalRuns()+total,newWickets,newLegal,newLegal/6,newLegal%6,r.bowlerId(),r.inningsId());
         updateOver(r,over,legal,total); updateBatter(r,delivery,legal); updateBowler(r,legal,total); updatePartnership(r,legal,total);
+        // Recalculate from persisted totals so the first scoring delivery gets the correct strike rate.
+        jdbc.update("UPDATE innings_batters SET strike_rate=CASE WHEN balls_faced=0 THEN 0 ELSE ROUND((runs::numeric*100)/balls_faced,2) END WHERE innings_id=? AND player_id=?",r.inningsId(),r.strikerId());
         UUID ns=r.strikerId(), nn=r.nonStrikerId();
         if(strikeChangingRuns(r)>0 && strikeChangingRuns(r)%2!=0){UUID t=ns;ns=nn;nn=t;}
         if(r.wicketType()!=null){
