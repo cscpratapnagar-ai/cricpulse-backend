@@ -32,6 +32,26 @@ public class SetupInningsOpening {
 
         if (innings == null) throw new IllegalArgumentException("Innings was not found");
         if (!"LIVE".equals(innings.status())) throw new IllegalArgumentException("Innings is not live");
+
+        // A complete undo can leave stale opening IDs in older data. If there
+        // are no deliveries left, treat the innings as a fresh opening state.
+        Integer deliveryCount = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM deliveries WHERE innings_id = ?",
+                Integer.class,
+                request.inningsId()
+        );
+        if (deliveryCount != null && deliveryCount == 0) {
+            jdbc.update(
+                    "UPDATE innings SET striker_id = NULL, non_striker_id = NULL, current_bowler_id = NULL WHERE id = ?",
+                    request.inningsId()
+            );
+            jdbc.update("DELETE FROM partnerships WHERE innings_id = ?", request.inningsId());
+            innings = new InningsState(
+                    innings.battingTeamId(), innings.bowlingTeamId(), innings.status(),
+                    null, null, null
+            );
+        }
+
         if (innings.strikerId() != null || innings.nonStrikerId() != null || innings.currentBowlerId() != null) {
             throw new IllegalArgumentException("Opening players are already configured");
         }
