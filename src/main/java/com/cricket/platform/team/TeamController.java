@@ -47,7 +47,18 @@ public class TeamController {
     @GetMapping("/{id}/members")
     List<MemberView> members(@PathVariable UUID id, Authentication authentication) {
         requireTeamMemberOrOwner(id, authentication);
-        Integer memberCount = jdbc.queryForObject("SELECT COUNT(*) FROM team_members WHERE team_id = ?", Integer.class, id);
+        return teamPlayers(id);
+    }
+
+    /** Backward-compatible squad endpoint used by the UI/API test flow. */
+    @GetMapping("/{id}/players")
+    List<MemberView> players(@PathVariable UUID id, Authentication authentication) {
+        requireTeamMemberOrOwner(id, authentication);
+        return teamPlayers(id);
+    }
+
+    private List<MemberView> teamPlayers(UUID teamId) {
+        Integer memberCount = jdbc.queryForObject("SELECT COUNT(*) FROM team_members WHERE team_id = ?", Integer.class, teamId);
         if (memberCount == null || memberCount == 0) return List.of();
         return jdbc.query(
                 "SELECT tm.team_id, tm.player_id, p.user_id, u.full_name, u.email, u.phone, tm.role " +
@@ -55,7 +66,7 @@ public class TeamController {
                 "WHERE tm.team_id = ? ORDER BY u.full_name",
                 (rs, row) -> new MemberView(rs.getObject("team_id", UUID.class), rs.getObject("player_id", UUID.class),
                         rs.getObject("user_id", UUID.class), rs.getString("full_name"), rs.getString("email"),
-                        rs.getString("phone"), rs.getString("role")), id);
+                        rs.getString("phone"), rs.getString("role")), teamId);
     }
 
     @GetMapping("/{id}/access")
