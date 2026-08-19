@@ -48,7 +48,7 @@ public class SecurityConfig {
                 .cors(cors -> {})
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**", "/api/users", "/ws/**", "/actuator/health", "/error").permitAll()
+                        .requestMatchers("/api/auth/login", "/api/users", "/ws/**", "/actuator/health", "/error").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         // Scoring uses match/team membership authorization in ScoringAccess.
                         // This is required because a user can be globally PLAYER while being
