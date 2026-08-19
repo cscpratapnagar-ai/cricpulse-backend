@@ -2,7 +2,7 @@ spring:
   application:
     name: cricketpulse-api
   datasource:
-    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/cricket}
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5433/cricket}
     username: ${DATABASE_USERNAME:cricket_app}
     password: ${DATABASE_PASSWORD:cricket_dev_password}
   jpa:
