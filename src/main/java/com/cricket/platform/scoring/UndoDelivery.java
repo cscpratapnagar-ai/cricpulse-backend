@@ -25,13 +25,19 @@ public class UndoDelivery {
                 (rs, rowNum) -> rs.getObject("id", UUID.class), inningsId);
         if (innings.isEmpty()) throw new IllegalArgumentException("Innings was not found");
 
-        List<UUID> deliveries = jdbc.query("""
-                SELECT id FROM deliveries WHERE innings_id = ?
+        List<DeliverySnapshot> deliveries = jdbc.query("""
+                SELECT id, striker_id, non_striker_id, bowler_id
+                FROM deliveries WHERE innings_id = ?
                 ORDER BY sequence_number DESC NULLS LAST, created_at DESC LIMIT 1
-                """, (rs, rowNum) -> rs.getObject("id", UUID.class), inningsId);
+                """, (rs, rowNum) -> new DeliverySnapshot(
+                rs.getObject("id", UUID.class),
+                rs.getObject("striker_id", UUID.class),
+                rs.getObject("non_striker_id", UUID.class),
+                rs.getObject("bowler_id", UUID.class)), inningsId);
         if (deliveries.isEmpty()) return getLiveScore.execute(inningsId);
 
-        UUID deliveryId = deliveries.get(0);
+        DeliverySnapshot deleted = deliveries.get(0);
+        UUID deliveryId = deleted.id();
         jdbc.update("DELETE FROM fall_of_wickets WHERE innings_id = ?", inningsId);
         jdbc.update("DELETE FROM innings_batters WHERE innings_id = ?", inningsId);
         jdbc.update("DELETE FROM innings_bowlers WHERE innings_id = ?", inningsId);
@@ -46,13 +52,25 @@ public class UndoDelivery {
                     legal_balls = COALESCE((SELECT COUNT(*) FROM deliveries WHERE innings_id = ? AND legal_delivery = TRUE), 0),
                     current_over = COALESCE((SELECT MAX(over_number) FROM deliveries WHERE innings_id = ?), 0),
                     current_ball = COALESCE((SELECT MAX(ball_number) FROM deliveries WHERE innings_id = ? AND legal_delivery = TRUE), 0),
-                    striker_id = (SELECT striker_id FROM deliveries WHERE innings_id = ? ORDER BY sequence_number DESC NULLS LAST, created_at DESC LIMIT 1),
-                    non_striker_id = (SELECT non_striker_id FROM deliveries WHERE innings_id = ? ORDER BY sequence_number DESC NULLS LAST, created_at DESC LIMIT 1),
-                    current_bowler_id = (SELECT bowler_id FROM deliveries WHERE innings_id = ? ORDER BY sequence_number DESC NULLS LAST, created_at DESC LIMIT 1),
+                    striker_id = COALESCE(
+                        (SELECT striker_id FROM deliveries WHERE innings_id = ? ORDER BY sequence_number DESC NULLS LAST, created_at DESC LIMIT 1),
+                        ?
+                    ),
+                    non_striker_id = COALESCE(
+                        (SELECT non_striker_id FROM deliveries WHERE innings_id = ? ORDER BY sequence_number DESC NULLS LAST, created_at DESC LIMIT 1),
+                        ?
+                    ),
+                    current_bowler_id = COALESCE(
+                        (SELECT bowler_id FROM deliveries WHERE innings_id = ? ORDER BY sequence_number DESC NULLS LAST, created_at DESC LIMIT 1),
+                        ?
+                    ),
                     status = 'LIVE'
                 WHERE id = ?
                 """, inningsId, inningsId, inningsId, inningsId, inningsId,
-                inningsId, inningsId, inningsId, inningsId);
+                inningsId, deleted.strikerId(),
+                inningsId, deleted.nonStrikerId(),
+                inningsId, deleted.bowlerId(),
+                inningsId);
 
         rebuildOverSummaries(inningsId);
         rebuildBatterSummaries(inningsId);
@@ -178,4 +196,6 @@ public class UndoDelivery {
                 WHERE innings_id = ? AND wicket_type IS NOT NULL AND dismissed_player_id IS NOT NULL
                 """, inningsId);
     }
+
+    private record DeliverySnapshot(UUID id, UUID strikerId, UUID nonStrikerId, UUID bowlerId) {}
 }
