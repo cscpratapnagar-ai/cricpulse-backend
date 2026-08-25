@@ -5,7 +5,9 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import com.cricket.platform.match.MatchResultService;
+import com.cricket.platform.match.PlayingXiController;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -126,6 +128,35 @@ public class ScoringController {
                             Authentication authentication) {
         scoringAccess.requireMatchManager(scoringAccess.matchIdForInnings(inningsId), authentication);
         return getLiveScore.execute(inningsId);
+    }
+
+    /**
+     * Compatibility endpoint for scoring E2E clients that resolve the Playing XI
+     * from an innings id rather than a match id.
+     */
+    @GetMapping("/innings/{inningsId}/playing-xi")
+    List<PlayingXiController.PlayingPlayer> playingXi(@PathVariable UUID inningsId,
+                                                       Authentication authentication) {
+        UUID matchId = scoringAccess.matchIdForInnings(inningsId);
+        scoringAccess.requireMatchManager(matchId, authentication);
+        return jdbc.query("""
+                SELECT mp.team_id, mp.player_id, u.full_name, mp.is_captain, mp.is_vice_captain, mp.is_wicket_keeper
+                FROM match_players mp
+                JOIN players p ON p.id = mp.player_id
+                JOIN users u ON u.id = p.user_id
+                WHERE mp.match_id = ? AND mp.is_playing_xi = TRUE
+                ORDER BY mp.team_id, u.full_name
+                """,
+                (rs, row) -> new PlayingXiController.PlayingPlayer(
+                        rs.getObject("team_id", UUID.class),
+                        rs.getObject("player_id", UUID.class),
+                        rs.getString("full_name"),
+                        rs.getBoolean("is_captain"),
+                        rs.getBoolean("is_vice_captain"),
+                        rs.getBoolean("is_wicket_keeper")
+                ),
+                matchId
+        );
     }
 
     @PostMapping("/innings/{inningsId}/undo")
