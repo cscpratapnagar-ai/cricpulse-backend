@@ -15,10 +15,7 @@ public final class DeliveryOutcomeCalculator {
 
         boolean batterBall = legal && !"WIDE".equals(extra);
         boolean bowlerWicket = command.wicketType() != null
-                && switch (command.wicketType()) {
-                    case "BOWLED", "CAUGHT", "LBW", "STUMPED", "HIT_WICKET" -> true;
-                    default -> false;
-                };
+                && WicketType.BOWLER_WICKETS.contains(command.wicketType());
 
         return new Outcome(
                 totalRuns,
