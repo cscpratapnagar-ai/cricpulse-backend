@@ -5,7 +5,8 @@ import java.util.Set;
 public final class CricketDeliveryRuleValidator {
     private static final Set<String> EXTRAS = Set.of("WIDE", "NO_BALL", "BYE", "LEG_BYE", "PENALTY");
     private static final Set<String> WICKETS = Set.of(
-            "BOWLED", "CAUGHT", "LBW", "RUN_OUT", "STUMPED", "HIT_WICKET", "RETIRED_HURT"
+            "BOWLED", "CAUGHT", "LBW", "RUN_OUT", "STUMPED", "HIT_WICKET",
+            "HIT_BALL_TWICE", "OBSTRUCTING_THE_FIELD", "TIMED_OUT", "RETIRED_HURT"
     );
 
     private CricketDeliveryRuleValidator() {
