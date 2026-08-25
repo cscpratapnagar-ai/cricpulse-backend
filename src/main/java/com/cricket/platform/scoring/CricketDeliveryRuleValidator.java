@@ -1,14 +1,6 @@
 package com.cricket.platform.scoring;
 
-import java.util.Set;
-
 public final class CricketDeliveryRuleValidator {
-    private static final Set<String> EXTRAS = Set.of("WIDE", "NO_BALL", "BYE", "LEG_BYE", "PENALTY");
-    private static final Set<String> WICKETS = Set.of(
-            "BOWLED", "CAUGHT", "LBW", "RUN_OUT", "STUMPED", "HIT_WICKET",
-            "HIT_BALL_TWICE", "OBSTRUCTING_THE_FIELD", "TIMED_OUT", "RETIRED_HURT"
-    );
-
     private CricketDeliveryRuleValidator() {
     }
 
@@ -25,10 +17,10 @@ public final class CricketDeliveryRuleValidator {
         if (command.extraRuns() < 0) {
             throw new IllegalArgumentException("Extra runs cannot be negative");
         }
-        if (command.extraType() != null && !EXTRAS.contains(command.extraType())) {
+        if (command.extraType() != null && !java.util.Set.of("WIDE", "NO_BALL", "BYE", "LEG_BYE", "PENALTY").contains(command.extraType())) {
             throw new IllegalArgumentException("Unsupported extra type: " + command.extraType());
         }
-        if (command.wicketType() != null && !WICKETS.contains(command.wicketType())) {
+        if (command.wicketType() != null && !WicketType.VALUES.contains(command.wicketType())) {
             throw new IllegalArgumentException("Unsupported wicket type: " + command.wicketType());
         }
         if (command.extraRuns() > 0 && command.extraType() == null) {
