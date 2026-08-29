@@ -125,16 +125,10 @@ echo "    non-striker : $AFTER_NON"
 [[ "$AFTER_WICKETS" -eq $((WICKETS + 1)) ]] && echo "[PASS] RUN_OUT wicket count +1" || { echo "[FAIL] Wicket count did not increment" >&2; exit 1; }
 [[ "$AFTER_LEGAL" -eq $((LEGAL + 1)) ]] && echo "[PASS] Legal ball count +1" || { echo "[FAIL] Legal ball count did not increment" >&2; exit 1; }
 [[ "$AFTER_RUNS" -eq $((RUNS + BAT_RUNS)) ]] && echo "[PASS] Team score increased by 4 runs" || { echo "[FAIL] Team score mismatch after RUN_OUT + 4 runs" >&2; exit 1; }
-if (( AFTER_LEGAL % 6 == 0 )); then
-  # Odd runs swap ends, then over completion swaps ends again.
-  [[ "$AFTER_STRIKER" == "$STRIKER" ]] && echo "[PASS] Over completed: original striker correctly returns to striker end after even runs + over change" || { echo "[FAIL] Original striker position incorrect after even-run crossing + over completion" >&2; exit 1; }
-  [[ "$AFTER_NON" == "$NEW_BATTER" ]] && echo "[PASS] Over completed: new batter correctly occupies non-striker end" || { echo "[FAIL] New batter position incorrect after even-run crossing + over completion" >&2; exit 1; }
-else
-  # Even runs do not change ends. The dismissed non-striker is replaced at the non-striker end.
-  [[ "$AFTER_STRIKER" == "$STRIKER" ]] && echo "[PASS] Original striker correctly remains on striker end after even runs" || { echo "[FAIL] Original striker position incorrect after even runs" >&2; exit 1; }
-  [[ "$AFTER_NON" == "$NEW_BATTER" ]] && echo "[PASS] New batter correctly occupies non-striker end after even runs" || { echo "[FAIL] New batter position incorrect after even runs" >&2; exit 1; }
-fi
-
+# A 4 is an even number of completed runs, so the two batting ends do not swap.
+# The dismissed original non-striker is replaced by the new batter at that end.
+[[ "$AFTER_STRIKER" == "$STRIKER" ]] && echo "[PASS] Original striker correctly remains on striker end after 4 runs" || { echo "[FAIL] Original striker position incorrect after 4 runs" >&2; exit 1; }
+[[ "$AFTER_NON" == "$NEW_BATTER" ]] && echo "[PASS] New batter correctly occupies non-striker end after 4 runs" || { echo "[FAIL] New batter position incorrect after 4 runs" >&2; exit 1; }
 
 echo
 echo "== 5. VERIFY BATTER / FOW / DELIVERY DATA =="
