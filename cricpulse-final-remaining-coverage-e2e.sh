@@ -85,7 +85,7 @@ record_wicket() {
   local aw al ar isout dtype fow recent
   aw="$(field '.wickets // 0')"; al="$(field '.legalBalls // .legal_balls // 0')"; ar="$(field '.runs // .totalRuns // .total_runs // 0')"
   [[ "$aw" -eq $((wk+1)) && "$al" -eq $((lb+1)) && "$ar" -eq "$runs" ]] || { echo "[FAIL] $type innings mutation mismatch"; exit 1; }
-  isout="$(jq -r --arg id "$s" 'first(.batters[]? | select((.playerId // .player_id)==$id) | (.isOut // .is_out // false)) // false' <<<"$SCORE")"
+  isout="$(jq -r --arg id "$s" 'first(.batters[]? | select((.playerId // .player_id)==$id) | (.out // .isOut // .is_out // false)) // false' <<<"$SCORE")"
   dtype="$(jq -r --arg id "$s" 'first(.batters[]? | select((.playerId // .player_id)==$id) | (.dismissalType // .dismissal_type)) // empty' <<<"$SCORE")"
   [[ "$isout" == true && "$dtype" == "$type" ]] || { echo "[FAIL] $type batter dismissal mismatch"; exit 1; }
   echo "[PASS] $type wicket + batter state verified"
