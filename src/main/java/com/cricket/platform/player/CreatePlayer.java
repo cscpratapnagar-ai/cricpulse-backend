@@ -1,97 +1,76 @@
 package com.cricket.platform.player;
 
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.cricket.platform.player.dto.PlayerRequest;
+import com.cricket.platform.player.dto.PlayerResponse;
+import com.cricket.platform.player.repository.PlayerRepository;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 
-import java.time.LocalDate;
 import java.util.UUID;
 
 @Component
 public class CreatePlayer {
-    private final JdbcTemplate jdbc;
 
-    public CreatePlayer(JdbcTemplate jdbc) { this.jdbc = jdbc; }
+    private final PlayerRepository playerRepository;
 
-    public PlayerResponse create(Authentication authentication, Request request) {
-        UUID userId = userId(authentication);
-        Integer existing = jdbc.queryForObject("SELECT COUNT(*) FROM players WHERE user_id = ?", Integer.class, userId);
-        if (existing != null && existing > 0) throw new PlayerProfileAlreadyExistsException();
-        UUID id = UUID.randomUUID();
-        jdbc.update("""
-                INSERT INTO players(id, user_id, batting_style, bowling_style, date_of_birth, city, playing_role, jersey_number, bio, profile_photo_url)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, id, userId, request.battingStyle(), request.bowlingStyle(), request.dateOfBirth(),
-                request.city(), request.playingRole(), request.jerseyNumber(), request.bio(), request.profilePhotoUrl());
+    public CreatePlayer(PlayerRepository playerRepository) {
+        this.playerRepository = playerRepository;
+    }
+
+    public PlayerResponse create(Authentication authentication, PlayerRequest request) {
+        UUID userId = authenticatedUserId(authentication);
+        if (playerRepository.existsByUserId(userId)) {
+            throw new PlayerProfileAlreadyExistsException();
+        }
+
+        playerRepository.create(
+                UUID.randomUUID(), userId,
+                request.battingStyle(), request.bowlingStyle(), request.dateOfBirth(),
+                request.city(), request.playingRole(), request.jerseyNumber(),
+                request.bio(), request.profilePhotoUrl());
+
         return findByUserId(userId);
     }
 
-    public PlayerResponse update(Authentication authentication, Request request) {
-        UUID userId = userId(authentication);
-        int updated = jdbc.update("""
-                UPDATE players SET batting_style = ?, bowling_style = ?, date_of_birth = ?, city = ?,
-                playing_role = ?, jersey_number = ?, bio = ?, profile_photo_url = ? WHERE user_id = ?
-                """, request.battingStyle(), request.bowlingStyle(), request.dateOfBirth(), request.city(),
-                request.playingRole(), request.jerseyNumber(), request.bio(), request.profilePhotoUrl(), userId);
-        if (updated == 0) throw new PlayerProfileNotFoundException();
+    public PlayerResponse update(Authentication authentication, PlayerRequest request) {
+        UUID userId = authenticatedUserId(authentication);
+        boolean updated = playerRepository.update(
+                userId, request.battingStyle(), request.bowlingStyle(), request.dateOfBirth(),
+                request.city(), request.playingRole(), request.jerseyNumber(),
+                request.bio(), request.profilePhotoUrl());
+
+        if (!updated) {
+            throw new PlayerProfileNotFoundException();
+        }
         return findByUserId(userId);
     }
 
     public PlayerResponse current(Authentication authentication) {
-        return findByUserId(userId(authentication));
+        return findByUserId(authenticatedUserId(authentication));
     }
 
     private PlayerResponse findByUserId(UUID userId) {
-        var result = jdbc.query("""
-                SELECT p.id, p.user_id, u.full_name, p.batting_style, p.bowling_style, p.date_of_birth,
-                p.city, p.playing_role, p.jersey_number, p.bio, p.profile_photo_url
-                FROM players p JOIN users u ON u.id = p.user_id WHERE p.user_id = ?
-                """, (rs, row) -> new PlayerResponse(
-                rs.getObject("id", UUID.class), rs.getObject("user_id", UUID.class), rs.getString("full_name"),
-                rs.getString("batting_style"), rs.getString("bowling_style"), rs.getObject("date_of_birth", LocalDate.class),
-                rs.getString("city"), rs.getString("playing_role"),
-                (Integer) rs.getObject("jersey_number"), rs.getString("bio"), rs.getString("profile_photo_url")), userId);
-        if (result.isEmpty()) throw new PlayerProfileNotFoundException();
-        return result.get(0);
+        return playerRepository.findProfileByUserId(userId)
+                .orElseThrow(PlayerProfileNotFoundException::new);
     }
 
-    private UUID userId(Authentication authentication) {
-        if (authentication == null || !authentication.isAuthenticated()) throw new IllegalStateException("Authentication required");
-        UUID id = jdbc.queryForObject("SELECT id FROM users WHERE lower(email) = lower(?)", UUID.class, authentication.getName());
-        if (id == null) throw new IllegalStateException("Authenticated user was not found");
-        return id;
+    private UUID authenticatedUserId(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new IllegalStateException("Authentication required");
+        }
+        return playerRepository.findUserIdByEmail(authentication.getName())
+                .orElseThrow(() -> new IllegalStateException("Authenticated user was not found"));
     }
-
-    public record Request(
-            String battingStyle,
-            String bowlingStyle,
-            LocalDate dateOfBirth,
-            String city,
-            String playingRole,
-            @Min(0) @Max(99) Integer jerseyNumber,
-            String bio,
-            String profilePhotoUrl) {}
-
-    public record PlayerResponse(
-            UUID id,
-            UUID userId,
-            String name,
-            String battingStyle,
-            String bowlingStyle,
-            LocalDate dateOfBirth,
-            String city,
-            String playingRole,
-            Integer jerseyNumber,
-            String bio,
-            String profilePhotoUrl) {}
 
     public static final class PlayerProfileAlreadyExistsException extends RuntimeException {
-        public PlayerProfileAlreadyExistsException() { super("Player profile already exists"); }
+        public PlayerProfileAlreadyExistsException() {
+            super("Player profile already exists");
+        }
     }
 
     public static final class PlayerProfileNotFoundException extends RuntimeException {
-        public PlayerProfileNotFoundException() { super("Player profile was not found"); }
+        public PlayerProfileNotFoundException() {
+            super("Player profile was not found");
+        }
     }
 }
