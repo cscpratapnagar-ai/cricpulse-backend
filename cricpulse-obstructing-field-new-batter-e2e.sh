@@ -13,9 +13,9 @@ set -euo pipefail
 #   BASE_URL (default: http://localhost:8080/api)
 
 BASE_URL="${BASE_URL:-http://localhost:8080/api}"
-EMAIL="${EMAIL:-}"
-PASSWORD="${PASSWORD:-}"
-INNINGS_ID="${INNINGS_ID:-}"
+EMAIL="${EMAIL:-rahul.test2026@gmail.com}"
+PASSWORD="${PASSWORD:-Test@12345}"
+INNINGS_ID="${INNINGS_ID:-7808faa1-3d32-493f-a19d-1dfc138a93e7}"
 WICKET_TYPE="OBSTRUCTING_THE_FIELD"
 
 if [[ -z "$EMAIL" || -z "$PASSWORD" || -z "$INNINGS_ID" ]]; then
@@ -107,52 +107,28 @@ fi
 
 echo
 echo "== 2. READ PLAYING XI =="
-XI_RESPONSE="$(http_get "$BASE_URL/scoring/innings/$INNINGS_ID/playing-xi")"
-XI_HTTP="${XI_RESPONSE##*$'\n'}"
-XI_JSON="${XI_RESPONSE%$'\n'*}"
-
-if [[ "$XI_HTTP" == "200" ]]; then
-  XI="$XI_JSON"
-else
-  echo "[INFO] Innings Playing XI endpoint returned HTTP $XI_HTTP; using match Playing XI endpoint"
-  [[ -n "$MATCH_ID" ]] || { echo "[FAIL] Cannot use match Playing XI fallback because matchId is missing" >&2; exit 1; }
-  XI="$(assert_http_200 "Read Playing XI" GET "$BASE_URL/matches/$MATCH_ID/playing-xi")"
-fi
-
+XI="$(assert_http_200 "Read Playing XI" GET "$BASE_URL/matches/$MATCH_ID/playing-xi")"
 XI_COUNT="$(jq 'length' <<<"$XI")"
-STRIKER_TEAM="$(jq -r --arg id "$STRIKER" '
-  .[] | select((.playerId // .player_id) == $id) | (.teamId // .team_id) // empty
-' <<<"$XI" | head -n1)"
 
-# Players already dismissed in this innings must never be selected again.
-OUT_IDS="$(jq -r '
-  .batters[]? |
-  select((.isOut // .is_out // false) == true) |
-  (.playerId // .player_id) // empty
-' <<<"$SCORE")"
+STRIKER_TEAM="$(jq -r --arg id "$STRIKER" 'first(.[] | select((.playerId // .player_id) == $id) | (.teamId // .team_id)) // empty' <<<"$XI")"
 
-NEW_BATTER="$(jq -r \
-  --arg team "$STRIKER_TEAM" \
-  --arg striker "$STRIKER" \
-  --arg non "$NON_STRIKER" \
-  --argjson outIds "$(jq -Rsc 'split("\n") | map(select(length > 0))' <<<"$OUT_IDS")" \
-  '[.[] | (.playerId // .player_id) as $id | (.teamId // .team_id) as $teamId | select($teamId == $team) | select($id != $striker and $id != $non and (($outIds | index($id)) == null)) | $id] | .[0] // empty'
-  <<<"$XI")"
+OUT_IDS_JSON="$(jq -c '[.batters[]? | select((.isOut // .is_out // false) == true) | (.playerId // .player_id) | select(. != null)]' <<<"$SCORE")"
+
+NEW_BATTER="$(jq -r   --arg team "$STRIKER_TEAM"   --arg striker "$STRIKER"   --arg non "$NON_STRIKER"   --argjson outIds "$OUT_IDS_JSON"   'first(.[] | (.playerId // .player_id) as $id | (.teamId // .team_id) as $teamId | select($teamId == $team) | select($id != $striker and $id != $non) | select(($outIds | index($id)) == null) | $id) // empty'   <<<"$XI")"
 
 echo "    playing XI count = $XI_COUNT"
 echo "    striker      : $STRIKER"
 echo "    non-striker  : $NON_STRIKER"
 echo "    new batter   : $NEW_BATTER"
 [[ -n "$STRIKER_TEAM" ]] || { echo "[FAIL] Could not resolve striker team from Playing XI" >&2; exit 1; }
-[[ -n "$NEW_BATTER" ]] || { echo "[FAIL] No available new batter found" >&2; exit 1; }
+[[ -n "$NEW_BATTER" && "$NEW_BATTER" != "null" ]] || { echo "[FAIL] No available new batter found" >&2; exit 1; }
 [[ "$NEW_BATTER" != "$STRIKER" && "$NEW_BATTER" != "$NON_STRIKER" ]] || { echo "[FAIL] Selected new batter is already active" >&2; exit 1; }
-if grep -Fxq "$NEW_BATTER" <<<"$OUT_IDS"; then
+if jq -e --arg id "$NEW_BATTER" 'index($id) != null' <<<"$OUT_IDS_JSON" >/dev/null; then
   echo "[FAIL] Selected new batter is already dismissed" >&2
   exit 1
 fi
 echo "[PASS] Available new batter verified"
 
-echo
 echo "== 3. RECORD OBSTRUCTING_THE_FIELD WICKET =="
 BEFORE_LEGAL=$LEGAL
 OVER_NUMBER=$((BEFORE_LEGAL / 6))
