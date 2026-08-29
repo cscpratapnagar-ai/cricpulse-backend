@@ -130,8 +130,9 @@ if (( AFTER_LEGAL % 6 == 0 )); then
   [[ "$AFTER_STRIKER" == "$STRIKER" ]] && echo "[PASS] Over completed: original striker correctly returns to striker end after even runs + over change" || { echo "[FAIL] Original striker position incorrect after even-run crossing + over completion" >&2; exit 1; }
   [[ "$AFTER_NON" == "$NEW_BATTER" ]] && echo "[PASS] Over completed: new batter correctly occupies non-striker end" || { echo "[FAIL] New batter position incorrect after even-run crossing + over completion" >&2; exit 1; }
 else
-  [[ "$AFTER_STRIKER" == "$NEW_BATTER" ]] && echo "[PASS] New batter correctly occupies striker end after even runs" || { echo "[FAIL] New batter position incorrect after even runs" >&2; exit 1; }
-  [[ "$AFTER_NON" == "$STRIKER" ]] && echo "[PASS] Original striker correctly moved to non-striker end after even runs" || { echo "[FAIL] Original striker position incorrect after even runs" >&2; exit 1; }
+  # Even runs do not change ends. The dismissed non-striker is replaced at the non-striker end.
+  [[ "$AFTER_STRIKER" == "$STRIKER" ]] && echo "[PASS] Original striker correctly remains on striker end after even runs" || { echo "[FAIL] Original striker position incorrect after even runs" >&2; exit 1; }
+  [[ "$AFTER_NON" == "$NEW_BATTER" ]] && echo "[PASS] New batter correctly occupies non-striker end after even runs" || { echo "[FAIL] New batter position incorrect after even runs" >&2; exit 1; }
 fi
 
 
