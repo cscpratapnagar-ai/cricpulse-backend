@@ -134,7 +134,7 @@ BATTER="$(jq -c --arg id "$DISMISSED" '.batters[]? | select((.playerId // .playe
 DISMISSAL="$(jq -r '.dismissalType // .dismissal_type // empty' <<<"$BATTER")"
 FOW_COUNT="$(jq '.fallOfWickets // .fall_of_wickets // [] | length' <<<"$AFTER")"
 RECENT_WICKET="$(jq -r --arg type "$WICKET_TYPE" '.recentBalls[]? | select((.wicketType // .wicket_type) == $type) | (.wicketType // .wicket_type)' <<<"$AFTER" | head -n1)"
-DISMISSED_OUT="$(jq -r '.isOut // .is_out // false' <<<"$BATTER")"
+DISMISSED_OUT="$(jq -r '.out // .isOut // .is_out // false' <<<"$BATTER")"
 [[ "$DISMISSED_OUT" == "true" ]] && echo "[PASS] Dismissed non-striker marked OUT" || { echo "[FAIL] Dismissed player not marked OUT" >&2; exit 1; }
 [[ "$DISMISSAL" == "$WICKET_TYPE" ]] && echo "[PASS] Dismissed batter marked RUN_OUT" || { echo "[FAIL] Dismissal type mismatch" >&2; exit 1; }
 [[ "$FOW_COUNT" -ge $((WICKETS + 1)) ]] && echo "[PASS] Fall of wicket recorded" || { echo "[FAIL] Fall of wicket not recorded" >&2; exit 1; }
