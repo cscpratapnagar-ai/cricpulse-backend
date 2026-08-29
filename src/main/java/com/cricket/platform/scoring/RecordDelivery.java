@@ -11,8 +11,8 @@ import java.util.UUID;
 @Component
 public class RecordDelivery {
     private static final Set<String> EXTRAS=Set.of("WIDE","NO_BALL","BYE","LEG_BYE","PENALTY");
-    private static final Set<String> WICKETS=Set.of("BOWLED","CAUGHT","LBW","RUN_OUT","STUMPED","HIT_WICKET","HIT_BALL_TWICE","OBSTRUCTING_THE_FIELD","TIMED_OUT","RETIRED_HURT");
-    private static final Set<String> BOWLER_WICKETS=Set.of("BOWLED","CAUGHT","LBW","STUMPED","HIT_WICKET");
+    private static final Set<String> WICKETS = WicketType.VALUES;
+    private static final Set<String> BOWLER_WICKETS = WicketType.BOWLER_WICKETS;
     private final JdbcTemplate jdbc;
     public RecordDelivery(JdbcTemplate jdbc){this.jdbc=jdbc;}
 
