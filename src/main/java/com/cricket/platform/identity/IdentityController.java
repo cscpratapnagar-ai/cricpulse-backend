@@ -1,14 +1,14 @@
 package com.cricket.platform.identity;
 
+import com.cricket.platform.identity.dto.RegisterRequest;
+import com.cricket.platform.identity.dto.UserResponse;
 import jakarta.validation.Valid;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/users")
 public class IdentityController {
+
     private final RegisterUser registerUser;
 
     public IdentityController(RegisterUser registerUser) {
@@ -16,7 +16,7 @@ public class IdentityController {
     }
 
     @PostMapping
-    public RegisterUser.UserResponse register(@Valid @RequestBody RegisterUser.Request request) {
+    public UserResponse register(@Valid @RequestBody RegisterRequest request) {
         return registerUser.execute(request);
     }
 }
