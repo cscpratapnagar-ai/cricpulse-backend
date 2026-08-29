@@ -125,8 +125,13 @@ echo "    non-striker : $AFTER_NON"
 [[ "$AFTER_WICKETS" -eq $((WICKETS + 1)) ]] && echo "[PASS] RUN_OUT wicket count +1" || { echo "[FAIL] Wicket count did not increment" >&2; exit 1; }
 [[ "$AFTER_LEGAL" -eq $((LEGAL + 1)) ]] && echo "[PASS] Legal ball count +1" || { echo "[FAIL] Legal ball count did not increment" >&2; exit 1; }
 [[ "$AFTER_RUNS" -eq $((RUNS + BAT_RUNS)) ]] && echo "[PASS] Team score increased by 2 runs" || { echo "[FAIL] Team score mismatch after RUN_OUT + 2 runs" >&2; exit 1; }
-[[ "$AFTER_STRIKER" == "$STRIKER" ]] && echo "[PASS] Original striker correctly remains on striker end after even runs" || { echo "[FAIL] Original striker position incorrect after even runs" >&2; exit 1; }
-[[ "$AFTER_NON" == "$NEW_BATTER" ]] && echo "[PASS] New batter correctly occupies non-striker end after even runs" || { echo "[FAIL] New batter position incorrect after even runs" >&2; exit 1; }
+if (( AFTER_LEGAL % 6 == 0 )); then
+  [[ "$AFTER_STRIKER" == "$NEW_BATTER" ]] && echo "[PASS] Over completed: new batter correctly moved to striker end" || { echo "[FAIL] New batter position incorrect after over completion" >&2; exit 1; }
+  [[ "$AFTER_NON" == "$STRIKER" ]] && echo "[PASS] Over completed: original striker correctly moved to non-striker end" || { echo "[FAIL] Original striker position incorrect after over completion" >&2; exit 1; }
+else
+  [[ "$AFTER_STRIKER" == "$STRIKER" ]] && echo "[PASS] Original striker correctly remains on striker end after even runs" || { echo "[FAIL] Original striker position incorrect after even runs" >&2; exit 1; }
+  [[ "$AFTER_NON" == "$NEW_BATTER" ]] && echo "[PASS] New batter correctly occupies non-striker end after even runs" || { echo "[FAIL] New batter position incorrect after even runs" >&2; exit 1; }
+fi
 [[ "$AFTER_NON" == "$STRIKER" ]] && echo "[PASS] Original striker correctly moved to non-striker end" || { echo "[FAIL] Original striker position incorrect after crossing" >&2; exit 1; }
 
 echo
