@@ -59,7 +59,12 @@ record_normal() {
   score
   local alb ar
   alb="$(field '.legalBalls // .legal_balls // 0')"; ar="$(field '.runs // .totalRuns // .total_runs // 0')"
-  local expectedlb=$((lb + (( etype=="WIDE" || etype=="NO_BALL" ) ? 0 : 1) ))
+  local expectedlb
+  if [[ "$etype" == "WIDE" || "$etype" == "NO_BALL" ]]; then
+    expectedlb="$lb"
+  else
+    expectedlb=$((lb + 1))
+  fi
   [[ "$alb" -eq "$expectedlb" ]] || { echo "[FAIL] $name legal balls expected=$expectedlb actual=$alb"; exit 1; }
   [[ "$ar" -eq $((runs+bat+extra)) ]] || { echo "[FAIL] $name runs mismatch"; exit 1; }
   echo "[PASS] $name state verified"
