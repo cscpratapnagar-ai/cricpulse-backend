@@ -1,62 +1,52 @@
 package com.cricket.platform.identity;
 
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
-import org.springframework.dao.EmptyResultDataAccessException;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.cricket.platform.identity.dto.AuthResponse;
+import com.cricket.platform.identity.dto.LoginRequest;
+import com.cricket.platform.identity.repository.IdentityRepository;
+import com.cricket.platform.identity.repository.IdentityRepository.UserRecord;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
-import java.util.Map;
-
 @Component
 public class LoginUser {
-    private final JdbcTemplate jdbc;
+
+    private final IdentityRepository identityRepository;
     private final PasswordEncoder encoder;
     private final JwtService jwt;
 
-    public LoginUser(JdbcTemplate jdbc, PasswordEncoder encoder, JwtService jwt) {
-        this.jdbc = jdbc;
+    public LoginUser(IdentityRepository identityRepository, PasswordEncoder encoder, JwtService jwt) {
+        this.identityRepository = identityRepository;
         this.encoder = encoder;
         this.jwt = jwt;
     }
 
-    public AuthResponse execute(Request request) {
+    public AuthResponse execute(LoginRequest request) {
         String email = request.email().trim().toLowerCase();
-        Map<String, Object> user;
-        try {
-            user = jdbc.queryForMap(
-                    "SELECT id, full_name, email, role, password_hash FROM users WHERE lower(email) = lower(?)",
-                    email);
-        } catch (EmptyResultDataAccessException ex) {
+
+        UserRecord user = identityRepository.findByEmailWithPassword(email)
+                .orElseThrow(InvalidCredentialsException::new);
+
+        if (!encoder.matches(request.password(), user.passwordHash())) {
             throw new InvalidCredentialsException();
         }
 
-        if (!encoder.matches(request.password(), (String) user.get("password_hash"))) {
-            throw new InvalidCredentialsException();
-        }
-
-        String role = (String) user.get("role");
-        return new AuthResponse(
-                jwt.create(email, role),
-                user.get("id").toString(),
-                (String) user.get("full_name"),
-                (String) user.get("email"),
-                role);
+        return response(user, jwt.create(user.email(), user.role()));
     }
 
     public AuthResponse current(String email) {
-        Map<String, Object> user = jdbc.queryForMap(
-                "SELECT id, full_name, email, role FROM users WHERE lower(email) = lower(?)", email);
-        String role = (String) user.get("role");
-        return new AuthResponse(null, user.get("id").toString(),
-                (String) user.get("full_name"), (String) user.get("email"), role);
+        UserRecord user = identityRepository.findByEmail(email)
+                .orElseThrow(InvalidCredentialsException::new);
+        return response(user, null);
     }
 
-    public record Request(@Email @NotBlank String email, @NotBlank String password) {}
-
-    public record AuthResponse(String accessToken, String userId, String fullName,
-                               String email, String role) {}
+    private AuthResponse response(UserRecord user, String accessToken) {
+        return new AuthResponse(
+                accessToken,
+                user.id().toString(),
+                user.fullName(),
+                user.email(),
+                user.role());
+    }
 
     public static final class InvalidCredentialsException extends RuntimeException {
         public InvalidCredentialsException() {
