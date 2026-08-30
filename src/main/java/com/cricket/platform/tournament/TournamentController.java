@@ -2,6 +2,7 @@ package com.cricket.platform.tournament;
 
 import jakarta.validation.Valid;
 import com.cricket.platform.tournament.service.TournamentService;
+import com.cricket.platform.tournament.service.TournamentStatusService;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -18,11 +19,11 @@ import java.util.*;
 @RestController
 @RequestMapping("/api/tournaments")
 public class TournamentController {
- private final JdbcTemplate jdbc; private final TournamentService tournamentService; public TournamentController(JdbcTemplate jdbc,TournamentService tournamentService){this.jdbc=jdbc;this.tournamentService=tournamentService;}
+ private final JdbcTemplate jdbc; private final TournamentService tournamentService; private final TournamentStatusService tournamentStatusService; public TournamentController(JdbcTemplate jdbc,TournamentService tournamentService,TournamentStatusService tournamentStatusService){this.jdbc=jdbc;this.tournamentService=tournamentService;this.tournamentStatusService=tournamentStatusService;}
  @GetMapping("/mine") List<TournamentView> mine(Authentication a){return tournamentService.findMine(a);}
  @PostMapping TournamentView create(@Valid @RequestBody CreateRequest q,Authentication a){UUID o=ownerId(a),id=UUID.randomUUID();jdbc.update("INSERT INTO tournaments(id,name,format,overs,location,start_date,status,owner_id) VALUES (?,?,?,?,?,?,?,?)",id,q.name().trim(),q.format().trim().toUpperCase(Locale.ROOT),q.overs(),blank(q.location()),q.startDate(),"DRAFT",o);return get(id,a);}
  @GetMapping("/{id}") TournamentView get(@PathVariable UUID id,Authentication a){return tournamentService.findById(id,a);}
- @PatchMapping("/{id}/status") @Transactional TournamentView changeStatus(@PathVariable UUID id,@Valid @RequestBody StatusRequest q,Authentication a){requireOwner(id,a);String current=jdbc.queryForObject("SELECT status FROM tournaments WHERE id=?",String.class,id);String target=q.status().trim().toUpperCase(Locale.ROOT);validateTransition(current,target,id);jdbc.update("UPDATE tournaments SET status=? WHERE id=?",target,id);return get(id,a);}
+ @PatchMapping("/{id}/status") TournamentView changeStatus(@PathVariable UUID id,@Valid @RequestBody StatusRequest q,Authentication a){return tournamentStatusService.changeStatus(id,q,a);}
  @GetMapping("/{id}/teams") List<TeamView> teams(@PathVariable UUID id,Authentication a){requireOwner(id,a);return jdbc.query("SELECT t.id,t.name,t.city,tt.seed FROM tournament_teams tt JOIN teams t ON t.id=tt.team_id WHERE tt.tournament_id=? ORDER BY COALESCE(tt.seed,999),t.name",(r,n)->new TeamView(r.getObject("id",UUID.class),r.getString("name"),r.getString("city"),r.getObject("seed",Integer.class)),id);}
  @PostMapping("/{id}/teams/{teamId}") TeamView addTeam(@PathVariable UUID id,@PathVariable UUID teamId,Authentication a){requireOwner(id,a);requireTeamOwner(teamId,a);ensureTournamentEditable(id);try{jdbc.update("INSERT INTO tournament_teams(tournament_id,team_id,seed) VALUES (?,?,(SELECT COALESCE(MAX(seed),0)+1 FROM tournament_teams WHERE tournament_id=?))",id,teamId,id);}catch(DataIntegrityViolationException e){throw new ResponseStatusException(HttpStatus.CONFLICT,"Team is already added to this tournament");}return jdbc.queryForObject("SELECT t.id,t.name,t.city,tt.seed FROM tournament_teams tt JOIN teams t ON t.id=tt.team_id WHERE tt.tournament_id=? AND tt.team_id=?",(r,n)->new TeamView(r.getObject("id",UUID.class),r.getString("name"),r.getString("city"),r.getObject("seed",Integer.class)),id,teamId);}
  @DeleteMapping("/{id}/teams/{teamId}") void removeTeam(@PathVariable UUID id,@PathVariable UUID teamId,Authentication a){requireOwner(id,a);ensureTournamentEditable(id);jdbc.update("DELETE FROM tournament_teams WHERE tournament_id=? AND team_id=?",id,teamId);}
