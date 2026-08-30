@@ -1,6 +1,7 @@
 package com.cricket.platform.tournament;
 
 import jakarta.validation.Valid;
+import com.cricket.platform.tournament.service.TournamentService;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -17,10 +18,10 @@ import java.util.*;
 @RestController
 @RequestMapping("/api/tournaments")
 public class TournamentController {
- private final JdbcTemplate jdbc; public TournamentController(JdbcTemplate jdbc){this.jdbc=jdbc;}
- @GetMapping("/mine") List<TournamentView> mine(Authentication a){UUID o=ownerId(a);return jdbc.query("SELECT id,name,format,overs,location,start_date,status,created_at FROM tournaments WHERE owner_id=? ORDER BY created_at DESC",(r,n)->new TournamentView(r.getObject("id",UUID.class),r.getString("name"),r.getString("format"),r.getInt("overs"),r.getString("location"),r.getObject("start_date",LocalDate.class),r.getString("status"),r.getObject("created_at").toString()),o);}
+ private final JdbcTemplate jdbc; private final TournamentService tournamentService; public TournamentController(JdbcTemplate jdbc,TournamentService tournamentService){this.jdbc=jdbc;this.tournamentService=tournamentService;}
+ @GetMapping("/mine") List<TournamentView> mine(Authentication a){return tournamentService.findMine(a);}
  @PostMapping TournamentView create(@Valid @RequestBody CreateRequest q,Authentication a){UUID o=ownerId(a),id=UUID.randomUUID();jdbc.update("INSERT INTO tournaments(id,name,format,overs,location,start_date,status,owner_id) VALUES (?,?,?,?,?,?,?,?)",id,q.name().trim(),q.format().trim().toUpperCase(Locale.ROOT),q.overs(),blank(q.location()),q.startDate(),"DRAFT",o);return get(id,a);}
- @GetMapping("/{id}") TournamentView get(@PathVariable UUID id,Authentication a){requireOwner(id,a);return jdbc.queryForObject("SELECT id,name,format,overs,location,start_date,status,created_at FROM tournaments WHERE id=?",(r,n)->new TournamentView(r.getObject("id",UUID.class),r.getString("name"),r.getString("format"),r.getInt("overs"),r.getString("location"),r.getObject("start_date",LocalDate.class),r.getString("status"),r.getObject("created_at").toString()),id);}
+ @GetMapping("/{id}") TournamentView get(@PathVariable UUID id,Authentication a){return tournamentService.findById(id,a);}
  @PatchMapping("/{id}/status") @Transactional TournamentView changeStatus(@PathVariable UUID id,@Valid @RequestBody StatusRequest q,Authentication a){requireOwner(id,a);String current=jdbc.queryForObject("SELECT status FROM tournaments WHERE id=?",String.class,id);String target=q.status().trim().toUpperCase(Locale.ROOT);validateTransition(current,target,id);jdbc.update("UPDATE tournaments SET status=? WHERE id=?",target,id);return get(id,a);}
  @GetMapping("/{id}/teams") List<TeamView> teams(@PathVariable UUID id,Authentication a){requireOwner(id,a);return jdbc.query("SELECT t.id,t.name,t.city,tt.seed FROM tournament_teams tt JOIN teams t ON t.id=tt.team_id WHERE tt.tournament_id=? ORDER BY COALESCE(tt.seed,999),t.name",(r,n)->new TeamView(r.getObject("id",UUID.class),r.getString("name"),r.getString("city"),r.getObject("seed",Integer.class)),id);}
  @PostMapping("/{id}/teams/{teamId}") TeamView addTeam(@PathVariable UUID id,@PathVariable UUID teamId,Authentication a){requireOwner(id,a);requireTeamOwner(teamId,a);ensureTournamentEditable(id);try{jdbc.update("INSERT INTO tournament_teams(tournament_id,team_id,seed) VALUES (?,?,(SELECT COALESCE(MAX(seed),0)+1 FROM tournament_teams WHERE tournament_id=?))",id,teamId,id);}catch(DataIntegrityViolationException e){throw new ResponseStatusException(HttpStatus.CONFLICT,"Team is already added to this tournament");}return jdbc.queryForObject("SELECT t.id,t.name,t.city,tt.seed FROM tournament_teams tt JOIN teams t ON t.id=tt.team_id WHERE tt.tournament_id=? AND tt.team_id=?",(r,n)->new TeamView(r.getObject("id",UUID.class),r.getString("name"),r.getString("city"),r.getObject("seed",Integer.class)),id,teamId);}
