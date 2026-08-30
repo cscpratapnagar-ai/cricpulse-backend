@@ -9,6 +9,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 @Service
@@ -18,6 +19,25 @@ public class TournamentServiceImpl implements TournamentService {
 
     public TournamentServiceImpl(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+    }
+
+    @Override
+    public TournamentController.TournamentView create(TournamentController.CreateRequest request, Authentication authentication) {
+        UUID ownerId = ownerId(authentication);
+        UUID tournamentId = UUID.randomUUID();
+
+        jdbc.update(
+                "INSERT INTO tournaments(id,name,format,overs,location,start_date,status,owner_id) VALUES (?,?,?,?,?,?,?,?)",
+                tournamentId,
+                request.name().trim(),
+                request.format().trim().toUpperCase(Locale.ROOT),
+                request.overs(),
+                blank(request.location()),
+                request.startDate(),
+                "DRAFT",
+                ownerId);
+
+        return findById(tournamentId, authentication);
     }
 
     @Override
@@ -42,6 +62,10 @@ public class TournamentServiceImpl implements TournamentService {
                         row.getObject("start_date", LocalDate.class), row.getString("status"),
                         row.getObject("created_at").toString()),
                 tournamentId);
+    }
+
+    private static String blank(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private TournamentController.TournamentView view(UUID id, String name, String format, int overs,
