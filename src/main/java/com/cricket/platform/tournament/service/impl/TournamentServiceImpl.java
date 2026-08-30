@@ -1,7 +1,9 @@
 package com.cricket.platform.tournament.service.impl;
 
-import com.cricket.platform.tournament.TournamentController;
+import com.cricket.platform.tournament.dto.request.CreateTournamentRequest;
+import com.cricket.platform.tournament.dto.response.TournamentResponse;
 import com.cricket.platform.tournament.service.TournamentService;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -22,30 +24,24 @@ public class TournamentServiceImpl implements TournamentService {
     }
 
     @Override
-    public TournamentController.TournamentView create(TournamentController.CreateRequest request, Authentication authentication) {
+    public TournamentResponse create(CreateTournamentRequest request, Authentication authentication) {
         UUID ownerId = ownerId(authentication);
         UUID tournamentId = UUID.randomUUID();
 
         jdbc.update(
                 "INSERT INTO tournaments(id,name,format,overs,location,start_date,status,owner_id) VALUES (?,?,?,?,?,?,?,?)",
-                tournamentId,
-                request.name().trim(),
-                request.format().trim().toUpperCase(Locale.ROOT),
-                request.overs(),
-                blank(request.location()),
-                request.startDate(),
-                "DRAFT",
-                ownerId);
+                tournamentId, request.name().trim(), request.format().trim().toUpperCase(Locale.ROOT),
+                request.overs(), blank(request.location()), request.startDate(), "DRAFT", ownerId);
 
         return findById(tournamentId, authentication);
     }
 
     @Override
-    public List<TournamentController.TournamentView> findMine(Authentication authentication) {
+    public List<TournamentResponse> findMine(Authentication authentication) {
         UUID ownerId = ownerId(authentication);
         return jdbc.query(
                 "SELECT id,name,format,overs,location,start_date,status,created_at FROM tournaments WHERE owner_id=? ORDER BY created_at DESC",
-                (row, index) -> view(row.getObject("id", UUID.class), row.getString("name"),
+                (row, index) -> response(row.getObject("id", UUID.class), row.getString("name"),
                         row.getString("format"), row.getInt("overs"), row.getString("location"),
                         row.getObject("start_date", LocalDate.class), row.getString("status"),
                         row.getObject("created_at").toString()),
@@ -53,25 +49,24 @@ public class TournamentServiceImpl implements TournamentService {
     }
 
     @Override
-    public TournamentController.TournamentView findById(UUID tournamentId, Authentication authentication) {
+    public TournamentResponse findById(UUID tournamentId, Authentication authentication) {
         requireOwner(tournamentId, authentication);
         return jdbc.queryForObject(
                 "SELECT id,name,format,overs,location,start_date,status,created_at FROM tournaments WHERE id=?",
-                (row, index) -> view(row.getObject("id", UUID.class), row.getString("name"),
+                (row, index) -> response(row.getObject("id", UUID.class), row.getString("name"),
                         row.getString("format"), row.getInt("overs"), row.getString("location"),
                         row.getObject("start_date", LocalDate.class), row.getString("status"),
                         row.getObject("created_at").toString()),
                 tournamentId);
     }
 
-    private static String blank(String value) {
-        return value == null || value.isBlank() ? null : value.trim();
+    private TournamentResponse response(UUID id, String name, String format, int overs, String location,
+                                        LocalDate startDate, String status, String createdAt) {
+        return new TournamentResponse(id, name, format, overs, location, startDate, status, createdAt);
     }
 
-    private TournamentController.TournamentView view(UUID id, String name, String format, int overs,
-                                                     String location, LocalDate startDate,
-                                                     String status, String createdAt) {
-        return new TournamentController.TournamentView(id, name, format, overs, location, startDate, status, createdAt);
+    private static String blank(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private UUID ownerId(Authentication authentication) {
@@ -80,7 +75,7 @@ public class TournamentServiceImpl implements TournamentService {
                     "SELECT id FROM users WHERE LOWER(TRIM(email))=LOWER(TRIM(?)) OR CAST(id AS TEXT)=?",
                     UUID.class, authentication.getName(), authentication.getName());
         } catch (Exception exception) {
-            throw new ResponseStatusException(org.springframework.http.HttpStatus.UNAUTHORIZED, "User not found");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found");
         }
     }
 
@@ -89,7 +84,7 @@ public class TournamentServiceImpl implements TournamentService {
                 "SELECT COUNT(*) FROM tournaments WHERE id=? AND owner_id=?",
                 Integer.class, tournamentId, ownerId(authentication));
         if (count == null || count == 0) {
-            throw new ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, "Tournament not found");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tournament not found");
         }
     }
 }
