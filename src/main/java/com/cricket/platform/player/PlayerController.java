@@ -15,14 +15,16 @@ public class PlayerController {
     private final AddPlayerToTeam addPlayerToTeam;
     private final GetPlayerStatistics getPlayerStatistics;
     private final GetPlayerProfile getPlayerProfile;
+    private final GetPlayerPerformanceHistory getPlayerPerformanceHistory;
     private final JdbcTemplate jdbc;
 
     public PlayerController(CreatePlayer createPlayer, AddPlayerToTeam addPlayerToTeam,
-                            GetPlayerStatistics getPlayerStatistics, GetPlayerProfile getPlayerProfile, JdbcTemplate jdbc) {
+                            GetPlayerStatistics getPlayerStatistics, GetPlayerProfile getPlayerProfile, GetPlayerPerformanceHistory getPlayerPerformanceHistory, JdbcTemplate jdbc) {
         this.createPlayer = createPlayer;
         this.addPlayerToTeam = addPlayerToTeam;
         this.getPlayerStatistics = getPlayerStatistics;
         this.getPlayerProfile = getPlayerProfile;
+        this.getPlayerPerformanceHistory = getPlayerPerformanceHistory;
         this.jdbc = jdbc;
     }
 
@@ -40,6 +42,10 @@ public class PlayerController {
     List<GetPlayerStatistics.PlayerStatistics> statistics() { return getPlayerStatistics.all(); }
     @GetMapping("/{playerId}/statistics")
     GetPlayerStatistics.PlayerStatistics playerStatistics(@PathVariable UUID playerId) { return getPlayerStatistics.one(playerId); }
+    @GetMapping("/{playerId}/recent-matches")
+    List<GetPlayerPerformanceHistory.MatchPerformance> recentMatches(@PathVariable UUID playerId, @RequestParam(defaultValue = "10") int limit) { return getPlayerPerformanceHistory.recent(playerId, limit); }
+    @GetMapping("/{playerId}/performance-trend")
+    GetPlayerPerformanceHistory.PerformanceTrend performanceTrend(@PathVariable UUID playerId, @RequestParam(defaultValue = "10") int limit) { return getPlayerPerformanceHistory.trend(playerId, limit); }
     @GetMapping("/{playerId}")
     GetPlayerProfile.Profile profile(@PathVariable UUID playerId) { return getPlayerProfile.get(playerId); }
     public record PlayerView(UUID id, UUID userId, String name, String battingStyle, String bowlingStyle, String role) {}
