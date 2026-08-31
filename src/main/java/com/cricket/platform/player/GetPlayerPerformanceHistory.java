@@ -32,9 +32,7 @@ public class GetPlayerPerformanceHistory {
                     JOIN innings_batters ib ON ib.innings_id=i.id
                     WHERE i.match_id=m.id AND ib.player_id=? LIMIT 1
                 )
-                LEFT JOIN teams tb ON tb.id = (
-                    SELECT CASE WHEN m.team_a_id=ta.id THEN m.team_b_id ELSE m.team_a_id END
-                )
+                LEFT JOIN teams tb ON tb.id = CASE WHEN m.team_a_id=ta.id THEN m.team_b_id ELSE m.team_a_id END
                 LEFT JOIN (
                     SELECT i.match_id, ib.player_id, SUM(ib.runs) runs, SUM(ib.balls_faced) balls,
                            SUM(ib.fours) fours, SUM(ib.sixes) sixes,
