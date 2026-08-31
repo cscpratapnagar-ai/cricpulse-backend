@@ -17,15 +17,17 @@ public class PlayerController {
     private final GetPlayerProfile getPlayerProfile;
     private final GetPlayerPerformanceHistory getPlayerPerformanceHistory;
     private final JdbcTemplate jdbc;
+    private final ComparePlayers comparePlayers;
 
     public PlayerController(CreatePlayer createPlayer, AddPlayerToTeam addPlayerToTeam,
-                            GetPlayerStatistics getPlayerStatistics, GetPlayerProfile getPlayerProfile, GetPlayerPerformanceHistory getPlayerPerformanceHistory, JdbcTemplate jdbc) {
+                            GetPlayerStatistics getPlayerStatistics, GetPlayerProfile getPlayerProfile, GetPlayerPerformanceHistory getPlayerPerformanceHistory, JdbcTemplate jdbc, ComparePlayers comparePlayers) {
         this.createPlayer = createPlayer;
         this.addPlayerToTeam = addPlayerToTeam;
         this.getPlayerStatistics = getPlayerStatistics;
         this.getPlayerProfile = getPlayerProfile;
         this.getPlayerPerformanceHistory = getPlayerPerformanceHistory;
         this.jdbc = jdbc;
+        this.comparePlayers = comparePlayers;
     }
 
     @PostMapping
@@ -40,6 +42,8 @@ public class PlayerController {
     List<PlayerView> teamPlayers(@PathVariable UUID teamId) { return jdbc.query("SELECT p.id, p.user_id, u.full_name, p.batting_style, p.bowling_style, tm.role FROM team_members tm JOIN players p ON p.id = tm.player_id JOIN users u ON u.id = p.user_id WHERE tm.team_id = ? ORDER BY u.full_name", (rs, row) -> new PlayerView(rs.getObject("id", UUID.class), rs.getObject("user_id", UUID.class), rs.getString("full_name"), rs.getString("batting_style"), rs.getString("bowling_style"), rs.getString("role")), teamId); }
     @GetMapping("/statistics")
     List<GetPlayerStatistics.PlayerStatistics> statistics() { return getPlayerStatistics.all(); }
+    @GetMapping("/compare")
+    ComparePlayers.Comparison compare(@RequestParam UUID left, @RequestParam UUID right) { return comparePlayers.compare(left, right); }
     @GetMapping("/{playerId}/statistics")
     GetPlayerStatistics.PlayerStatistics playerStatistics(@PathVariable UUID playerId) { return getPlayerStatistics.one(playerId); }
     @GetMapping("/{playerId}/recent-matches")
