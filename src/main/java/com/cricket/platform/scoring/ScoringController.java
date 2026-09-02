@@ -1,7 +1,6 @@
 package com.cricket.platform.scoring;
 
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -19,7 +18,7 @@ public class ScoringController {
     private final GetLiveScore getLiveScore;
     private final UndoDelivery undoDelivery;
     private final InningsLifecycle inningsLifecycle;
-    private final SimpMessagingTemplate messaging;
+    private final LiveScoreBroadcastPublisher liveScoreBroadcastPublisher;
     private final ScoringAccess scoringAccess;
     private final JdbcTemplate jdbc;
     private final MatchResultService matchResultService;
@@ -29,7 +28,7 @@ public class ScoringController {
                              GetLiveScore getLiveScore,
                              UndoDelivery undoDelivery,
                              InningsLifecycle inningsLifecycle,
-                             SimpMessagingTemplate messaging,
+                             LiveScoreBroadcastPublisher liveScoreBroadcastPublisher,
                              ScoringAccess scoringAccess,
                              JdbcTemplate jdbc,
                              MatchResultService matchResultService) {
@@ -38,7 +37,7 @@ public class ScoringController {
         this.getLiveScore = getLiveScore;
         this.undoDelivery = undoDelivery;
         this.inningsLifecycle = inningsLifecycle;
-        this.messaging = messaging;
+        this.liveScoreBroadcastPublisher = liveScoreBroadcastPublisher;
         this.scoringAccess = scoringAccess;
         this.jdbc = jdbc;
         this.matchResultService = matchResultService;
@@ -54,6 +53,7 @@ public class ScoringController {
     @PostMapping("/innings/{inningsId}/deliveries")
     @Transactional
     GetLiveScore.Score delivery(@PathVariable UUID inningsId,
+                                @RequestHeader(value = "X-Command-Id", required = false) String commandIdHeader,
                                 @RequestBody RecordDelivery.Request request,
                                 Authentication authentication) {
         scoringAccess.requireMatchManager(scoringAccess.matchIdForInnings(inningsId), authentication);
@@ -97,9 +97,10 @@ public class ScoringController {
         }
 
         BallPosition position = new BallPosition(state.legalBalls() / 6, (state.legalBalls() % 6) + 1);
+        UUID commandId = parseCommandId(commandIdHeader);
 
         DeliveryCommand command = new DeliveryCommand(
-                UUID.randomUUID(),
+                commandId,
                 inningsId,
                 strikerId,
                 nonStrikerId,
@@ -160,12 +161,29 @@ public class ScoringController {
     }
 
     @PostMapping("/innings/{inningsId}/undo")
+    @Transactional
     GetLiveScore.Score undo(@PathVariable UUID inningsId,
                             Authentication authentication) {
         scoringAccess.requireMatchManager(scoringAccess.matchIdForInnings(inningsId), authentication);
         GetLiveScore.Score score = undoDelivery.execute(inningsId);
-        messaging.convertAndSend("/topic/innings/" + inningsId, score);
+        jdbc.update("UPDATE innings SET state_version = state_version + 1 WHERE id = ?", inningsId);
+        liveScoreBroadcastPublisher.publishAfterCommit(new LiveScoreCommittedEvent(
+                inningsId,
+                UUID.randomUUID(),
+                0L,
+                0,
+                "DELIVERY_UNDONE"
+        ));
         return score;
+    }
+
+    private UUID parseCommandId(String header) {
+        if (header == null || header.isBlank()) return UUID.randomUUID();
+        try {
+            return UUID.fromString(header.trim());
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException("X-Command-Id must be a valid UUID");
+        }
     }
 
     private record DeliveryState(
