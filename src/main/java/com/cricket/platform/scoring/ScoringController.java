@@ -62,8 +62,6 @@ public class ScoringController {
         scoringAccess.requireMatchManager(scoringAccess.matchIdForInnings(inningsId), authentication);
 
         UUID commandId = parseCommandId(commandIdHeader);
-        // A retry of an already committed command must be a read, never a second
-        // delivery. The event table is the durable idempotency ledger.
         if (deliveryEventRepository.commandExists(commandId)) {
             return getLiveScore.execute(inningsId);
         }
@@ -91,6 +89,13 @@ public class ScoringController {
         }
         if (!"LIVE".equals(state.status())) {
             throw new IllegalArgumentException("Innings is not live");
+        }
+
+        // The first check is a fast path. The second check is mandatory after
+        // acquiring the innings row lock because two concurrent retries can both
+        // observe "not exists" before either transaction commits its event.
+        if (deliveryEventRepository.commandExists(commandId)) {
+            return getLiveScore.execute(inningsId);
         }
 
         UUID requestInningsId = request.inningsId() != null ? request.inningsId() : inningsId;
