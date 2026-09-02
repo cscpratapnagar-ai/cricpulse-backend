@@ -3,6 +3,7 @@ package com.cricket.platform.scoring;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.Authentication;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import com.cricket.platform.match.MatchResultService;
 import com.cricket.platform.match.PlayingXiController;
@@ -14,7 +15,7 @@ import java.util.UUID;
 @RequestMapping("/api/scoring")
 public class ScoringController {
     private final StartInnings startInnings;
-    private final RecordDelivery recordDelivery;
+    private final EventFirstProjectionService eventFirstProjectionService;
     private final GetLiveScore getLiveScore;
     private final UndoDelivery undoDelivery;
     private final InningsLifecycle inningsLifecycle;
@@ -24,7 +25,7 @@ public class ScoringController {
     private final MatchResultService matchResultService;
 
     public ScoringController(StartInnings startInnings,
-                             RecordDelivery recordDelivery,
+                             EventFirstProjectionService eventFirstProjectionService,
                              GetLiveScore getLiveScore,
                              UndoDelivery undoDelivery,
                              InningsLifecycle inningsLifecycle,
@@ -33,7 +34,7 @@ public class ScoringController {
                              JdbcTemplate jdbc,
                              MatchResultService matchResultService) {
         this.startInnings = startInnings;
-        this.recordDelivery = recordDelivery;
+        this.eventFirstProjectionService = eventFirstProjectionService;
         this.getLiveScore = getLiveScore;
         this.undoDelivery = undoDelivery;
         this.inningsLifecycle = inningsLifecycle;
@@ -51,6 +52,7 @@ public class ScoringController {
     }
 
     @PostMapping("/innings/{inningsId}/deliveries")
+    @Transactional
     GetLiveScore.Score delivery(@PathVariable UUID inningsId,
                                 @RequestBody RecordDelivery.Request request,
                                 Authentication authentication) {
@@ -96,10 +98,9 @@ public class ScoringController {
 
         BallPosition position = new BallPosition(state.legalBalls() / 6, (state.legalBalls() % 6) + 1);
 
-        RecordDelivery.Request normalized = new RecordDelivery.Request(
+        DeliveryCommand command = new DeliveryCommand(
+                UUID.randomUUID(),
                 inningsId,
-                position.overNumber(),
-                position.ballNumber(),
                 strikerId,
                 nonStrikerId,
                 bowlerId,
@@ -108,19 +109,18 @@ public class ScoringController {
                 request.extraType(),
                 request.wicketType(),
                 request.dismissedPlayerId(),
-                request.newBatterId()
+                request.newBatterId(),
+                null
         );
 
-        recordDelivery.execute(normalized);
+        eventFirstProjectionService.record(command, position.overNumber(), position.ballNumber());
         InningsLifecycle.Completion completion = inningsLifecycle.evaluate(inningsId);
 
         if (completion.completed() && state.inningsNumber() == 2) {
             matchResultService.execute(scoringAccess.matchIdForInnings(inningsId));
         }
 
-        GetLiveScore.Score score = getLiveScore.execute(inningsId);
-        messaging.convertAndSend("/topic/innings/" + inningsId, score);
-        return score;
+        return getLiveScore.execute(inningsId);
     }
 
     @GetMapping("/innings/{inningsId}")
