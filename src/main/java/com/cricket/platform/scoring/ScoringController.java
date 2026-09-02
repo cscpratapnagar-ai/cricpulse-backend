@@ -2,6 +2,7 @@ package com.cricket.platform.scoring;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.Authentication;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import com.cricket.platform.match.MatchResultService;
 import com.cricket.platform.match.PlayingXiController;
@@ -47,6 +48,7 @@ public class ScoringController {
     }
 
     @PostMapping("/innings/{inningsId}/deliveries")
+    @Transactional
     GetLiveScore.Score delivery(@PathVariable UUID inningsId,
                                 @RequestBody RecordDelivery.Request request,
                                 Authentication authentication) {
@@ -157,8 +159,7 @@ public class ScoringController {
     GetLiveScore.Score undo(@PathVariable UUID inningsId,
                             Authentication authentication) {
         scoringAccess.requireMatchManager(scoringAccess.matchIdForInnings(inningsId), authentication);
-        GetLiveScore.Score score = undoDelivery.execute(inningsId);
-        return score;
+        return undoDelivery.execute(inningsId);
     }
 
     private record DeliveryState(
