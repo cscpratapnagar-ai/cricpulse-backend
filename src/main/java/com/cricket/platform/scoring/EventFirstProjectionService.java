@@ -7,11 +7,14 @@ import org.springframework.transaction.annotation.Transactional;
 public class EventFirstProjectionService {
     private final EventFirstDeliveryService eventFirstDeliveryService;
     private final RecordDelivery recordDelivery;
+    private final LiveScoreBroadcastPublisher liveScoreBroadcastPublisher;
 
     public EventFirstProjectionService(EventFirstDeliveryService eventFirstDeliveryService,
-                                       RecordDelivery recordDelivery) {
+                                       RecordDelivery recordDelivery,
+                                       LiveScoreBroadcastPublisher liveScoreBroadcastPublisher) {
         this.eventFirstDeliveryService = eventFirstDeliveryService;
         this.recordDelivery = recordDelivery;
+        this.liveScoreBroadcastPublisher = liveScoreBroadcastPublisher;
     }
 
     @Transactional
@@ -21,14 +24,14 @@ public class EventFirstProjectionService {
         boolean legalDelivery = !"WIDE".equals(command.extraType())
                 && !"NO_BALL".equals(command.extraType());
 
-        eventFirstDeliveryService.record(
+        DeliveryEvent event = eventFirstDeliveryService.record(
                 command,
                 overNumber,
                 ballNumber,
                 legalDelivery
         );
 
-        return recordDelivery.execute(new RecordDelivery.Request(
+        RecordDelivery.DeliveryResponse response = recordDelivery.execute(new RecordDelivery.Request(
                 command.inningsId(),
                 overNumber,
                 ballNumber,
@@ -42,5 +45,14 @@ public class EventFirstProjectionService {
                 command.dismissedPlayerId(),
                 command.newBatterId()
         ));
+
+        liveScoreBroadcastPublisher.publishAfterCommit(new LiveScoreCommittedEvent(
+                event.inningsId(),
+                event.eventId(),
+                event.sequenceNo(),
+                event.eventVersion()
+        ));
+
+        return response;
     }
 }
