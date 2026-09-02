@@ -1,5 +1,6 @@
 package com.cricket.platform.scoring;
 
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -8,13 +9,16 @@ public class EventFirstProjectionService {
     private final EventFirstDeliveryService eventFirstDeliveryService;
     private final RecordDelivery recordDelivery;
     private final LiveScoreBroadcastPublisher liveScoreBroadcastPublisher;
+    private final JdbcTemplate jdbc;
 
     public EventFirstProjectionService(EventFirstDeliveryService eventFirstDeliveryService,
                                        RecordDelivery recordDelivery,
-                                       LiveScoreBroadcastPublisher liveScoreBroadcastPublisher) {
+                                       LiveScoreBroadcastPublisher liveScoreBroadcastPublisher,
+                                       JdbcTemplate jdbc) {
         this.eventFirstDeliveryService = eventFirstDeliveryService;
         this.recordDelivery = recordDelivery;
         this.liveScoreBroadcastPublisher = liveScoreBroadcastPublisher;
+        this.jdbc = jdbc;
     }
 
     @Transactional
@@ -46,11 +50,14 @@ public class EventFirstProjectionService {
                 command.newBatterId()
         ));
 
+        jdbc.update("UPDATE innings SET state_version = state_version + 1 WHERE id = ?", command.inningsId());
+
         liveScoreBroadcastPublisher.publishAfterCommit(new LiveScoreCommittedEvent(
                 event.inningsId(),
                 event.eventId(),
                 event.sequenceNo(),
-                event.eventVersion()
+                event.eventVersion(),
+                "DELIVERY_RECORDED"
         ));
 
         return response;

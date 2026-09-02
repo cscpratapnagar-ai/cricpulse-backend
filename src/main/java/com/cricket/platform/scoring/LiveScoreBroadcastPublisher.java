@@ -1,6 +1,7 @@
 package com.cricket.platform.scoring;
 
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
@@ -9,19 +10,23 @@ import org.springframework.transaction.event.TransactionalEventListener;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 
 @Component
 public class LiveScoreBroadcastPublisher {
     private final ApplicationEventPublisher applicationEventPublisher;
     private final SimpMessagingTemplate messagingTemplate;
     private final GetLiveScore getLiveScore;
+    private final JdbcTemplate jdbc;
 
     public LiveScoreBroadcastPublisher(ApplicationEventPublisher applicationEventPublisher,
                                        SimpMessagingTemplate messagingTemplate,
-                                       GetLiveScore getLiveScore) {
+                                       GetLiveScore getLiveScore,
+                                       JdbcTemplate jdbc) {
         this.applicationEventPublisher = applicationEventPublisher;
         this.messagingTemplate = messagingTemplate;
         this.getLiveScore = getLiveScore;
+        this.jdbc = jdbc;
     }
 
     public void publishAfterCommit(LiveScoreCommittedEvent event) {
@@ -31,9 +36,14 @@ public class LiveScoreBroadcastPublisher {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onCommitted(LiveScoreCommittedEvent event) {
         GetLiveScore.Score score = getLiveScore.execute(event.inningsId());
+        Long stateVersion = jdbc.queryForObject(
+                "SELECT state_version FROM innings WHERE id = ?",
+                Long.class,
+                event.inningsId()
+        );
         Map<String, Object> payload = new LinkedHashMap<>();
 
-        // Keep the realtime contract flat so the existing Angular consumers can
+        // Keep the realtime contract flat so existing Angular consumers can
         // continue treating the event body as a LiveScore object.
         payload.put("inningsId", score.inningsId());
         payload.put("matchId", score.matchId());
@@ -55,10 +65,10 @@ public class LiveScoreBroadcastPublisher {
         payload.put("recentBalls", score.recentBalls());
         payload.put("partnership", score.partnership());
         payload.put("fallOfWickets", score.fallOfWickets());
-        payload.put("eventType", "DELIVERY_RECORDED");
-        payload.put("eventId", event.eventId());
+        payload.put("eventType", event.eventType());
+        payload.put("eventId", event.eventId() != null ? event.eventId() : UUID.randomUUID());
         payload.put("sequenceNo", event.sequenceNo());
-        payload.put("eventVersion", event.eventVersion());
+        payload.put("eventVersion", stateVersion != null ? stateVersion : (long) event.eventVersion());
         payload.put("occurredAt", OffsetDateTime.now());
 
         messagingTemplate.convertAndSend(
