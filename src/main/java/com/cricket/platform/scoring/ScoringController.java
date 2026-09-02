@@ -1,6 +1,7 @@
 package com.cricket.platform.scoring;
 
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -18,6 +19,7 @@ public class ScoringController {
     private final GetLiveScore getLiveScore;
     private final UndoDelivery undoDelivery;
     private final InningsLifecycle inningsLifecycle;
+    private final SimpMessagingTemplate messaging;
     private final ScoringAccess scoringAccess;
     private final JdbcTemplate jdbc;
     private final MatchResultService matchResultService;
@@ -27,6 +29,7 @@ public class ScoringController {
                              GetLiveScore getLiveScore,
                              UndoDelivery undoDelivery,
                              InningsLifecycle inningsLifecycle,
+                             SimpMessagingTemplate messaging,
                              ScoringAccess scoringAccess,
                              JdbcTemplate jdbc,
                              MatchResultService matchResultService) {
@@ -35,6 +38,7 @@ public class ScoringController {
         this.getLiveScore = getLiveScore;
         this.undoDelivery = undoDelivery;
         this.inningsLifecycle = inningsLifecycle;
+        this.messaging = messaging;
         this.scoringAccess = scoringAccess;
         this.jdbc = jdbc;
         this.matchResultService = matchResultService;
@@ -159,7 +163,9 @@ public class ScoringController {
     GetLiveScore.Score undo(@PathVariable UUID inningsId,
                             Authentication authentication) {
         scoringAccess.requireMatchManager(scoringAccess.matchIdForInnings(inningsId), authentication);
-        return undoDelivery.execute(inningsId);
+        GetLiveScore.Score score = undoDelivery.execute(inningsId);
+        messaging.convertAndSend("/topic/innings/" + inningsId, score);
+        return score;
     }
 
     private record DeliveryState(
