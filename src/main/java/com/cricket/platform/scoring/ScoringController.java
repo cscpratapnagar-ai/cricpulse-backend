@@ -21,6 +21,7 @@ public class ScoringController {
     private final LiveScoreBroadcastPublisher liveScoreBroadcastPublisher;
     private final ScoringAccess scoringAccess;
     private final JdbcTemplate jdbc;
+    private final DeliveryEventRepository deliveryEventRepository;
     private final MatchResultService matchResultService;
 
     public ScoringController(StartInnings startInnings,
@@ -31,6 +32,7 @@ public class ScoringController {
                              LiveScoreBroadcastPublisher liveScoreBroadcastPublisher,
                              ScoringAccess scoringAccess,
                              JdbcTemplate jdbc,
+                             DeliveryEventRepository deliveryEventRepository,
                              MatchResultService matchResultService) {
         this.startInnings = startInnings;
         this.eventFirstProjectionService = eventFirstProjectionService;
@@ -40,6 +42,7 @@ public class ScoringController {
         this.liveScoreBroadcastPublisher = liveScoreBroadcastPublisher;
         this.scoringAccess = scoringAccess;
         this.jdbc = jdbc;
+        this.deliveryEventRepository = deliveryEventRepository;
         this.matchResultService = matchResultService;
     }
 
@@ -57,6 +60,13 @@ public class ScoringController {
                                 @RequestBody RecordDelivery.Request request,
                                 Authentication authentication) {
         scoringAccess.requireMatchManager(scoringAccess.matchIdForInnings(inningsId), authentication);
+
+        UUID commandId = parseCommandId(commandIdHeader);
+        // A retry of an already committed command must be a read, never a second
+        // delivery. The event table is the durable idempotency ledger.
+        if (deliveryEventRepository.commandExists(commandId)) {
+            return getLiveScore.execute(inningsId);
+        }
 
         DeliveryState state = jdbc.queryForObject(
                 """
@@ -97,7 +107,6 @@ public class ScoringController {
         }
 
         BallPosition position = new BallPosition(state.legalBalls() / 6, (state.legalBalls() % 6) + 1);
-        UUID commandId = parseCommandId(commandIdHeader);
 
         DeliveryCommand command = new DeliveryCommand(
                 commandId,
