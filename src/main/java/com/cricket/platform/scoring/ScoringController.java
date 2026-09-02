@@ -1,7 +1,6 @@
 package com.cricket.platform.scoring;
 
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import com.cricket.platform.match.MatchResultService;
@@ -14,30 +13,27 @@ import java.util.UUID;
 @RequestMapping("/api/scoring")
 public class ScoringController {
     private final StartInnings startInnings;
-    private final RecordDelivery recordDelivery;
+    private final EventFirstProjectionService eventFirstProjectionService;
     private final GetLiveScore getLiveScore;
     private final UndoDelivery undoDelivery;
     private final InningsLifecycle inningsLifecycle;
-    private final SimpMessagingTemplate messaging;
     private final ScoringAccess scoringAccess;
     private final JdbcTemplate jdbc;
     private final MatchResultService matchResultService;
 
     public ScoringController(StartInnings startInnings,
-                             RecordDelivery recordDelivery,
+                             EventFirstProjectionService eventFirstProjectionService,
                              GetLiveScore getLiveScore,
                              UndoDelivery undoDelivery,
                              InningsLifecycle inningsLifecycle,
-                             SimpMessagingTemplate messaging,
                              ScoringAccess scoringAccess,
                              JdbcTemplate jdbc,
                              MatchResultService matchResultService) {
         this.startInnings = startInnings;
-        this.recordDelivery = recordDelivery;
+        this.eventFirstProjectionService = eventFirstProjectionService;
         this.getLiveScore = getLiveScore;
         this.undoDelivery = undoDelivery;
         this.inningsLifecycle = inningsLifecycle;
-        this.messaging = messaging;
         this.scoringAccess = scoringAccess;
         this.jdbc = jdbc;
         this.matchResultService = matchResultService;
@@ -96,10 +92,9 @@ public class ScoringController {
 
         BallPosition position = new BallPosition(state.legalBalls() / 6, (state.legalBalls() % 6) + 1);
 
-        RecordDelivery.Request normalized = new RecordDelivery.Request(
+        DeliveryCommand command = new DeliveryCommand(
+                UUID.randomUUID(),
                 inningsId,
-                position.overNumber(),
-                position.ballNumber(),
                 strikerId,
                 nonStrikerId,
                 bowlerId,
@@ -108,19 +103,18 @@ public class ScoringController {
                 request.extraType(),
                 request.wicketType(),
                 request.dismissedPlayerId(),
-                request.newBatterId()
+                request.newBatterId(),
+                null
         );
 
-        recordDelivery.execute(normalized);
+        eventFirstProjectionService.record(command, position.overNumber(), position.ballNumber());
         InningsLifecycle.Completion completion = inningsLifecycle.evaluate(inningsId);
 
         if (completion.completed() && state.inningsNumber() == 2) {
             matchResultService.execute(scoringAccess.matchIdForInnings(inningsId));
         }
 
-        GetLiveScore.Score score = getLiveScore.execute(inningsId);
-        messaging.convertAndSend("/topic/innings/" + inningsId, score);
-        return score;
+        return getLiveScore.execute(inningsId);
     }
 
     @GetMapping("/innings/{inningsId}")
@@ -164,7 +158,6 @@ public class ScoringController {
                             Authentication authentication) {
         scoringAccess.requireMatchManager(scoringAccess.matchIdForInnings(inningsId), authentication);
         GetLiveScore.Score score = undoDelivery.execute(inningsId);
-        messaging.convertAndSend("/topic/innings/" + inningsId, score);
         return score;
     }
 
