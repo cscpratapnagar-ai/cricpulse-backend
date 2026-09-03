@@ -4,20 +4,22 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-@Component
 public class EventFirstProjectionService {
     private final EventFirstDeliveryService eventFirstDeliveryService;
     private final RecordDelivery recordDelivery;
     private final LiveScoreBroadcastPublisher liveScoreBroadcastPublisher;
+    private final MatchResultLifecycle matchResultLifecycle;
     private final JdbcTemplate jdbc;
 
     public EventFirstProjectionService(EventFirstDeliveryService eventFirstDeliveryService,
                                        RecordDelivery recordDelivery,
                                        LiveScoreBroadcastPublisher liveScoreBroadcastPublisher,
+                                       MatchResultLifecycle matchResultLifecycle,
                                        JdbcTemplate jdbc) {
         this.eventFirstDeliveryService = eventFirstDeliveryService;
         this.recordDelivery = recordDelivery;
         this.liveScoreBroadcastPublisher = liveScoreBroadcastPublisher;
+        this.matchResultLifecycle = matchResultLifecycle;
         this.jdbc = jdbc;
     }
 
@@ -52,12 +54,14 @@ public class EventFirstProjectionService {
 
         jdbc.update("UPDATE innings SET state_version = state_version + 1 WHERE id = ?", command.inningsId());
 
+        MatchResultLifecycle.Evaluation evaluation = matchResultLifecycle.evaluate(command.inningsId());
+
         liveScoreBroadcastPublisher.publishAfterCommit(new LiveScoreCommittedEvent(
                 event.inningsId(),
                 event.eventId(),
                 event.sequenceNo(),
                 event.eventVersion(),
-                "DELIVERY_RECORDED"
+                evaluation.eventType().name()
         ));
 
         return response;
