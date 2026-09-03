@@ -128,12 +128,26 @@ public class ScoringController {
                 null
         );
 
-        eventFirstProjectionService.record(command, position.overNumber(), position.ballNumber());
+        DeliveryEvent event = eventFirstProjectionService.record(command, position.overNumber(), position.ballNumber());
         InningsLifecycle.Completion completion = inningsLifecycle.evaluate(inningsId);
 
-        if (completion.completed() && state.inningsNumber() == 2) {
-            matchResultService.execute(scoringAccess.matchIdForInnings(inningsId));
+        String eventType = "DELIVERY_RECORDED";
+        if (completion.completed()) {
+            if (state.inningsNumber() == 2) {
+                matchResultService.execute(scoringAccess.matchIdForInnings(inningsId));
+                eventType = "MATCH_RESULT";
+            } else {
+                eventType = "INNINGS_COMPLETED";
+            }
         }
+
+        liveScoreBroadcastPublisher.publishAfterCommit(new LiveScoreCommittedEvent(
+                event.inningsId(),
+                event.eventId(),
+                event.sequenceNo(),
+                event.eventVersion(),
+                eventType
+        ));
 
         return getLiveScore.execute(inningsId);
     }
