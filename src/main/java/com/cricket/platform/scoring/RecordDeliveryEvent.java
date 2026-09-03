@@ -12,16 +12,23 @@ public class RecordDeliveryEvent {
     }
 
     @Transactional
-    public DeliveryEvent execute(DeliveryCommand command, long sequenceNo, int eventVersion,
-                                 int overNumber, int ballNumber, boolean legalDelivery) {
-        if (repository.commandExists(command.commandId())) {
-            throw new IllegalArgumentException("Delivery command has already been recorded");
-        }
-
+    public Result execute(DeliveryCommand command, long sequenceNo, int eventVersion,
+                          int overNumber, int ballNumber, boolean legalDelivery) {
         DeliveryEvent event = DeliveryEventFactory.create(
                 command, sequenceNo, eventVersion, overNumber, ballNumber, legalDelivery
         );
-        repository.save(event);
-        return event;
+
+        if (repository.insertIfAbsent(event)) {
+            return new Result(event, true);
+        }
+
+        DeliveryEvent existing = repository.findByCommandId(command.commandId());
+        if (existing == null) {
+            throw new IllegalStateException("Delivery command insert was skipped but no persisted event exists");
+        }
+        return new Result(existing, false);
+    }
+
+    public record Result(DeliveryEvent event, boolean created) {
     }
 }
