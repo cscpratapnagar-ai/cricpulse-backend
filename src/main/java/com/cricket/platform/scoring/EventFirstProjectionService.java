@@ -4,6 +4,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+@Component
 public class EventFirstProjectionService {
     private final EventFirstDeliveryService eventFirstDeliveryService;
     private final RecordDelivery recordDelivery;
