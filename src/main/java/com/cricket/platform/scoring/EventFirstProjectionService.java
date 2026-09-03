@@ -19,18 +19,22 @@ public class EventFirstProjectionService {
     }
 
     @Transactional
-    public DeliveryEvent record(DeliveryCommand command,
-                                int overNumber,
-                                int ballNumber) {
+    public Result record(DeliveryCommand command,
+                         int overNumber,
+                         int ballNumber) {
         boolean legalDelivery = !"WIDE".equals(command.extraType())
                 && !"NO_BALL".equals(command.extraType());
 
-        DeliveryEvent event = eventFirstDeliveryService.record(
+        EventFirstDeliveryService.Result eventResult = eventFirstDeliveryService.record(
                 command,
                 overNumber,
                 ballNumber,
                 legalDelivery
         );
+
+        if (!eventResult.created()) {
+            return new Result(eventResult.event(), false);
+        }
 
         recordDelivery.execute(new RecordDelivery.Request(
                 command.inningsId(),
@@ -49,6 +53,9 @@ public class EventFirstProjectionService {
 
         jdbc.update("UPDATE innings SET state_version = state_version + 1 WHERE id = ?", command.inningsId());
 
-        return event;
+        return new Result(eventResult.event(), true);
+    }
+
+    public record Result(DeliveryEvent event, boolean created) {
     }
 }
