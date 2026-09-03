@@ -12,10 +12,14 @@ import java.util.UUID;
 public class StartInnings {
     private final JdbcTemplate jdbc;
     private final GetLiveScore getLiveScore;
+    private final LiveScoreBroadcastPublisher liveScoreBroadcastPublisher;
 
-    public StartInnings(JdbcTemplate jdbc, GetLiveScore getLiveScore) {
+    public StartInnings(JdbcTemplate jdbc,
+                        GetLiveScore getLiveScore,
+                        LiveScoreBroadcastPublisher liveScoreBroadcastPublisher) {
         this.jdbc = jdbc;
         this.getLiveScore = getLiveScore;
+        this.liveScoreBroadcastPublisher = liveScoreBroadcastPublisher;
     }
 
     @Transactional
@@ -101,9 +105,18 @@ public class StartInnings {
                 """, id, request.matchId(), request.inningsNumber(), request.battingTeamId(), bowlingTeamId,
                 match.totalOvers(), targetRuns, request.strikerId(), request.nonStrikerId(), request.currentBowlerId());
 
+        jdbc.update("UPDATE innings SET state_version = state_version + 1 WHERE id = ?", id);
         jdbc.update("UPDATE matches SET status = 'LIVE', current_innings_id = ? WHERE id = ?", id, request.matchId());
         jdbc.update("INSERT INTO partnerships(innings_id, wicket_number, batter_one_id, batter_two_id, runs, balls, is_current) VALUES (?, 0, ?, ?, 0, 0, TRUE)",
                 id, request.strikerId(), request.nonStrikerId());
+
+        liveScoreBroadcastPublisher.publishAfterCommit(new LiveScoreCommittedEvent(
+                id,
+                UUID.randomUUID(),
+                0,
+                0,
+                "INNINGS_STARTED"
+        ));
 
         return new InningsResponse(id, request.matchId(), request.inningsNumber(), request.battingTeamId(), bowlingTeamId,
                 match.totalOvers(), targetRuns, 0, 0, 0, "LIVE", request.strikerId(), request.nonStrikerId(),
