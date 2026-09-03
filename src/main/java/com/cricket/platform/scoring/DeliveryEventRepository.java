@@ -43,20 +43,22 @@ public class DeliveryEventRepository {
         return value == null ? 1 : value;
     }
 
-    public void save(DeliveryEvent event) {
-        jdbc.update("""
+    public boolean insertIfAbsent(DeliveryEvent event) {
+        int updated = jdbc.update("""
                 INSERT INTO delivery_events (
                     event_id, innings_id, sequence_no, event_version, event_type,
                     over_number, ball_number, striker_id, non_striker_id, bowler_id,
                     bat_runs, extra_runs, extra_type, wicket_type, dismissed_player_id,
                     legal_delivery, event_payload, command_id, recorded_by, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?)
+                ON CONFLICT DO NOTHING
                 """,
                 event.eventId(), event.inningsId(), event.sequenceNo(), event.eventVersion(), event.eventType(),
                 event.overNumber(), event.ballNumber(), event.strikerId(), event.nonStrikerId(), event.bowlerId(),
                 event.batRuns(), event.extraRuns(), event.extraType(), event.wicketType(), event.dismissedPlayerId(),
                 event.legalDelivery(), event.eventPayload(), event.commandId(), event.recordedBy(), event.createdAt()
         );
+        return updated == 1;
     }
 
     private DeliveryEvent map(ResultSet rs) throws SQLException {
