@@ -8,26 +8,20 @@ import org.springframework.transaction.annotation.Transactional;
 public class EventFirstProjectionService {
     private final EventFirstDeliveryService eventFirstDeliveryService;
     private final RecordDelivery recordDelivery;
-    private final LiveScoreBroadcastPublisher liveScoreBroadcastPublisher;
-    private final MatchResultLifecycle matchResultLifecycle;
     private final JdbcTemplate jdbc;
 
     public EventFirstProjectionService(EventFirstDeliveryService eventFirstDeliveryService,
                                        RecordDelivery recordDelivery,
-                                       LiveScoreBroadcastPublisher liveScoreBroadcastPublisher,
-                                       MatchResultLifecycle matchResultLifecycle,
                                        JdbcTemplate jdbc) {
         this.eventFirstDeliveryService = eventFirstDeliveryService;
         this.recordDelivery = recordDelivery;
-        this.liveScoreBroadcastPublisher = liveScoreBroadcastPublisher;
-        this.matchResultLifecycle = matchResultLifecycle;
         this.jdbc = jdbc;
     }
 
     @Transactional
-    public RecordDelivery.DeliveryResponse record(DeliveryCommand command,
-                                                   int overNumber,
-                                                   int ballNumber) {
+    public DeliveryEvent record(DeliveryCommand command,
+                                int overNumber,
+                                int ballNumber) {
         boolean legalDelivery = !"WIDE".equals(command.extraType())
                 && !"NO_BALL".equals(command.extraType());
 
@@ -38,7 +32,7 @@ public class EventFirstProjectionService {
                 legalDelivery
         );
 
-        RecordDelivery.DeliveryResponse response = recordDelivery.execute(new RecordDelivery.Request(
+        recordDelivery.execute(new RecordDelivery.Request(
                 command.inningsId(),
                 overNumber,
                 ballNumber,
@@ -55,16 +49,6 @@ public class EventFirstProjectionService {
 
         jdbc.update("UPDATE innings SET state_version = state_version + 1 WHERE id = ?", command.inningsId());
 
-        MatchResultLifecycle.Evaluation evaluation = matchResultLifecycle.evaluate(command.inningsId());
-
-        liveScoreBroadcastPublisher.publishAfterCommit(new LiveScoreCommittedEvent(
-                event.inningsId(),
-                event.eventId(),
-                event.sequenceNo(),
-                event.eventVersion(),
-                evaluation.eventType().name()
-        ));
-
-        return response;
+        return event;
     }
 }
