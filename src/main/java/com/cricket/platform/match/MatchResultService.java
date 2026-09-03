@@ -75,19 +75,32 @@ public class MatchResultService {
         UUID winner = null;
         String resultType;
         String resultText;
+        String detailedResultType;
+        int resultMargin;
+        String resultSummary;
 
         if (second.runs() > first.runs()) {
             winner = second.battingTeamId();
             int wicketsRemaining = Math.max(0, 10 - second.wickets());
             resultType = "WIN";
             resultText = second.battingTeamName() + " won by " + wicketsRemaining + " wickets";
+            detailedResultType = "WIN_BY_WICKETS";
+            resultMargin = wicketsRemaining;
+            resultSummary = resultText;
         } else if (second.runs() < first.runs()) {
             winner = first.battingTeamId();
+            int runsMargin = first.runs() - second.runs();
             resultType = "WIN";
-            resultText = first.battingTeamName() + " won by " + (first.runs() - second.runs()) + " runs";
+            resultText = first.battingTeamName() + " won by " + runsMargin + " runs";
+            detailedResultType = "WIN_BY_RUNS";
+            resultMargin = runsMargin;
+            resultSummary = resultText;
         } else {
             resultType = "TIE";
             resultText = "Match tied";
+            detailedResultType = "TIE";
+            resultMargin = 0;
+            resultSummary = resultText;
         }
 
         jdbc.update(
@@ -98,19 +111,25 @@ public class MatchResultService {
                     result_type = ?,
                     result_text = ?,
                     completed_at = COALESCE(completed_at, ?),
-                    current_innings_id = NULL
+                    current_innings_id = NULL,
+                    winner_team_id = ?,
+                    result_margin = ?,
+                    result_summary = ?
                 WHERE id = ?
                 """,
                 winner,
                 resultType,
                 resultText,
                 OffsetDateTime.now(),
+                winner,
+                resultMargin,
+                resultSummary,
                 matchId
         );
 
         return new Result(
                 match.id(), match.name(), match.format(), "COMPLETED",
-                resultType, resultText, winner,
+                detailedResultType, resultText, winner,
                 new TeamScore(first.battingTeamId(), first.battingTeamName(), first.runs(), first.wickets(), first.legalBalls(), first.totalOvers()),
                 new TeamScore(second.battingTeamId(), second.battingTeamName(), second.runs(), second.wickets(), second.legalBalls(), second.totalOvers())
         );
@@ -181,9 +200,14 @@ public class MatchResultService {
     }
 
     private Result toResult(MatchState match, InningsScore first, InningsScore second) {
+        String detailedResultType = switch (match.resultType()) {
+            case "TIE" -> "TIE";
+            case "WIN" -> second.runs() > first.runs() ? "WIN_BY_WICKETS" : "WIN_BY_RUNS";
+            default -> match.resultType();
+        };
         return new Result(
                 match.id(), match.name(), match.format(), match.status(),
-                match.resultType(), match.resultText(), match.winningTeamId(),
+                detailedResultType, match.resultText(), match.winningTeamId(),
                 new TeamScore(first.battingTeamId(), first.battingTeamName(), first.runs(), first.wickets(), first.legalBalls(), first.totalOvers()),
                 new TeamScore(second.battingTeamId(), second.battingTeamName(), second.runs(), second.wickets(), second.legalBalls(), second.totalOvers())
         );
