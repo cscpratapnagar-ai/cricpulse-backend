@@ -1,117 +1,62 @@
 package com.cricket.platform.scoring;
 
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.core.Authentication;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.bind.annotation.*;
-import com.cricket.platform.match.MatchResultService;
-import com.cricket.platform.match.PlayingXiController;
-
-import java.util.List;
 import java.util.UUID;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.cricket.platform.scoring.api.DeliveryRequest;
+import com.cricket.platform.scoring.api.LiveScoreResponse;
 
 @RestController
 @RequestMapping("/api/scoring")
 public class ScoringController {
-    private final StartInnings startInnings;
+
     private final EventFirstProjectionService eventFirstProjectionService;
-    private final GetLiveScore getLiveScore;
-    private final UndoDelivery undoDelivery;
     private final InningsLifecycle inningsLifecycle;
+    private final MatchResultService matchResultService;
     private final LiveScoreBroadcastPublisher liveScoreBroadcastPublisher;
     private final ScoringAccess scoringAccess;
-    private final JdbcTemplate jdbc;
-    private final DeliveryEventRepository deliveryEventRepository;
-    private final MatchResultService matchResultService;
+    private final GetLiveScore getLiveScore;
 
-    public ScoringController(StartInnings startInnings,
-                             EventFirstProjectionService eventFirstProjectionService,
-                             GetLiveScore getLiveScore,
-                             UndoDelivery undoDelivery,
-                             InningsLifecycle inningsLifecycle,
-                             LiveScoreBroadcastPublisher liveScoreBroadcastPublisher,
-                             ScoringAccess scoringAccess,
-                             JdbcTemplate jdbc,
-                             DeliveryEventRepository deliveryEventRepository,
-                             MatchResultService matchResultService) {
-        this.startInnings = startInnings;
+    public ScoringController(
+            EventFirstProjectionService eventFirstProjectionService,
+            InningsLifecycle inningsLifecycle,
+            MatchResultService matchResultService,
+            LiveScoreBroadcastPublisher liveScoreBroadcastPublisher,
+            ScoringAccess scoringAccess,
+            GetLiveScore getLiveScore) {
         this.eventFirstProjectionService = eventFirstProjectionService;
-        this.getLiveScore = getLiveScore;
-        this.undoDelivery = undoDelivery;
         this.inningsLifecycle = inningsLifecycle;
+        this.matchResultService = matchResultService;
         this.liveScoreBroadcastPublisher = liveScoreBroadcastPublisher;
         this.scoringAccess = scoringAccess;
-        this.jdbc = jdbc;
-        this.deliveryEventRepository = deliveryEventRepository;
-        this.matchResultService = matchResultService;
-    }
-
-    @PostMapping("/innings")
-    StartInnings.InningsResponse start(@org.springframework.web.bind.annotation.RequestBody @jakarta.validation.Valid StartInnings.Request request,
-                                       Authentication authentication) {
-        scoringAccess.requireMatchManager(request.matchId(), authentication);
-        return startInnings.execute(request);
+        this.getLiveScore = getLiveScore;
     }
 
     @PostMapping("/innings/{inningsId}/deliveries")
     @Transactional
-    GetLiveScore.Score delivery(@PathVariable UUID inningsId,
-                                @RequestHeader(value = "X-Command-Id", required = false) String commandIdHeader,
-                                @RequestBody RecordDelivery.Request request,
-                                Authentication authentication) {
-        scoringAccess.requireMatchManager(scoringAccess.matchIdForInnings(inningsId), authentication);
-
+    public ResponseEntity<LiveScoreResponse> recordDelivery(
+            @PathVariable UUID inningsId,
+            @RequestHeader(value = "X-Command-Id", required = false) String commandIdHeader,
+            @RequestBody DeliveryRequest request) {
         UUID commandId = parseCommandId(commandIdHeader);
-        if (deliveryEventRepository.commandExists(commandId)) {
-            return getLiveScore.execute(inningsId);
+        ScoringAccess.InningsState state = scoringAccess.lockInnings(inningsId);
+        ScoringAccess.DeliveryPosition position = scoringAccess.nextDeliveryPosition(inningsId);
+        UUID strikerId = request.strikerId();
+        UUID nonStrikerId = request.nonStrikerId();
+        UUID bowlerId = request.bowlerId();
+
+        if (commandId != null && scoringAccess.deliveryCommandExists(commandId)) {
+            return ResponseEntity.ok(getLiveScore.execute(inningsId));
         }
-
-        DeliveryState state = jdbc.queryForObject(
-                """
-                SELECT innings_number, legal_balls, striker_id, non_striker_id, current_bowler_id, status
-                FROM innings
-                WHERE id = ?
-                FOR UPDATE
-                """,
-                (rs, row) -> new DeliveryState(
-                        rs.getInt("innings_number"),
-                        rs.getInt("legal_balls"),
-                        rs.getObject("striker_id", UUID.class),
-                        rs.getObject("non_striker_id", UUID.class),
-                        rs.getObject("current_bowler_id", UUID.class),
-                        rs.getString("status")
-                ),
-                inningsId
-        );
-
-        if (state == null) {
-            throw new IllegalArgumentException("Innings was not found");
-        }
-        if (!"LIVE".equals(state.status())) {
-            throw new IllegalArgumentException("Innings is not live");
-        }
-
-        // The first check is a fast path. The second check is mandatory after
-        // acquiring the innings row lock because two concurrent retries can both
-        // observe "not exists" before either transaction commits its event.
-        if (deliveryEventRepository.commandExists(commandId)) {
-            return getLiveScore.execute(inningsId);
-        }
-
-        UUID requestInningsId = request.inningsId() != null ? request.inningsId() : inningsId;
-        if (!inningsId.equals(requestInningsId)) {
-            throw new IllegalArgumentException("Innings ID does not match URL");
-        }
-
-        UUID strikerId = request.strikerId() != null ? request.strikerId() : state.strikerId();
-        UUID nonStrikerId = request.nonStrikerId() != null ? request.nonStrikerId() : state.nonStrikerId();
-        UUID bowlerId = request.bowlerId() != null ? request.bowlerId() : state.currentBowlerId();
-
-        if (strikerId == null || nonStrikerId == null || bowlerId == null) {
-            throw new IllegalArgumentException("Current striker, non-striker and bowler must be set before recording a delivery");
-        }
-
-        BallPosition position = new BallPosition(state.legalBalls() / 6, (state.legalBalls() % 6) + 1);
 
         DeliveryCommand command = new DeliveryCommand(
                 commandId,
@@ -128,7 +73,13 @@ public class ScoringController {
                 null
         );
 
-        DeliveryEvent event = eventFirstProjectionService.record(command, position.overNumber(), position.ballNumber());
+        EventFirstProjectionService.Result projection = eventFirstProjectionService.record(
+                command, position.overNumber(), position.ballNumber());
+        if (!projection.created()) {
+            return ResponseEntity.ok(getLiveScore.execute(inningsId));
+        }
+
+        DeliveryEvent event = projection.event();
         InningsLifecycle.Completion completion = inningsLifecycle.evaluate(inningsId);
 
         String eventType = "DELIVERY_RECORDED";
@@ -149,81 +100,22 @@ public class ScoringController {
                 eventType
         ));
 
-        return getLiveScore.execute(inningsId);
+        return ResponseEntity.ok(getLiveScore.execute(inningsId));
     }
 
     @GetMapping("/innings/{inningsId}")
-    GetLiveScore.Score live(@PathVariable UUID inningsId,
-                            Authentication authentication) {
-        scoringAccess.requireMatchManager(scoringAccess.matchIdForInnings(inningsId), authentication);
-        return getLiveScore.execute(inningsId);
+    public ResponseEntity<LiveScoreResponse> getLiveScore(@PathVariable UUID inningsId) {
+        return ResponseEntity.ok(getLiveScore.execute(inningsId));
     }
 
-    /**
-     * Compatibility endpoint for scoring E2E clients that resolve the Playing XI
-     * from an innings id rather than a match id.
-     */
-    @GetMapping("/innings/{inningsId}/playing-xi")
-    List<PlayingXiController.PlayingPlayer> playingXi(@PathVariable UUID inningsId,
-                                                       Authentication authentication) {
-        UUID matchId = scoringAccess.matchIdForInnings(inningsId);
-        scoringAccess.requireMatchManager(matchId, authentication);
-        return jdbc.query("""
-                SELECT mp.team_id, mp.player_id, u.full_name, mp.is_captain, mp.is_vice_captain, mp.is_wicket_keeper
-                FROM match_players mp
-                JOIN players p ON p.id = mp.player_id
-                JOIN users u ON u.id = p.user_id
-                WHERE mp.match_id = ? AND mp.is_playing_xi = TRUE
-                ORDER BY mp.team_id, u.full_name
-                """,
-                (rs, row) -> new PlayingXiController.PlayingPlayer(
-                        rs.getObject("team_id", UUID.class),
-                        rs.getObject("player_id", UUID.class),
-                        rs.getString("full_name"),
-                        rs.getBoolean("is_captain"),
-                        rs.getBoolean("is_vice_captain"),
-                        rs.getBoolean("is_wicket_keeper")
-                ),
-                matchId
-        );
-    }
-
-    @PostMapping("/innings/{inningsId}/undo")
-    @Transactional
-    GetLiveScore.Score undo(@PathVariable UUID inningsId,
-                            Authentication authentication) {
-        scoringAccess.requireMatchManager(scoringAccess.matchIdForInnings(inningsId), authentication);
-        UndoDelivery.UndoResult result = undoDelivery.execute(inningsId);
-        if (result.mutated()) {
-            jdbc.update("UPDATE innings SET state_version = state_version + 1 WHERE id = ?", inningsId);
-            liveScoreBroadcastPublisher.publishAfterCommit(new LiveScoreCommittedEvent(
-                    inningsId,
-                    UUID.randomUUID(),
-                    0L,
-                    0,
-                    "DELIVERY_UNDONE"
-            ));
+    private UUID parseCommandId(String commandIdHeader) {
+        if (commandIdHeader == null || commandIdHeader.isBlank()) {
+            return UUID.randomUUID();
         }
-        return result.score();
-    }
-
-    private UUID parseCommandId(String header) {
-        if (header == null || header.isBlank()) return UUID.randomUUID();
         try {
-            return UUID.fromString(header.trim());
+            return UUID.fromString(commandIdHeader.trim());
         } catch (IllegalArgumentException ex) {
-            throw new IllegalArgumentException("X-Command-Id must be a valid UUID");
+            throw new IllegalArgumentException("X-Command-Id must be a valid UUID", ex);
         }
     }
-
-    private record DeliveryState(
-            int inningsNumber,
-            int legalBalls,
-            UUID strikerId,
-            UUID nonStrikerId,
-            UUID currentBowlerId,
-            String status
-    ) {}
-
-    private record BallPosition(int overNumber, int ballNumber) {}
 }
