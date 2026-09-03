@@ -20,7 +20,7 @@ public class UndoDelivery {
     }
 
     @Transactional
-    public GetLiveScore.Score execute(UUID inningsId) {
+    public UndoResult execute(UUID inningsId) {
         List<UUID> innings = jdbc.query("SELECT id FROM innings WHERE id = ? FOR UPDATE",
                 (rs, rowNum) -> rs.getObject("id", UUID.class), inningsId);
         if (innings.isEmpty()) throw new IllegalArgumentException("Innings was not found");
@@ -34,7 +34,7 @@ public class UndoDelivery {
                 rs.getObject("striker_id", UUID.class),
                 rs.getObject("non_striker_id", UUID.class),
                 rs.getObject("bowler_id", UUID.class)), inningsId);
-        if (deliveries.isEmpty()) return getLiveScore.execute(inningsId);
+        if (deliveries.isEmpty()) return new UndoResult(getLiveScore.execute(inningsId), false);
 
         DeliverySnapshot deleted = deliveries.get(0);
         UUID deliveryId = deleted.id();
@@ -43,7 +43,10 @@ public class UndoDelivery {
         jdbc.update("DELETE FROM innings_bowlers WHERE innings_id = ?", inningsId);
         jdbc.update("DELETE FROM innings_overs WHERE innings_id = ?", inningsId);
         jdbc.update("DELETE FROM partnerships WHERE innings_id = ?", inningsId);
-        jdbc.update("DELETE FROM deliveries WHERE id = ? AND innings_id = ?", deliveryId, inningsId);
+        int deletedRows = jdbc.update("DELETE FROM deliveries WHERE id = ? AND innings_id = ?", deliveryId, inningsId);
+        if (deletedRows != 1) {
+            throw new IllegalStateException("The selected delivery could not be undone");
+        }
 
         jdbc.update("""
                 UPDATE innings SET
@@ -78,7 +81,7 @@ public class UndoDelivery {
         rebuildPartnership(inningsId);
         rebuildFallOfWickets(inningsId);
         inningsLifecycle.evaluate(inningsId);
-        return getLiveScore.execute(inningsId);
+        return new UndoResult(getLiveScore.execute(inningsId), true);
     }
 
     private void rebuildOverSummaries(UUID inningsId) {
@@ -196,6 +199,8 @@ public class UndoDelivery {
                 WHERE innings_id = ? AND wicket_type IS NOT NULL AND dismissed_player_id IS NOT NULL
                 """, inningsId);
     }
+
+    public record UndoResult(GetLiveScore.Score score, boolean mutated) {}
 
     private record DeliverySnapshot(UUID id, UUID strikerId, UUID nonStrikerId, UUID bowlerId) {}
 }

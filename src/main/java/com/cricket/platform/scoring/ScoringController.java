@@ -179,16 +179,18 @@ public class ScoringController {
     GetLiveScore.Score undo(@PathVariable UUID inningsId,
                             Authentication authentication) {
         scoringAccess.requireMatchManager(scoringAccess.matchIdForInnings(inningsId), authentication);
-        GetLiveScore.Score score = undoDelivery.execute(inningsId);
-        jdbc.update("UPDATE innings SET state_version = state_version + 1 WHERE id = ?", inningsId);
-        liveScoreBroadcastPublisher.publishAfterCommit(new LiveScoreCommittedEvent(
-                inningsId,
-                UUID.randomUUID(),
-                0L,
-                0,
-                "DELIVERY_UNDONE"
-        ));
-        return score;
+        UndoDelivery.UndoResult result = undoDelivery.execute(inningsId);
+        if (result.mutated()) {
+            jdbc.update("UPDATE innings SET state_version = state_version + 1 WHERE id = ?", inningsId);
+            liveScoreBroadcastPublisher.publishAfterCommit(new LiveScoreCommittedEvent(
+                    inningsId,
+                    UUID.randomUUID(),
+                    0L,
+                    0,
+                    "DELIVERY_UNDONE"
+            ));
+        }
+        return result.score();
     }
 
     private UUID parseCommandId(String header) {
