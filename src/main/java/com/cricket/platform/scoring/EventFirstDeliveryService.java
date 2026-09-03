@@ -3,8 +3,6 @@ package com.cricket.platform.scoring;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.UUID;
-
 @Component
 public class EventFirstDeliveryService {
     private final DeliveryEventRepository eventRepository;
@@ -28,15 +26,16 @@ public class EventFirstDeliveryService {
 
         long sequenceNo = eventRepository.nextSequence(command.inningsId());
         int eventVersion = eventRepository.nextVersion(command.inningsId());
-
-        return new Result(recordDeliveryEvent.execute(
+        RecordDeliveryEvent.Result result = recordDeliveryEvent.execute(
                 command,
                 sequenceNo,
                 eventVersion,
                 overNumber,
                 ballNumber,
                 legalDelivery
-        ), true);
+        );
+
+        return new Result(result.event(), result.created());
     }
 
     public record Result(DeliveryEvent event, boolean created) {
