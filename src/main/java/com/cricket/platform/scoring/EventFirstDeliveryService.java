@@ -17,24 +17,28 @@ public class EventFirstDeliveryService {
     }
 
     @Transactional
-    public DeliveryEvent record(DeliveryCommand command,
-                                int overNumber,
-                                int ballNumber,
-                                boolean legalDelivery) {
-        if (eventRepository.commandExists(command.commandId())) {
-            throw new IllegalArgumentException("Delivery command has already been recorded");
+    public Result record(DeliveryCommand command,
+                         int overNumber,
+                         int ballNumber,
+                         boolean legalDelivery) {
+        DeliveryEvent existing = eventRepository.findByCommandId(command.commandId());
+        if (existing != null) {
+            return new Result(existing, false);
         }
 
         long sequenceNo = eventRepository.nextSequence(command.inningsId());
         int eventVersion = eventRepository.nextVersion(command.inningsId());
 
-        return recordDeliveryEvent.execute(
+        return new Result(recordDeliveryEvent.execute(
                 command,
                 sequenceNo,
                 eventVersion,
                 overNumber,
                 ballNumber,
                 legalDelivery
-        );
+        ), true);
+    }
+
+    public record Result(DeliveryEvent event, boolean created) {
     }
 }
