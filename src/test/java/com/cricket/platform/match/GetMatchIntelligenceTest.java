@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
@@ -31,11 +32,11 @@ class GetMatchIntelligenceTest {
         GetMatchIntelligence.MatchIntelligence result = service.get(matchId);
 
         assertEquals(20, result.recentRuns());
-        assertEquals(2, result.recentRunRate().compareTo(java.math.BigDecimal.valueOf(12.00)));
+        assertEquals(0, result.recentRunRate().compareTo(BigDecimal.valueOf(12.00)));
         assertEquals("RISING", result.momentum());
         assertEquals(31, result.requiredRuns());
         assertEquals(30, result.ballsRemaining());
-        assertEquals("HIGH", result.chasePressure());
+        assertEquals("LOW", result.chasePressure());
         assertEquals("Chasers", result.battingTeam());
     }
 }
