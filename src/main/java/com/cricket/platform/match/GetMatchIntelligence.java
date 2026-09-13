@@ -39,17 +39,19 @@ public class GetMatchIntelligence {
         RecentData recent = jdbc.query("""
                 SELECT COALESCE(SUM(bat_runs + extra_runs),0) runs,
                        COUNT(*) deliveries,
+                       COALESCE(SUM(CASE WHEN legal_delivery THEN 1 ELSE 0 END),0) legal_balls,
                        COALESCE(SUM(CASE WHEN bat_runs + extra_runs=0 THEN 1 ELSE 0 END),0) dots,
                        COALESCE(SUM(CASE WHEN bat_runs=4 THEN 1 ELSE 0 END),0) fours,
                        COALESCE(SUM(CASE WHEN bat_runs=6 THEN 1 ELSE 0 END),0) sixes,
                        COALESCE(SUM(CASE WHEN wicket_type IS NOT NULL THEN 1 ELSE 0 END),0) wickets
-                FROM (SELECT bat_runs, extra_runs, wicket_type
+                FROM (SELECT bat_runs, extra_runs, legal_delivery, wicket_type
                       FROM delivery_events WHERE innings_id=? ORDER BY sequence_no DESC LIMIT 12) d
-                """, (rs,row)->new RecentData(rs.getInt("runs"),rs.getInt("deliveries"),rs.getInt("dots"),
-                        rs.getInt("fours"),rs.getInt("sixes"),rs.getInt("wickets")), current.id()).stream().findFirst().orElse(new RecentData(0,0,0,0,0,0));
+                """, (rs,row)->new RecentData(rs.getInt("runs"),rs.getInt("deliveries"),rs.getInt("legal_balls"),rs.getInt("dots"),
+                        rs.getInt("fours"),rs.getInt("sixes"),rs.getInt("wickets")), current.id()).stream().findFirst()
+                .orElse(new RecentData(0,0,0,0,0,0,0));
 
         BigDecimal inningsRate = rate(current.totalRuns(), current.legalBalls());
-        BigDecimal recentRate = rate(recent.runs(), recent.deliveries());
+        BigDecimal recentRate = rate(recent.runs(), recent.legalBalls());
         String momentum = momentum(recentRate, inningsRate, recent.wickets());
 
         Integer target = current.targetRuns();
@@ -91,7 +93,7 @@ public class GetMatchIntelligence {
 
     record InningsData(UUID id,int inningsNumber,UUID battingTeamId,String battingTeam,int totalRuns,
                        int wickets,int legalBalls,int totalOvers,Integer targetRuns,String status) {}
-    record RecentData(int runs,int deliveries,int dots,int fours,int sixes,int wickets) {}
+    record RecentData(int runs,int deliveries,int legalBalls,int dots,int fours,int sixes,int wickets) {}
 
     public record MatchIntelligence(UUID matchId,int inningsNumber,String battingTeam,String status,
                                     int runs,int wickets,int legalBalls,int totalOvers,Integer targetRuns,
