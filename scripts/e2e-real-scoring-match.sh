@@ -168,9 +168,8 @@ for ((delivery=1; delivery<=120; delivery++)); do
 
   # Every legal ball is a real API command. After six legal balls the backend
   # rotates strike automatically; alternate bowlers at the over boundary.
-  # B_STRIKER_ID is intentionally used as the second Team-B bowler in this
-  # disposable two-player-per-team fixture. A player can bat in one innings
-  # and bowl in the other role as long as the player belongs to the bowling XI.
+  # B_STRIKER_ID is used as the second Team-B bowler in this disposable
+  # two-player-per-team fixture.
   DELIVERY_BODY="$(jq -nc --arg innings "$INNINGS1_ID" \
     --arg striker "$CURRENT_STRIKER" --arg non "$CURRENT_NON" --arg bowler "$CURRENT_BOWLER" \
     --argjson over "$OVER_NUMBER" --argjson ball "$BALL_NUMBER" \
@@ -247,7 +246,9 @@ if [[ "$RESULT1_CANONICAL" != "$RESULT2_CANONICAL" ]]; then
 fi
 RESULT_STATUS="$(jq -r '.matchStatus // .status // empty' <<<"$RESULT1")"
 RESULT_TYPE="$(jq -r '.detailedResultType // .resultType // empty' <<<"$RESULT1")"
-WINNER_TEAM_ID="$(jq -r '.winnerTeamId // empty' <<<"$RESULT1")"
+# MatchResultService exposes this field as winningTeamId. Keep the legacy
+# winnerTeamId fallback so the regression remains tolerant of older API payloads.
+WINNER_TEAM_ID="$(jq -r '.winningTeamId // .winnerTeamId // empty' <<<"$RESULT1")"
 if [[ "$RESULT_STATUS" != "COMPLETED" ]]; then
   echo "ERROR: match result status is not COMPLETED: $RESULT_STATUS" >&2
   exit 1
