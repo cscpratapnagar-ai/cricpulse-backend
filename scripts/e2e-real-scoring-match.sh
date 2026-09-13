@@ -10,6 +10,10 @@ set -euo pipefail
 #   A_STRIKER_ID A_NON_STRIKER_ID B_BOWLER_ID
 #   B_STRIKER_ID B_NON_STRIKER_ID A_BOWLER_ID
 #
+# Optional:
+#   TOURNAMENT_ID - when supplied, the completed match must be visible in the
+#   tournament points table. When omitted, tournament verification is skipped.
+#
 # The test uses a 20-over match: innings 1 is completed by 120 legal dot balls,
 # innings 2 reaches the one-run target on its first legal delivery.
 
@@ -25,6 +29,7 @@ B_BOWLER_ID="${B_BOWLER_ID:-}"
 B_STRIKER_ID="${B_STRIKER_ID:-}"
 B_NON_STRIKER_ID="${B_NON_STRIKER_ID:-}"
 A_BOWLER_ID="${A_BOWLER_ID:-}"
+TOURNAMENT_ID="${TOURNAMENT_ID:-}"
 
 required=(EMAIL PASSWORD MATCH_ID TEAM_A_ID TEAM_B_ID A_STRIKER_ID A_NON_STRIKER_ID B_BOWLER_ID B_STRIKER_ID B_NON_STRIKER_ID A_BOWLER_ID)
 for name in "${required[@]}"; do
@@ -169,7 +174,22 @@ if [[ "$RESULT_TYPE" != "WIN" && "$RESULT_TYPE" != "TIE" ]]; then
   exit 1
 fi
 
-POINTS="$(request GET "$BASE_URL/tournaments/${TOURNAMENT_ID:-}/points-table" 2>/dev/null || true)"
+if [[ -n "$TOURNAMENT_ID" ]]; then
+  echo "[8b/8] Verify tournament points-table integration"
+  POINTS="$(request GET "$BASE_URL/tournaments/$TOURNAMENT_ID/points-table")" \
+    || fail_with_body "get tournament points table failed" GET "$BASE_URL/tournaments/$TOURNAMENT_ID/points-table"
+
+  if ! jq -e --arg match "$MATCH_ID" '
+      any(.[]?; (.matchId? // .match_id? // empty) == $match)
+      or any(.data[]?; (.matchId? // .match_id? // empty) == $match)
+    ' <<<"$POINTS" >/dev/null; then
+    echo "ERROR: completed match $MATCH_ID was not visible in tournament points-table response" >&2
+    echo "$POINTS" >&2
+    exit 1
+  fi
+else
+  echo "[8b/8] Tournament points-table verification skipped (TOURNAMENT_ID not supplied)"
+fi
 
 echo
 echo "=== REAL SCORING E2E PASSED ==="
@@ -178,3 +198,6 @@ echo "Innings 1   : $INNINGS1_ID (120 legal balls, completed)"
 echo "Innings 2   : $INNINGS2_ID (target reached, completed)"
 echo "Result type : $RESULT_TYPE"
 echo "Winner      : ${WINNER:-TIE}"
+if [[ -n "$TOURNAMENT_ID" ]]; then
+  echo "Tournament  : $TOURNAMENT_ID (points-table verified)"
+fi
