@@ -51,15 +51,19 @@ MATCH="$(curl -fsS -X POST "$BASE_URL/matches" "${AUTH[@]}" -H 'Content-Type: ap
 MATCH_ID="$(jq -r '.id' <<<"$MATCH")"
 test -n "$MATCH_ID" && test "$MATCH_ID" != null
 
+echo "Created fixture match=$MATCH_ID teamA=$TEAM_A_ID teamB=$TEAM_B_ID"
+
 select_xi() {
   local team_id="$1" player_id="$2"
   curl -fsS -X POST "$BASE_URL/matches/$MATCH_ID/playing-xi" "${AUTH[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg t "$team_id" --arg p "$player_id" '{teamId:$t,playerId:$p,captain:false,viceCaptain:false,wicketKeeper:false}')" >/dev/null
-done
+}
 
 select_xi "$TEAM_A_ID" "$OWNER_PLAYER_ID"
 select_xi "$TEAM_A_ID" "$PLAYER_ID"
 select_xi "$TEAM_B_ID" "$OWNER_PLAYER_ID"
 select_xi "$TEAM_B_ID" "$PLAYER_ID"
+
+echo "Selected Playing XI for both teams"
 
 cat >> "$GITHUB_ENV" <<EOF
 E2E_EMAIL=$OWNER_EMAIL
