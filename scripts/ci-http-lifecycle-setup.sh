@@ -48,7 +48,13 @@ TEAM_B_ID="$(jq -r '.id' <<<"$TEAM_B")"
 
 test -n "$TEAM_A_ID" && test -n "$TEAM_B_ID"
 
+# The disposable CI owner must be able to manage the Playing XI for both
+# sides. This keeps the HTTP fixture self-contained without weakening the
+# production Playing XI authorization rule.
 for team_id in "$TEAM_A_ID" "$TEAM_B_ID"; do
+  curl -fsS -X POST "$BASE_URL/teams/$team_id/members" "${AUTH[@]}" \
+    -H 'Content-Type: application/json' \
+    --data "$(jq -nc --arg p "$OWNER_PLAYER_ID" '{playerId:$p,role:"CAPTAIN"}')" >/dev/null
   curl -fsS -X POST "$BASE_URL/teams/$team_id/members" "${AUTH[@]}" \
     -H 'Content-Type: application/json' \
     --data "$(jq -nc --arg p "$PLAYER_ID" '{playerId:$p,role:"PLAYER"}')" >/dev/null
@@ -63,4 +69,4 @@ E2E_OWNER_PLAYER_ID=$OWNER_PLAYER_ID
 E2E_PLAYER_ID=$PLAYER_ID
 EOF
 
-echo "Prepared disposable HTTP E2E teams and player profiles."
+echo "Prepared disposable HTTP E2E teams, player profiles and XI managers."
