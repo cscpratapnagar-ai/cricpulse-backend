@@ -35,11 +35,18 @@ public class StartInnings {
                 rs.getString("toss_decision")), request.matchId());
 
         if (match == null) throw new IllegalArgumentException("Match was not found");
+        if ("COMPLETED".equalsIgnoreCase(match.status()))
+            throw new IllegalArgumentException("Completed match cannot start another innings");
         if (match.tossWinnerTeamId() == null || match.tossDecision() == null)
             throw new IllegalArgumentException("Toss must be recorded before starting an innings");
         if (match.totalOvers() == null || match.totalOvers() <= 0)
             throw new IllegalArgumentException("Match total overs are not configured");
         if (request.inningsNumber() < 1) throw new IllegalArgumentException("Innings number must be positive");
+
+        // Normal matches have exactly two innings. Super Over must use an explicit
+        // future lifecycle and must never be created accidentally as innings 3+.
+        if (request.inningsNumber() > 2)
+            throw new IllegalArgumentException("Normal match innings cannot exceed 2; use the Super Over lifecycle");
 
         UUID existingId = jdbc.query("SELECT id FROM innings WHERE match_id = ? AND innings_number = ? ORDER BY id LIMIT 1",
                 (rs, row) -> rs.getObject("id", UUID.class), request.matchId(), request.inningsNumber())
@@ -73,8 +80,6 @@ public class StartInnings {
         } else {
             if (!hasCompletedPreviousInnings(request.matchId(), request.inningsNumber()))
                 throw new IllegalArgumentException("Previous innings must be completed before starting this innings");
-            // If toss winner chose BAT, innings 2 is the other team; if toss winner chose BOWL,
-            // innings 2 is the toss winner.
             expectedBattingTeamId = "BAT".equalsIgnoreCase(match.tossDecision())
                     ? oppositeTeam(match.tossWinnerTeamId(), match) : match.tossWinnerTeamId();
         }
