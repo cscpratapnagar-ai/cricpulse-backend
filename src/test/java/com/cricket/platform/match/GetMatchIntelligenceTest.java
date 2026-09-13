@@ -26,15 +26,16 @@ class GetMatchIntelligenceTest {
                 .thenReturn(List.of(new GetMatchIntelligence.InningsData(inningsId, 2, UUID.randomUUID(), "Chasers",
                         90, 3, 90, 20, 121, "LIVE")));
         when(jdbc.query(anyString(), any(RowMapper.class), eq(inningsId)))
-                .thenReturn(List.of(new GetMatchIntelligence.RecentData(20, 12, 4, 2, 1, 0)));
+                .thenReturn(List.of(new GetMatchIntelligence.RecentData(20, 12, 10, 4, 2, 1, 0)));
 
         GetMatchIntelligence.MatchIntelligence result = service.get(matchId);
 
         assertEquals(20, result.recentRuns());
+        assertEquals(2, result.recentRunRate().compareTo(java.math.BigDecimal.valueOf(12.00)));
         assertEquals("RISING", result.momentum());
         assertEquals(31, result.requiredRuns());
         assertEquals(30, result.ballsRemaining());
-        assertEquals("LOW", result.chasePressure());
+        assertEquals("HIGH", result.chasePressure());
         assertEquals("Chasers", result.battingTeam());
     }
 }
