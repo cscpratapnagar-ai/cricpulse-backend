@@ -60,6 +60,28 @@ for team_id in "$TEAM_A_ID" "$TEAM_B_ID"; do
     --data "$(jq -nc --arg p "$PLAYER_ID" '{playerId:$p,role:"PLAYER"}')" >/dev/null
 done
 
+# Create the disposable match here so the fixture can be fully prepared
+# through public HTTP APIs before the scoring E2E starts. Playing XI is a
+# real match prerequisite and must remain enforced by production code.
+MATCH="$(curl -fsS -X POST "$BASE_URL/matches" "${AUTH[@]}" -H 'Content-Type: application/json' \
+  --data "$(jq -nc --arg n "CricPulse CI Lifecycle ${RUN_KEY}" --arg a "$TEAM_A_ID" --arg b "$TEAM_B_ID" \
+    '{name:$n,teamAId:$a,teamBId:$b,format:"T20",totalOvers:20}')")"
+MATCH_ID="$(jq -r '.id' <<<"$MATCH")"
+test -n "$MATCH_ID" && test "$MATCH_ID" != null
+
+select_xi() {
+  local team_id="$1" player_id="$2"
+  curl -fsS -X POST "$BASE_URL/matches/$MATCH_ID/playing-xi" "${AUTH[@]}" \
+    -H 'Content-Type: application/json' \
+    --data "$(jq -nc --arg t "$team_id" --arg p "$player_id" \
+      '{teamId:$t,playerId:$p,captain:false,viceCaptain:false,wicketKeeper:false}')" >/dev/null
+done
+
+select_xi "$TEAM_A_ID" "$OWNER_PLAYER_ID"
+select_xi "$TEAM_A_ID" "$PLAYER_ID"
+select_xi "$TEAM_B_ID" "$OWNER_PLAYER_ID"
+select_xi "$TEAM_B_ID" "$PLAYER_ID"
+
 cat >> "$GITHUB_ENV" <<EOF
 E2E_EMAIL=$OWNER_EMAIL
 E2E_PASSWORD=$PASSWORD
@@ -67,6 +89,7 @@ E2E_TEAM_A_ID=$TEAM_A_ID
 E2E_TEAM_B_ID=$TEAM_B_ID
 E2E_OWNER_PLAYER_ID=$OWNER_PLAYER_ID
 E2E_PLAYER_ID=$PLAYER_ID
+E2E_MATCH_ID=$MATCH_ID
 EOF
 
-echo "Prepared disposable HTTP E2E teams, player profiles and XI managers."
+echo "Prepared disposable HTTP E2E teams, player profiles, match and Playing XI."
