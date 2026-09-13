@@ -91,6 +91,16 @@ jobs:
       - name: Run complete match lifecycle E2E
         env:
           BASE_URL: http://localhost:8080/api
+          EMAIL: ${{ env.E2E_EMAIL }}
+          PASSWORD: ${{ env.E2E_PASSWORD }}
+          TEAM_A_ID: ${{ env.E2E_TEAM_A_ID }}
+          TEAM_B_ID: ${{ env.E2E_TEAM_B_ID }}
+          A_STRIKER_ID: ${{ env.E2E_OWNER_PLAYER_ID }}
+          A_NON_STRIKER_ID: ${{ env.E2E_PLAYER_ID }}
+          B_BOWLER_ID: ${{ env.E2E_PLAYER_ID }}
+          B_STRIKER_ID: ${{ env.E2E_OWNER_PLAYER_ID }}
+          B_NON_STRIKER_ID: ${{ env.E2E_PLAYER_ID }}
+          A_BOWLER_ID: ${{ env.E2E_OWNER_PLAYER_ID }}
         run: bash scripts/e2e-real-scoring-match.sh
 
       - name: Upload API log on failure
