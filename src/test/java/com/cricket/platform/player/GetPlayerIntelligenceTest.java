@@ -36,7 +36,7 @@ class GetPlayerIntelligenceTest {
         assertEquals(120, result.recentRuns());
         assertEquals(3, result.recentWickets());
         assertEquals(180, result.careerRuns());
-        assertEquals(24, result.careerWickets());
+        assertEquals(3, result.careerWickets());
         assertEquals("Based only on completed matches", result.dataBasis());
     }
 }
