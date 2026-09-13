@@ -44,6 +44,7 @@ public class GetPlayerStatistics {
                            SUM(ib.sixes) AS sixes
                     FROM innings_batters ib
                     JOIN innings i ON i.id = ib.innings_id
+                    WHERE i.status='COMPLETED'
                     GROUP BY ib.player_id
                 ) b ON b.player_id = p.id
                 LEFT JOIN (
@@ -53,6 +54,8 @@ public class GetPlayerStatistics {
                            SUM(bow.wickets) AS wickets,
                            MAX(bow.wickets) AS best_wickets
                     FROM innings_bowlers bow
+                    JOIN innings i ON i.id = bow.innings_id
+                    WHERE i.status='COMPLETED'
                     GROUP BY bow.player_id
                 ) w ON w.player_id = p.id
                 WHERE b.player_id IS NOT NULL OR w.player_id IS NOT NULL
@@ -83,13 +86,19 @@ public class GetPlayerStatistics {
                            MAX(ib.runs) highest_score,
                            SUM(CASE WHEN ib.is_out THEN 1 ELSE 0 END) dismissals,
                            SUM(ib.balls_faced) balls, SUM(ib.fours) fours, SUM(ib.sixes) sixes
-                    FROM innings_batters ib JOIN innings i ON i.id=ib.innings_id
-                    WHERE ib.player_id=? GROUP BY ib.player_id
+                    FROM innings_batters ib
+                    JOIN innings i ON i.id=ib.innings_id
+                    WHERE ib.player_id=? AND i.status='COMPLETED'
+                    GROUP BY ib.player_id
                 ) b ON b.player_id=p.id
                 LEFT JOIN (
-                    SELECT player_id, SUM(legal_balls) overs_balls,
-                           SUM(runs_conceded) runs_conceded, SUM(wickets) wickets, MAX(wickets) best_wickets
-                    FROM innings_bowlers WHERE player_id=? GROUP BY player_id
+                    SELECT bow.player_id, SUM(bow.legal_balls) overs_balls,
+                           SUM(bow.runs_conceded) runs_conceded, SUM(bow.wickets) wickets,
+                           MAX(bow.wickets) best_wickets
+                    FROM innings_bowlers bow
+                    JOIN innings i ON i.id=bow.innings_id
+                    WHERE bow.player_id=? AND i.status='COMPLETED'
+                    GROUP BY bow.player_id
                 ) w ON w.player_id=p.id
                 WHERE p.id=?
                 """, (rs,row) -> fromRow(rs), playerId, playerId, playerId);
