@@ -224,13 +224,12 @@ if [[ "$RESULT_STATUS" != "COMPLETED" ]]; then
   echo "ERROR: match was not completed: status=$RESULT_STATUS" >&2
   exit 1
 fi
-if [[ "$RESULT_TYPE" != "WIN" && "$RESULT_TYPE" != "TIE" ]]; then
-  echo "ERROR: unexpected result type: $RESULT_TYPE" >&2
+if [[ "$RESULT_TYPE" != "WIN_BY_WICKETS" && "$RESULT_TYPE" != "WIN_BY_RUNS" && "$RESULT_TYPE" != "TIE" ]]; then
+  echo "ERROR: unexpected detailed result type: $RESULT_TYPE" >&2
   exit 1
 fi
-
-if [[ "$RESULT_TYPE" == "WIN" && "$WINNER" != "$TEAM_B_ID" ]]; then
-  echo "ERROR: expected Team B to win the one-run chase; winner=$WINNER" >&2
+if [[ "$RESULT_TYPE" != "WIN_BY_WICKETS" || "$WINNER" != "$TEAM_B_ID" ]]; then
+  echo "ERROR: expected Team B to win the one-run chase by wickets; type=$RESULT_TYPE winner=$WINNER" >&2
   exit 1
 fi
 
@@ -244,8 +243,8 @@ if [[ -n "$TOURNAMENT_ID" ]]; then
   POINTS="$(request GET "$BASE_URL/tournaments/$TOURNAMENT_ID/points-table")" \
     || fail_with_body "get tournament points table failed" GET "$BASE_URL/tournaments/$TOURNAMENT_ID/points-table"
 
-  TEAM_A_ROW="$(jq -c --arg team "$TEAM_A_ID" 'if type == "array" then any(.[]?; (.teamId? // .team_id? // empty) == $team) else false end' <<<"$POINTS")"
-  TEAM_B_ROW="$(jq -c --arg team "$TEAM_B_ID" 'if type == "array" then any(.[]?; (.teamId? // .team_id? // empty) == $team) else false end' <<<"$POINTS")"
+  TEAM_A_ROW="$(jq -r --arg team "$TEAM_A_ID" 'if type == "array" then any(.[]?; (.teamId? // .team_id? // empty) == $team) else false end' <<<"$POINTS")"
+  TEAM_B_ROW="$(jq -r --arg team "$TEAM_B_ID" 'if type == "array" then any(.[]?; (.teamId? // .team_id? // empty) == $team) else false end' <<<"$POINTS")"
   [[ "$TEAM_A_ROW" == "true" && "$TEAM_B_ROW" == "true" ]] || {
     echo "ERROR: both tournament teams were not present in points table" >&2
     echo "$POINTS" >&2
@@ -261,7 +260,7 @@ if [[ -n "$TOURNAMENT_ID" ]]; then
     echo "$POINTS" >&2
     exit 1
   fi
-  if [[ "$RESULT_TYPE" == "WIN" && ("$TEAM_A_POINTS" != "0" || "$TEAM_B_POINTS" != "2") ]]; then
+  if [[ "$TEAM_A_POINTS" != "0" || "$TEAM_B_POINTS" != "2" ]]; then
     echo "ERROR: tournament points were not updated for the completed result: A=$TEAM_A_POINTS, B=$TEAM_B_POINTS" >&2
     echo "$POINTS" >&2
     exit 1
@@ -276,7 +275,7 @@ echo "Match       : $MATCH_ID"
 echo "Innings 1   : $INNINGS1_ID (120 legal balls, completed)"
 echo "Innings 2   : $INNINGS2_ID (target reached, completed)"
 echo "Result type : $RESULT_TYPE"
-echo "Winner      : ${WINNER:-TIE}"
+echo "Winner      : $WINNER"
 echo "Verified    : completed-innings immutability, wrong batting team, result idempotency, post-completion guards"
 if [[ -n "$TOURNAMENT_ID" ]]; then
   echo "Tournament  : $TOURNAMENT_ID (points-table verified)"
