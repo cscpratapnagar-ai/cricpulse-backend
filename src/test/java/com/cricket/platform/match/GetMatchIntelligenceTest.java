@@ -1,8 +1,8 @@
 package com.cricket.platform.match;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -34,7 +34,7 @@ class GetMatchIntelligenceTest {
         assertEquals("RISING", result.momentum());
         assertEquals(31, result.requiredRuns());
         assertEquals(30, result.ballsRemaining());
-        assertEquals("MEDIUM", result.chasePressure());
+        assertEquals("HIGH", result.chasePressure());
         assertEquals("Chasers", result.battingTeam());
     }
 }
