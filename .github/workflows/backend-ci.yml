@@ -14,6 +14,7 @@ env:
   DATABASE_USERNAME: cricket_app
   DATABASE_PASSWORD: cricket_dev_password
   JWT_SECRET: ci-only-cricpulse-jwt-secret-change-me-2026
+  PORT: 8080
 
 jobs:
   build-and-test:
@@ -66,3 +67,53 @@ jobs:
 
       - name: Build application
         run: mvn -B package -DskipTests
+
+      - name: Start application
+        run: |
+          nohup java -jar target/*.jar > "$RUNNER_TEMP/cricpulse-api.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/cricpulse-api.pid"
+          for i in {1..60}; do
+            if curl -fsS http://localhost:8080/actuator/health >/dev/null; then
+              echo "CricPulse API is healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "CricPulse API did not become healthy" >&2
+          cat "$RUNNER_TEMP/cricpulse-api.log" >&2 || true
+          exit 1
+
+      - name: Seed disposable HTTP lifecycle fixtures
+        env:
+          E2E_PASSWORD: ${{ secrets.CRICPULSE_E2E_PASSWORD }}
+        run: bash scripts/ci-http-lifecycle-setup.sh
+
+      - name: Run complete match lifecycle E2E
+        env:
+          BASE_URL: http://localhost:8080/api
+          EMAIL: ${{ env.E2E_EMAIL }}
+          PASSWORD: ${{ env.E2E_PASSWORD }}
+          TEAM_A_ID: ${{ env.E2E_TEAM_A_ID }}
+          TEAM_B_ID: ${{ env.E2E_TEAM_B_ID }}
+          A_STRIKER_ID: ${{ env.E2E_OWNER_PLAYER_ID }}
+          A_NON_STRIKER_ID: ${{ env.E2E_PLAYER_ID }}
+          B_BOWLER_ID: ${{ env.E2E_PLAYER_ID }}
+          B_STRIKER_ID: ${{ env.E2E_OWNER_PLAYER_ID }}
+          B_NON_STRIKER_ID: ${{ env.E2E_PLAYER_ID }}
+          A_BOWLER_ID: ${{ env.E2E_PLAYER_ID }}
+        run: bash scripts/e2e-real-scoring-match.sh
+
+      - name: Upload API log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cricpulse-api-log
+          path: ${{ runner.temp }}/cricpulse-api.log
+          if-no-files-found: ignore
+
+      - name: Stop application
+        if: always()
+        run: |
+          if [[ -f "$RUNNER_TEMP/cricpulse-api.pid" ]]; then
+            kill "$(cat "$RUNNER_TEMP/cricpulse-api.pid")" 2>/dev/null || true
+          fi
