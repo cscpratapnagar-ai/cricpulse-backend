@@ -20,8 +20,8 @@ public final class CricketDeliveryRuleValidator {
         if (command.extraType() != null && !java.util.Set.of("WIDE", "NO_BALL", "BYE", "LEG_BYE", "PENALTY").contains(command.extraType())) {
             throw new IllegalArgumentException("Unsupported extra type: " + command.extraType());
         }
-        if (command.wicketType() != null && !WicketType.VALUES.contains(command.wicketType())) {
-            throw new IllegalArgumentException("Unsupported wicket type: " + command.wicketType());
+        if (command.wicketType() != null && !WicketType.DELIVERY_WICKETS.contains(command.wicketType())) {
+            throw new IllegalArgumentException("Unsupported delivery wicket type: " + command.wicketType());
         }
         if (command.extraRuns() > 0 && command.extraType() == null) {
             throw new IllegalArgumentException("Extra type is required when extra runs are recorded");
