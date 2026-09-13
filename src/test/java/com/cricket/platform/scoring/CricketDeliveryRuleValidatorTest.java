@@ -37,10 +37,11 @@ class CricketDeliveryRuleValidatorTest {
     @Test
     void acceptsNormalBatRunsZeroThroughSix() {
         for (int runs = 0; runs <= 6; runs++) {
+            final int currentRuns = runs;
             assertDoesNotThrow(() -> CricketDeliveryRuleValidator.validate(
-                    command(runs, 0, null, null, null)));
+                    command(currentRuns, 0, null, null, null)));
             assertTrue(CricketDeliveryRuleValidator.isLegalDelivery(
-                    command(runs, 0, null, null, null)));
+                    command(currentRuns, 0, null, null, null)));
         }
     }
 
