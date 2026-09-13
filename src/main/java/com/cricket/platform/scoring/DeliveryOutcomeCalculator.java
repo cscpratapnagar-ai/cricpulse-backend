@@ -9,11 +9,11 @@ public final class DeliveryOutcomeCalculator {
         boolean legal = !"WIDE".equals(extra) && !"NO_BALL".equals(extra);
 
         int bowlerRuns = switch (extra == null ? "" : extra) {
-            case "BYE", "LEG_BYE" -> 0;
+            case "BYE", "LEG_BYE", "PENALTY" -> 0;
             default -> totalRuns;
         };
 
-        boolean batterBall = legal && !"WIDE".equals(extra);
+        boolean batterBall = legal;
         boolean bowlerWicket = command.wicketType() != null
                 && WicketType.BOWLER_WICKETS.contains(command.wicketType());
 
