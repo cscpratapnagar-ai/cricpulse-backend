@@ -3,11 +3,12 @@ package com.cricket.platform.scoring;
 import java.util.Set;
 
 /**
- * Canonical wicket types supported by the CricPulse scoring engine.
+ * Canonical wicket/dismissal types known to CricPulse.
  *
- * Keep this list centralized so the HTTP scoring path and the event/rule
- * validation path cannot drift apart and reject a wicket type that the
- * scoring engine is intended to support.
+ * Timed-out and retired-hurt are match-state events, not ball-delivery
+ * dismissals. They stay in the canonical set for API/domain vocabulary, but
+ * the delivery engine must reject them until a dedicated lifecycle command is
+ * implemented.
  */
 public enum WicketType {
     BOWLED,
@@ -32,6 +33,17 @@ public enum WicketType {
             OBSTRUCTING_THE_FIELD.name(),
             TIMED_OUT.name(),
             RETIRED_HURT.name()
+    );
+
+    public static final Set<String> DELIVERY_WICKETS = Set.of(
+            BOWLED.name(),
+            CAUGHT.name(),
+            LBW.name(),
+            RUN_OUT.name(),
+            STUMPED.name(),
+            HIT_WICKET.name(),
+            HIT_BALL_TWICE.name(),
+            OBSTRUCTING_THE_FIELD.name()
     );
 
     public static final Set<String> BOWLER_WICKETS = Set.of(
