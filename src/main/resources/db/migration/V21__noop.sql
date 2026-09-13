@@ -1,1 +1,0 @@
--- Intentionally empty migration reserved for the next schema contract.
