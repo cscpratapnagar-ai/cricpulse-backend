@@ -48,7 +48,7 @@ class CricketDeliveryRuleValidatorTest {
     @Test
     void rejectsNegativeExtraRuns() {
         assertThrows(IllegalArgumentException.class,
-                () -> command(0, -1, null, null, null));
+                () -> CricketDeliveryRuleValidator.validate(command(0, -1, null, null, null)));
     }
 
     @Test
@@ -96,11 +96,21 @@ class CricketDeliveryRuleValidatorTest {
     }
 
     @Test
-    void validatesCanonicalWicketTypes() {
-        for (String wicketType : WicketType.VALUES) {
+    void validatesDeliveryWicketTypes() {
+        for (String wicketType : WicketType.DELIVERY_WICKETS) {
             assertDoesNotThrow(() -> CricketDeliveryRuleValidator.validate(
                     command(0, 0, null, wicketType, DISMISSED)));
         }
+    }
+
+    @Test
+    void rejectsLifecycleDismissalsFromDeliveryPath() {
+        assertThrows(IllegalArgumentException.class,
+                () -> CricketDeliveryRuleValidator.validate(
+                        command(0, 0, null, WicketType.TIMED_OUT.name(), DISMISSED)));
+        assertThrows(IllegalArgumentException.class,
+                () -> CricketDeliveryRuleValidator.validate(
+                        command(0, 0, null, WicketType.RETIRED_HURT.name(), DISMISSED)));
     }
 
     @Test
