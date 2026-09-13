@@ -3,6 +3,7 @@ package com.cricket.platform.scoring;
 import java.util.UUID;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -12,8 +13,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.cricket.platform.scoring.api.DeliveryRequest;
-import com.cricket.platform.scoring.api.LiveScoreResponse;
+import com.cricket.platform.match.MatchResultService;
 
 @RestController
 @RequestMapping("/api/scoring")
@@ -43,27 +43,25 @@ public class ScoringController {
 
     @PostMapping("/innings/{inningsId}/deliveries")
     @Transactional
-    public ResponseEntity<LiveScoreResponse> recordDelivery(
+    public ResponseEntity<GetLiveScore.Score> recordDelivery(
             @PathVariable UUID inningsId,
             @RequestHeader(value = "X-Command-Id", required = false) String commandIdHeader,
-            @RequestBody DeliveryRequest request) {
+            @RequestBody RecordDelivery.Request request,
+            Authentication authentication) {
         UUID commandId = parseCommandId(commandIdHeader);
-        ScoringAccess.InningsState state = scoringAccess.lockInnings(inningsId);
-        ScoringAccess.DeliveryPosition position = scoringAccess.nextDeliveryPosition(inningsId);
-        UUID strikerId = request.strikerId();
-        UUID nonStrikerId = request.nonStrikerId();
-        UUID bowlerId = request.bowlerId();
+        UUID matchId = scoringAccess.matchIdForInnings(inningsId);
+        scoringAccess.requireMatchManager(matchId, authentication);
 
-        if (commandId != null && scoringAccess.deliveryCommandExists(commandId)) {
-            return ResponseEntity.ok(getLiveScore.execute(inningsId));
+        if (!inningsId.equals(request.inningsId())) {
+            throw new IllegalArgumentException("Path inningsId must match the request inningsId");
         }
 
         DeliveryCommand command = new DeliveryCommand(
                 commandId,
-                inningsId,
-                strikerId,
-                nonStrikerId,
-                bowlerId,
+                request.inningsId(),
+                request.strikerId(),
+                request.nonStrikerId(),
+                request.bowlerId(),
                 request.batRuns(),
                 request.extraRuns(),
                 request.extraType(),
@@ -74,7 +72,10 @@ public class ScoringController {
         );
 
         EventFirstProjectionService.Result projection = eventFirstProjectionService.record(
-                command, position.overNumber(), position.ballNumber());
+                command,
+                request.overNumber(),
+                request.ballNumber());
+
         if (!projection.created()) {
             return ResponseEntity.ok(getLiveScore.execute(inningsId));
         }
@@ -84,28 +85,34 @@ public class ScoringController {
 
         String eventType = "DELIVERY_RECORDED";
         if (completion.completed()) {
-            if (state.inningsNumber() == 2) {
-                matchResultService.execute(scoringAccess.matchIdForInnings(inningsId));
+            if (event != null && isSecondInnings(inningsId)) {
+                matchResultService.execute(matchId);
                 eventType = "MATCH_RESULT";
             } else {
                 eventType = "INNINGS_COMPLETED";
             }
         }
 
-        liveScoreBroadcastPublisher.publishAfterCommit(new LiveScoreCommittedEvent(
-                event.inningsId(),
-                event.eventId(),
-                event.sequenceNo(),
-                event.eventVersion(),
-                eventType
-        ));
+        if (event != null) {
+            liveScoreBroadcastPublisher.publishAfterCommit(new LiveScoreCommittedEvent(
+                    event.inningsId(),
+                    event.eventId(),
+                    event.sequenceNo(),
+                    event.eventVersion(),
+                    eventType
+            ));
+        }
 
         return ResponseEntity.ok(getLiveScore.execute(inningsId));
     }
 
     @GetMapping("/innings/{inningsId}")
-    public ResponseEntity<LiveScoreResponse> getLiveScore(@PathVariable UUID inningsId) {
+    public ResponseEntity<GetLiveScore.Score> getLiveScore(@PathVariable UUID inningsId) {
         return ResponseEntity.ok(getLiveScore.execute(inningsId));
+    }
+
+    private boolean isSecondInnings(UUID inningsId) {
+        return getLiveScore.execute(inningsId).inningsNumber() == 2;
     }
 
     private UUID parseCommandId(String commandIdHeader) {
