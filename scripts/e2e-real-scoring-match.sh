@@ -167,8 +167,10 @@ for ((delivery=1; delivery<=120; delivery++)); do
   BALL_NUMBER=$(( ((delivery - 1) % 6) + 1 ))
 
   # Every legal ball is a real API command. After six legal balls the backend
-  # rotates strike automatically; alternate the two Team-B bowlers at the
-  # over boundary so the next-over bowler rule is also exercised.
+  # rotates strike automatically; alternate bowlers at the over boundary.
+  # B_STRIKER_ID is intentionally used as the second Team-B bowler in this
+  # disposable two-player-per-team fixture. A player can bat in one innings
+  # and bowl in the other role as long as the player belongs to the bowling XI.
   DELIVERY_BODY="$(jq -nc --arg innings "$INNINGS1_ID" \
     --arg striker "$CURRENT_STRIKER" --arg non "$CURRENT_NON" --arg bowler "$CURRENT_BOWLER" \
     --argjson over "$OVER_NUMBER" --argjson ball "$BALL_NUMBER" \
@@ -181,7 +183,7 @@ for ((delivery=1; delivery<=120; delivery++)); do
     CURRENT_STRIKER="$CURRENT_NON"
     CURRENT_NON="$tmp"
     if [[ "$CURRENT_BOWLER" == "$B_BOWLER_ID" ]]; then
-      CURRENT_BOWLER="${B_B_NON_BOWLER_ID:-$B_NON_STRIKER_ID}"
+      CURRENT_BOWLER="$B_STRIKER_ID"
     else
       CURRENT_BOWLER="$B_BOWLER_ID"
     fi
@@ -240,39 +242,56 @@ RESULT2="$(request GET "$BASE_URL/matches/$MATCH_ID/result")" || fail_with_body 
 RESULT1_CANONICAL="$(jq -S -c . <<<"$RESULT1")"
 RESULT2_CANONICAL="$(jq -S -c . <<<"$RESULT2")"
 if [[ "$RESULT1_CANONICAL" != "$RESULT2_CANONICAL" ]]; then
-  echo "ERROR: repeated result retrieval changed the persisted result" >&2
+  echo "ERROR: match result is not idempotent" >&2
   exit 1
 fi
-RESULT_STATUS="$(jq -r '.status // empty' <<<"$RESULT1")"
-RESULT_TYPE="$(jq -r '.resultType // .result_type // empty' <<<"$RESULT1")"
-WINNER="$(jq -r '.winningTeamId // .winning_team_id // empty' <<<"$RESULT1")"
+RESULT_STATUS="$(jq -r '.matchStatus // .status // empty' <<<"$RESULT1")"
+RESULT_TYPE="$(jq -r '.detailedResultType // .resultType // empty' <<<"$RESULT1")"
+WINNER_TEAM_ID="$(jq -r '.winnerTeamId // empty' <<<"$RESULT1")"
 if [[ "$RESULT_STATUS" != "COMPLETED" ]]; then
-  echo "ERROR: match was not completed: status=$RESULT_STATUS" >&2
+  echo "ERROR: match result status is not COMPLETED: $RESULT_STATUS" >&2
   exit 1
 fi
 if [[ "$RESULT_TYPE" != "WIN_BY_WICKETS" && "$RESULT_TYPE" != "WIN_BY_RUNS" && "$RESULT_TYPE" != "TIE" ]]; then
   echo "ERROR: unexpected result type: $RESULT_TYPE" >&2
   exit 1
 fi
-if [[ "$WINNER" != "$TEAM_B_ID" ]]; then
-  echo "ERROR: expected Team B to win the deterministic chase: winner=$WINNER" >&2
+if [[ "$WINNER_TEAM_ID" != "$TEAM_B_ID" ]]; then
+  echo "ERROR: expected Team B to win, winner=$WINNER_TEAM_ID" >&2
   exit 1
 fi
 
-echo "    result=$RESULT_TYPE winner=$WINNER"
-
-echo "[9/10] Verify final match state"
-FINAL_MATCH="$(request GET "$BASE_URL/matches/$MATCH_ID")" || fail_with_body "get final match failed" GET "$BASE_URL/matches/$MATCH_ID"
-FINAL_STATUS="$(jq -r '.status // empty' <<<"$FINAL_MATCH")"
+echo "[9/10] Verify final match status"
+MATCH_FINAL="$(request GET "$BASE_URL/matches/$MATCH_ID")" || fail_with_body "GET final match failed" GET "$BASE_URL/matches/$MATCH_ID"
+FINAL_STATUS="$(jq -r '.status // empty' <<<"$MATCH_FINAL")"
 if [[ "$FINAL_STATUS" != "COMPLETED" ]]; then
   echo "ERROR: final match status is not COMPLETED: $FINAL_STATUS" >&2
   exit 1
 fi
 
-echo "[10/10] Lifecycle regression complete"
-echo "PASS: match=$MATCH_ID"
-echo "PASS: innings1=$INNINGS1_ID -> 120 legal balls / completed"
-echo "PASS: innings2=$INNINGS2_ID -> target reached / completed"
-echo "PASS: post-completion scoring and normal innings 3 rejected"
-echo "PASS: result retrieval is idempotent"
-echo "PASS: final match status is COMPLETED"
+if [[ -n "$TOURNAMENT_ID" ]]; then
+  echo "[10/10] Verify tournament points table"
+  POINTS="$(request GET "$BASE_URL/tournaments/$TOURNAMENT_ID/points-table")" || fail_with_body "get tournament points table failed" GET "$BASE_URL/tournaments/$TOURNAMENT_ID/points-table"
+  TEAM_A_ROW="$(jq -c --arg team "$TEAM_A_ID" '.[] | select((.teamId // .team_id // .team?.id // "") == $team)' <<<"$POINTS" | head -n1)"
+  TEAM_B_ROW="$(jq -c --arg team "$TEAM_B_ID" '.[] | select((.teamId // .team_id // .team?.id // "") == $team)' <<<"$POINTS" | head -n1)"
+  [[ -n "$TEAM_A_ROW" && -n "$TEAM_B_ROW" ]] || { echo "ERROR: both teams missing from tournament points table" >&2; exit 1; }
+  TEAM_A_PLAYED="$(jq -r '.played // .matchesPlayed // 0' <<<"$TEAM_A_ROW")"
+  TEAM_B_PLAYED="$(jq -r '.played // .matchesPlayed // 0' <<<"$TEAM_B_ROW")"
+  TEAM_A_POINTS="$(jq -r '.points // 0' <<<"$TEAM_A_ROW")"
+  TEAM_B_POINTS="$(jq -r '.points // 0' <<<"$TEAM_B_ROW")"
+  if [[ "$TEAM_A_PLAYED" != "1" || "$TEAM_B_PLAYED" != "1" || "$TEAM_A_POINTS" != "0" || "$TEAM_B_POINTS" != "2" ]]; then
+    echo "ERROR: tournament points table mismatch: A played=$TEAM_A_PLAYED points=$TEAM_A_POINTS; B played=$TEAM_B_PLAYED points=$TEAM_B_POINTS" >&2
+    exit 1
+  fi
+  echo "    Team A: played=$TEAM_A_PLAYED points=$TEAM_A_POINTS"
+  echo "    Team B: played=$TEAM_B_PLAYED points=$TEAM_B_POINTS"
+else
+  echo "[10/10] Tournament verification skipped (TOURNAMENT_ID not supplied)"
+fi
+
+echo "PASS: complete two-innings scoring lifecycle"
+echo "    match=$MATCH_ID"
+echo "    innings1=$INNINGS1_ID status=$STATUS1 legalBalls=$BALLS1"
+echo "    innings2=$INNINGS2_ID status=$STATUS2"
+echo "    resultType=$RESULT_TYPE winnerTeamId=$WINNER_TEAM_ID"
+echo "    finalMatchStatus=$FINAL_STATUS"
