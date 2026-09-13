@@ -16,16 +16,21 @@ public class PlayerController {
     private final GetPlayerStatistics getPlayerStatistics;
     private final GetPlayerProfile getPlayerProfile;
     private final GetPlayerPerformanceHistory getPlayerPerformanceHistory;
+    private final GetPlayerIntelligence getPlayerIntelligence;
     private final JdbcTemplate jdbc;
     private final ComparePlayers comparePlayers;
 
     public PlayerController(CreatePlayer createPlayer, AddPlayerToTeam addPlayerToTeam,
-                            GetPlayerStatistics getPlayerStatistics, GetPlayerProfile getPlayerProfile, GetPlayerPerformanceHistory getPlayerPerformanceHistory, JdbcTemplate jdbc, ComparePlayers comparePlayers) {
+                            GetPlayerStatistics getPlayerStatistics, GetPlayerProfile getPlayerProfile,
+                            GetPlayerPerformanceHistory getPlayerPerformanceHistory,
+                            GetPlayerIntelligence getPlayerIntelligence, JdbcTemplate jdbc,
+                            ComparePlayers comparePlayers) {
         this.createPlayer = createPlayer;
         this.addPlayerToTeam = addPlayerToTeam;
         this.getPlayerStatistics = getPlayerStatistics;
         this.getPlayerProfile = getPlayerProfile;
         this.getPlayerPerformanceHistory = getPlayerPerformanceHistory;
+        this.getPlayerIntelligence = getPlayerIntelligence;
         this.jdbc = jdbc;
         this.comparePlayers = comparePlayers;
     }
@@ -50,6 +55,8 @@ public class PlayerController {
     List<GetPlayerPerformanceHistory.MatchPerformance> recentMatches(@PathVariable UUID playerId, @RequestParam(defaultValue = "10") int limit) { return getPlayerPerformanceHistory.recent(playerId, limit); }
     @GetMapping("/{playerId}/performance-trend")
     GetPlayerPerformanceHistory.PerformanceTrend performanceTrend(@PathVariable UUID playerId, @RequestParam(defaultValue = "10") int limit) { return getPlayerPerformanceHistory.trend(playerId, limit); }
+    @GetMapping("/{playerId}/intelligence")
+    GetPlayerIntelligence.Intelligence intelligence(@PathVariable UUID playerId, @RequestParam(defaultValue = "10") int matches) { return getPlayerIntelligence.get(playerId, matches); }
     @GetMapping("/{playerId}")
     GetPlayerProfile.Profile profile(@PathVariable UUID playerId) { return getPlayerProfile.get(playerId); }
     public record PlayerView(UUID id, UUID userId, String name, String battingStyle, String bowlingStyle, String role) {}
