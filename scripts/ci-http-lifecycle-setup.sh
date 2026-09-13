@@ -3,11 +3,13 @@ set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://localhost:8080/api}"
 RUN_KEY="${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}"
+RUN_DIGITS="${GITHUB_RUN_ID:-1234567}"
+RUN_DIGITS="${RUN_DIGITS: -7}"
 PASSWORD="${E2E_PASSWORD:-$(openssl rand -hex 16)A!}"
 OWNER_EMAIL="cricpulse-ci-owner-${RUN_KEY}@example.com"
 PLAYER_EMAIL="cricpulse-ci-player-${RUN_KEY}@example.com"
-OWNER_PHONE="900${GITHUB_RUN_ID:-1234567:0:7}"
-PLAYER_PHONE="901${GITHUB_RUN_ID:-1234567:0:7}"
+OWNER_PHONE="900${RUN_DIGITS}"
+PLAYER_PHONE="901${RUN_DIGITS}"
 
 curl_json() {
   curl -fsS -X "$1" "$2" -H 'Content-Type: application/json' ${3:+--data "$3"}
