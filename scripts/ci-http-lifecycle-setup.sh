@@ -16,7 +16,7 @@ curl_json() {
 }
 
 register() {
-  curl_json POST "$BASE_URL/auth/register" "$(jq -nc \
+  curl_json POST "$BASE_URL/users" "$(jq -nc \
     --arg n "$1" --arg e "$2" --arg p "$3" --arg pw "$PASSWORD" \
     '{fullName:$n,email:$e,phone:$p,password:$pw}')" >/dev/null
 }
