@@ -22,7 +22,9 @@ public class MatchResultService {
                 SELECT m.id, m.name, m.format, m.status,
                        m.team_a_id, ta.name AS team_a_name,
                        m.team_b_id, tb.name AS team_b_name,
-                       m.total_overs, m.winning_team_id, m.result_type, m.result_text,
+                       m.total_overs,
+                       COALESCE(m.winning_team_id, m.winner_team_id) AS winning_team_id,
+                       m.result_type, m.result_text,
                        m.toss_winner_team_id, m.toss_decision
                 FROM matches m
                 JOIN teams ta ON ta.id = m.team_a_id
