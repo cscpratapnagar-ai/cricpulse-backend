@@ -14,7 +14,8 @@ public class RecordDelivery {
     private static final Set<String> WICKETS = WicketType.VALUES;
     private static final Set<String> BOWLER_WICKETS = WicketType.BOWLER_WICKETS;
     private final JdbcTemplate jdbc;
-    public RecordDelivery(JdbcTemplate jdbc){this.jdbc=jdbc;}
+    private final DeliveryParticipantValidator participantValidator;
+    public RecordDelivery(JdbcTemplate jdbc, DeliveryParticipantValidator participantValidator){this.jdbc=jdbc;this.participantValidator=participantValidator;}
 
     @Transactional
     public DeliveryResponse execute(Request request){
@@ -25,6 +26,7 @@ public class RecordDelivery {
         UUID dismissed=request.wicketType()==null?null:(request.dismissedPlayerId()!=null?request.dismissedPlayerId():request.strikerId());
         Request r=new Request(request.inningsId(),request.overNumber(),request.ballNumber(),request.strikerId(),request.nonStrikerId(),request.bowlerId(),request.batRuns(),request.extraRuns(),request.extraType(),request.wicketType(),dismissed,request.newBatterId());
         validateState(r,s);
+        participantValidator.validate(r.inningsId(),r.strikerId(),r.nonStrikerId(),r.bowlerId(),r.newBatterId(),r.dismissedPlayerId(),r.wicketType());
         boolean legal=!"WIDE".equals(r.extraType())&&!"NO_BALL".equals(r.extraType());
         int total=r.batRuns()+r.extraRuns(), oldLegal=s.legalBalls(), newLegal=oldLegal+(legal?1:0), newWickets=s.wickets()+(r.wicketType()==null?0:1);
         int over=oldLegal/6, ball=(oldLegal%6)+1;
