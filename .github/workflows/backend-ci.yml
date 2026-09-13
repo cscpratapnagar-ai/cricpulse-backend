@@ -9,9 +9,30 @@ on:
 permissions:
   contents: read
 
+env:
+  DATABASE_URL: jdbc:postgresql://localhost:5432/cricket
+  DATABASE_USERNAME: cricket_app
+  DATABASE_PASSWORD: cricket_dev_password
+  JWT_SECRET: ci-only-cricpulse-jwt-secret-change-me-2026
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: cricket
+          POSTGRES_USER: cricket_app
+          POSTGRES_PASSWORD: cricket_dev_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U cricket_app -d cricket"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
 
     steps:
       - name: Checkout
@@ -28,6 +49,17 @@ jobs:
         run: |
           java -version
           mvn -version
+
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..30}; do
+            if pg_isready -h localhost -p 5432 -U cricket_app -d cricket; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "PostgreSQL did not become ready" >&2
+          exit 1
 
       - name: Run tests
         run: mvn -B test
