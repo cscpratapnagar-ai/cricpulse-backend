@@ -98,9 +98,9 @@ jobs:
           TEAM_B_ID: ${{ env.E2E_TEAM_B_ID }}
           A_STRIKER_ID: ${{ env.E2E_OWNER_PLAYER_ID }}
           A_NON_STRIKER_ID: ${{ env.E2E_PLAYER_ID }}
-          B_BOWLER_ID: ${{ env.E2E_PLAYER_ID }}
-          B_STRIKER_ID: ${{ env.E2E_OWNER_PLAYER_ID }}
-          B_NON_STRIKER_ID: ${{ env.E2E_PLAYER_ID }}
+          B_BOWLER_ID: ${{ env.E2E_B_PLAYER_ID }}
+          B_STRIKER_ID: ${{ env.E2E_B_OWNER_PLAYER_ID }}
+          B_NON_STRIKER_ID: ${{ env.E2E_B_PLAYER_ID }}
           A_BOWLER_ID: ${{ env.E2E_OWNER_PLAYER_ID }}
         run: bash scripts/e2e-real-scoring-match.sh
 
