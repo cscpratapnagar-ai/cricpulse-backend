@@ -89,9 +89,9 @@ public class GetMatchIntelligence {
         return "LOW";
     }
 
-    private record InningsData(UUID id,int inningsNumber,UUID battingTeamId,String battingTeam,int totalRuns,
-                               int wickets,int legalBalls,int totalOvers,Integer targetRuns,String status) {}
-    private record RecentData(int runs,int deliveries,int dots,int fours,int sixes,int wickets) {}
+    record InningsData(UUID id,int inningsNumber,UUID battingTeamId,String battingTeam,int totalRuns,
+                       int wickets,int legalBalls,int totalOvers,Integer targetRuns,String status) {}
+    record RecentData(int runs,int deliveries,int dots,int fours,int sixes,int wickets) {}
 
     public record MatchIntelligence(UUID matchId,int inningsNumber,String battingTeam,String status,
                                     int runs,int wickets,int legalBalls,int totalOvers,Integer targetRuns,
