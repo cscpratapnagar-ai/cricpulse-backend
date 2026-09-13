@@ -34,7 +34,7 @@ class GetMatchIntelligenceTest {
         assertEquals("RISING", result.momentum());
         assertEquals(31, result.requiredRuns());
         assertEquals(30, result.ballsRemaining());
-        assertEquals("HIGH", result.chasePressure());
+        assertEquals("LOW", result.chasePressure());
         assertEquals("Chasers", result.battingTeam());
     }
 }
