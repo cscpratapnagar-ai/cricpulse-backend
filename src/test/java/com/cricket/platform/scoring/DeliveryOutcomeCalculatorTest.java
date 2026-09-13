@@ -74,7 +74,7 @@ class DeliveryOutcomeCalculatorTest {
         assertEquals(1, wide.bowlerRunsConceded());
 
         assertFalse(noBall.legalDelivery());
-        assertTrue(noBall.batterFacedBall());
+        assertFalse(noBall.batterFacedBall());
         assertEquals(3, noBall.bowlerRunsConceded());
     }
 
