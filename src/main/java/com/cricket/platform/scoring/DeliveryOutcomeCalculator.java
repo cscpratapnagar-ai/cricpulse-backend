@@ -16,6 +16,7 @@ public final class DeliveryOutcomeCalculator {
         boolean batterBall = legal;
         boolean bowlerWicket = command.wicketType() != null
                 && WicketType.BOWLER_WICKETS.contains(command.wicketType());
+        boolean oddRunChangesStrike = !"PENALTY".equals(extra) && totalRuns % 2 != 0;
 
         return new Outcome(
                 totalRuns,
@@ -24,7 +25,7 @@ public final class DeliveryOutcomeCalculator {
                 bowlerRuns,
                 legal,
                 batterBall,
-                totalRuns % 2 != 0,
+                oddRunChangesStrike,
                 bowlerWicket,
                 legal
         );
