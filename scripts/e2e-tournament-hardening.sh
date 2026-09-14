@@ -63,7 +63,7 @@ echo "[3/7] Generate fixtures once"
 generate1="$(curl -fsS -X POST "$BASE_URL/tournaments/$TOURNAMENT_ID/fixtures/generate" -H "Authorization: Bearer $TOKEN" -H 'Accept: application/json')"
 generated1="$(jq -r '.generated // -1' <<<"$generate1")"
 skipped1="$(jq -r '.skipped // -1' <<<"$generate1")"
-total1="$(jq -r '.total // -1' <<<"$generate1")"
+total1="$(jq -r '.total // .totalPairs // -1' <<<"$generate1")"
 [[ "$generated1" =~ ^[0-9]+$ && "$skipped1" =~ ^[0-9]+$ && "$total1" =~ ^[0-9]+$ ]] || { echo "ERROR: first generation response missing counters: $generate1" >&2; exit 1; }
 fixture_count_after_first="$(jq 'length' <<<"$(curl -fsS "$BASE_URL/tournaments/$TOURNAMENT_ID/fixtures" -H "Authorization: Bearer $TOKEN")")"
 expected_total=$((team_count * (team_count - 1) / 2))
@@ -83,7 +83,7 @@ echo "[4/7] Generate fixtures a second time and require idempotency"
 generate2="$(curl -fsS -X POST "$BASE_URL/tournaments/$TOURNAMENT_ID/fixtures/generate" -H "Authorization: Bearer $TOKEN" -H 'Accept: application/json')"
 generated2="$(jq -r '.generated // -1' <<<"$generate2")"
 skipped2="$(jq -r '.skipped // -1' <<<"$generate2")"
-total2="$(jq -r '.total // -1' <<<"$generate2")"
+total2="$(jq -r '.total // .totalPairs // -1' <<<"$generate2")"
 fixture_count_after_second="$(jq 'length' <<<"$(curl -fsS "$BASE_URL/tournaments/$TOURNAMENT_ID/fixtures" -H "Authorization: Bearer $TOKEN")")"
 [[ "$generated2" == "0" ]] || { echo "ERROR: second generation created $generated2 new fixtures" >&2; exit 1; }
 [[ "$skipped2" -eq "$expected_total" ]] || { echo "ERROR: second generation skipped $skipped2 pairs; expected $expected_total" >&2; exit 1; }
