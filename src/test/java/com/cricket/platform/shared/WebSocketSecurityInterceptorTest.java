@@ -4,6 +4,7 @@ import com.cricket.platform.identity.JwtService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.messaging.Message;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
@@ -29,8 +30,7 @@ class WebSocketSecurityInterceptorTest {
         interceptor = new WebSocketSecurityInterceptor(jwt, jdbc);
     }
 
-    private static org.springframework.messaging.Message<byte[]> message(StompHeaderAccessor accessor) {
-        accessor.setLeaveMutable(true);
+    private static Message<byte[]> message(StompHeaderAccessor accessor) {
         return MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
     }
 
@@ -52,9 +52,10 @@ class WebSocketSecurityInterceptorTest {
         String token = jwt.create("user@example.com", "PLAYER");
         StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.CONNECT);
         accessor.addNativeHeader("Authorization", "Bearer " + token);
-        interceptor.preSend(message(accessor), null);
-        assertNotNull(accessor.getUser());
-        assertEquals("user@example.com", accessor.getUser().getName());
+        Message<?> result = interceptor.preSend(message(accessor), null);
+        assertNotNull(result);
+        assertNotNull(StompHeaderAccessor.wrap(result).getUser());
+        assertEquals("user@example.com", StompHeaderAccessor.wrap(result).getUser().getName());
     }
 
     @Test
