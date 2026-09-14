@@ -21,8 +21,8 @@ class GetTournamentAnalyticsTest {
         UUID teamB = UUID.randomUUID();
         UUID matchId = UUID.randomUUID();
 
-        when(jdbc.query(contains("FROM tournaments"), any(RowMapper.class), eq(tournamentId)))
-                .thenReturn(List.of(new GetTournamentAnalytics.TournamentRow(tournamentId, "Premier League", "T20", 20, "ACTIVE")));
+        when(jdbc.queryForObject(contains("FROM tournaments"), any(RowMapper.class), eq(tournamentId)))
+                .thenReturn(new GetTournamentAnalytics.TournamentRow(tournamentId, "Premier League", "T20", 20, "ACTIVE"));
         when(jdbc.query(contains("FROM tournament_matches tm"), any(RowMapper.class), eq(tournamentId)))
                 .thenReturn(List.of(new GetTournamentAnalytics.FixtureRow(
                         matchId, 1, "LEAGUE", "COMPLETED", teamA, "Falcons", teamB, "Tigers")));
