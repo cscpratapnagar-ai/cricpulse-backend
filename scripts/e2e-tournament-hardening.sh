@@ -1,14 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Tournament fixture-generation and scheduling regression.
-# Uses an existing DRAFT tournament owned by the supplied user. Fixture
-# generation is intentionally exercised twice to prove idempotency; all other
-# unsafe lifecycle/scheduling requests are rejected without mutation.
-#
-# Required:
-#   BASE_URL=http://localhost:8080/api
-#   EMAIL=... PASSWORD=... TOURNAMENT_ID=...
+# Tournament fixture-generation regression.
+# Uses an existing DRAFT tournament owned by the supplied user. The first
+# generation call must create the complete graph; the second must be idempotent.
+# Unsafe lifecycle/scheduling requests are rejected without mutation.
 
 BASE_URL="${BASE_URL:-http://localhost:8080/api}"
 EMAIL="${EMAIL:-}"
@@ -60,6 +56,7 @@ team_count="$(jq 'length' <<<"$teams")"
 fixtures_before="$(curl -fsS "$BASE_URL/tournaments/$TOURNAMENT_ID/fixtures" -H "Authorization: Bearer $TOKEN")"
 fixture_count_before="$(jq 'length' <<<"$fixtures_before")"
 (( team_count >= 2 )) || { echo "ERROR: tournament needs at least 2 registered teams" >&2; exit 1; }
+[[ "$fixture_count_before" -eq 0 ]] || { echo "ERROR: fixture generation regression requires an empty fixture set, got $fixture_count_before" >&2; exit 1; }
 echo "    teams=$team_count fixtures_before=$fixture_count_before"
 
 echo "[3/7] Generate fixtures once"
@@ -67,10 +64,19 @@ generate1="$(curl -fsS -X POST "$BASE_URL/tournaments/$TOURNAMENT_ID/fixtures/ge
 generated1="$(jq -r '.generated // -1' <<<"$generate1")"
 skipped1="$(jq -r '.skipped // -1' <<<"$generate1")"
 total1="$(jq -r '.total // -1' <<<"$generate1")"
-[[ "$generated1" =~ ^[0-9]+$ && "$skipped1" =~ ^[0-9]+$ && "$total1" =~ ^[0-9]+$ ]] || { echo "ERROR: first generation response missing counters" >&2; exit 1; }
+[[ "$generated1" =~ ^[0-9]+$ && "$skipped1" =~ ^[0-9]+$ && "$total1" =~ ^[0-9]+$ ]] || { echo "ERROR: first generation response missing counters: $generate1" >&2; exit 1; }
 fixture_count_after_first="$(jq 'length' <<<"$(curl -fsS "$BASE_URL/tournaments/$TOURNAMENT_ID/fixtures" -H "Authorization: Bearer $TOKEN")")"
 expected_total=$((team_count * (team_count - 1) / 2))
+[[ "$generated1" -eq "$expected_total" ]] || { echo "ERROR: expected $expected_total generated fixtures, got $generated1" >&2; exit 1; }
+[[ "$skipped1" -eq 0 ]] || { echo "ERROR: first generation skipped $skipped1 pairs" >&2; exit 1; }
+[[ "$total1" -eq "$expected_total" ]] || { echo "ERROR: first generation total $total1; expected $expected_total" >&2; exit 1; }
 [[ "$fixture_count_after_first" -eq "$expected_total" ]] || { echo "ERROR: expected $expected_total unique fixtures after first generation, got $fixture_count_after_first" >&2; exit 1; }
+FIXTURE_ID="$(jq -r '.fixtures[0].matchId // empty' <<<"$generate1")"
+FIXTURE_B_ID="$(jq -r '.fixtures[1].matchId // empty' <<<"$generate1")"
+[[ -n "$FIXTURE_ID" && -n "$FIXTURE_B_ID" ]] || { echo "ERROR: generated response did not include fixture identifiers" >&2; exit 1; }
+if [[ -n "${GITHUB_ENV:-}" ]]; then
+  printf 'E2E_FIXTURE_A_ID=%s\nE2E_FIXTURE_B_ID=%s\n' "$FIXTURE_ID" "$FIXTURE_B_ID" >> "$GITHUB_ENV"
+fi
 echo "    generated=$generated1 skipped=$skipped1 total=$total1 fixtures=$fixture_count_after_first"
 
 echo "[4/7] Generate fixtures a second time and require idempotency"
@@ -86,9 +92,8 @@ fixture_count_after_second="$(jq 'length' <<<"$(curl -fsS "$BASE_URL/tournaments
 echo "    generated=$generated2 skipped=$skipped2 total=$total2 fixtures=$fixture_count_after_second"
 
 echo "[5/7] Reject unsupported fixture stage"
-FIXTURE_ID="$(jq -r '.[0].matchId // empty' <<<"$(curl -fsS "$BASE_URL/tournaments/$TOURNAMENT_ID/fixtures" -H "Authorization: Bearer $TOKEN")")"
 TEAM_ID="$(jq -r '.[0].id // empty' <<<"$teams")"
-[[ -n "$FIXTURE_ID" && -n "$TEAM_ID" ]] || { echo "ERROR: fixture/team identifiers missing" >&2; exit 1; }
+[[ -n "$TEAM_ID" ]] || { echo "ERROR: team identifier missing" >&2; exit 1; }
 expect_status 400 POST "$BASE_URL/tournaments/$TOURNAMENT_ID/matches/$FIXTURE_ID?stage=INVALID_STAGE"
 
 echo "[6/7] Reject duplicate team registration and past scheduling"
