@@ -23,7 +23,6 @@ register() {
   curl_json POST "$BASE_URL/users" "$(jq -nc --arg n "$1" --arg e "$2" --arg p "$3" --arg pw "$PASSWORD" '{fullName:$n,email:$e,phone:$p,password:$pw}')" >/dev/null
 }
 
-# Each match participant must belong to exactly one side of the fixture.
 register 'CricPulse CI Owner A' "$OWNER_A_EMAIL" "$OWNER_A_PHONE"
 register 'CricPulse CI Player A' "$PLAYER_A_EMAIL" "$PLAYER_A_PHONE"
 register 'CricPulse CI Owner B' "$OWNER_B_EMAIL" "$OWNER_B_PHONE"
@@ -72,14 +71,12 @@ test -n "$MATCH_ID" && test "$MATCH_ID" != null
 
 echo "Created fixture match=$MATCH_ID teamA=$TEAM_A_ID teamB=$TEAM_B_ID"
 
-# Create a disposable tournament around the same fixture so CI proves the
-# tournament lifecycle as well as the underlying scoring lifecycle.
 TOURNAMENT="$(curl -fsS -X POST "$BASE_URL/tournaments" "${AUTH_A[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg n "CricPulse CI Tournament ${RUN_KEY}" '{name:$n,format:"T20",overs:20,location:"CI",startDate:(now|strftime("%Y-%m-%d"))}')")"
 TOURNAMENT_ID="$(jq -r '.id' <<<"$TOURNAMENT")"
 test -n "$TOURNAMENT_ID" && test "$TOURNAMENT_ID" != null
 
 curl -fsS -X POST "$BASE_URL/tournaments/$TOURNAMENT_ID/teams/$TEAM_A_ID" "${AUTH_A[@]}" >/dev/null
-curl -fsS -X POST "$BASE_URL/tournaments/$TOURNAMENT_ID/teams/$TEAM_B_ID" "${AUTH_A[@]}" >/dev/null
+curl -fsS -X POST "$BASE_URL/tournaments/$TOURNAMENT_ID/teams/$TEAM_B_ID" "${AUTH_B[@]}" >/dev/null
 curl -fsS -X POST "$BASE_URL/tournaments/$TOURNAMENT_ID/matches/$MATCH_ID?stage=LEAGUE" "${AUTH_A[@]}" >/dev/null
 curl -fsS -X PATCH "$BASE_URL/tournaments/$TOURNAMENT_ID/status" "${AUTH_A[@]}" -H 'Content-Type: application/json' --data '{"status":"ACTIVE"}' >/dev/null
 
