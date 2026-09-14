@@ -5,6 +5,7 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -37,7 +38,7 @@ public class GetMatchAnalytics {
     }
 
     private InningsAnalytics analytics(InningsRow innings) {
-        List<OverAnalytics> overs = jdbc.query("""
+        List<RawOver> raw = jdbc.query("""
                 SELECT over_number,
                        COALESCE(SUM(bat_runs + extra_runs),0) runs,
                        COALESCE(SUM(CASE WHEN legal_delivery THEN 1 ELSE 0 END),0) legal_balls,
@@ -50,10 +51,23 @@ public class GetMatchAnalytics {
                 WHERE innings_id=?
                 GROUP BY over_number
                 ORDER BY over_number
-                """, (rs,row) -> new OverAnalytics(
+                """, (rs,row) -> new RawOver(
                 rs.getInt("over_number"), rs.getInt("runs"), rs.getInt("legal_balls"),
                 rs.getInt("wickets"), rs.getInt("wides"), rs.getInt("no_balls"),
                 rs.getInt("fours"), rs.getInt("sixes")), innings.id());
+
+        List<OverAnalytics> overs = new ArrayList<>(raw.size());
+        int cumulativeRuns = 0;
+        int cumulativeWickets = 0;
+        int cumulativeLegalBalls = 0;
+        for (RawOver over : raw) {
+            cumulativeRuns += over.runs();
+            cumulativeWickets += over.wickets();
+            cumulativeLegalBalls += over.legalBalls();
+            overs.add(new OverAnalytics(over.overNumber(), over.runs(), over.legalBalls(), over.wickets(),
+                    over.wides(), over.noBalls(), over.fours(), over.sixes(), cumulativeRuns,
+                    cumulativeWickets, cumulativeLegalBalls, rate(cumulativeRuns, cumulativeLegalBalls)));
+        }
 
         int powerplayEnd = Math.max(1, (int) Math.ceil(innings.totalOvers() * 0.2));
         int deathStart = Math.max(powerplayEnd + 1, (int) Math.floor(innings.totalOvers() * 0.8) + 1);
@@ -87,8 +101,12 @@ public class GetMatchAnalytics {
     record InningsRow(UUID id, int inningsNumber, String battingTeam, int totalRuns, int wickets,
                       int legalBalls, int totalOvers, Integer targetRuns) {}
 
+    record RawOver(int overNumber, int runs, int legalBalls, int wickets, int wides,
+                   int noBalls, int fours, int sixes) {}
+
     public record OverAnalytics(int overNumber, int runs, int legalBalls, int wickets, int wides,
-                                int noBalls, int fours, int sixes) {}
+                                int noBalls, int fours, int sixes, int cumulativeRuns,
+                                int cumulativeWickets, int cumulativeLegalBalls, BigDecimal cumulativeRunRate) {}
 
     public record PhaseTotals(int runs, int wickets, int legalBalls, int fours, int sixes,
                               BigDecimal runRate) {}
