@@ -61,8 +61,8 @@ public class GetTournamentAnalytics {
         int live = (int) fixtures.stream().filter(f -> "LIVE".equalsIgnoreCase(f.status())).count();
         BigDecimal completion = percentage(completedCount, total);
 
-        List<PlayerLeader> runs = playerLeaders(tournamentId, "runs", 5);
-        List<PlayerLeader> wickets = playerLeaders(tournamentId, "wickets", 5);
+        List<PlayerLeader> runs = playerLeaders(tournamentId, true, 5);
+        List<PlayerLeader> wickets = playerLeaders(tournamentId, false, 5);
         return new TournamentAnalytics(tournamentId, tournament.name(), tournament.format(), tournament.overs(),
                 tournament.status(), total, completedCount, scheduled, live, completion,
                 teamAnalytics, runs, wickets, fixtureProgress(fixtures));
@@ -80,7 +80,7 @@ public class GetTournamentAnalytics {
                 FROM matches m
                 LEFT JOIN innings i1 ON i1.match_id=m.id AND i1.innings_number=1
                 LEFT JOIN innings i2 ON i2.match_id=m.id AND i2.innings_number=2
-                WHERE m.id IN (""" + placeholders + ") ORDER BY m.id", (rs, row) -> new CompletedMatch(
+                WHERE m.id IN (""" + placeholders + ")", (rs, row) -> new CompletedMatch(
                 rs.getObject("match_id", UUID.class), rs.getObject("team_a_id", UUID.class), rs.getObject("team_b_id", UUID.class),
                 rs.getObject("i1_team", UUID.class), rs.getInt("i1_runs"), rs.getInt("i1_balls"),
                 rs.getObject("i2_team", UUID.class), rs.getInt("i2_runs"), rs.getInt("i2_balls")), ids.toArray());
@@ -108,23 +108,33 @@ public class GetTournamentAnalytics {
                 runsFor, runsAgainst, nrr(runsFor, runsAgainst, ballsFor, ballsAgainst), form);
     }
 
-    private List<PlayerLeader> playerLeaders(UUID tournamentId, String metric, int limit) {
-        String order = "runs".equals(metric) ? "SUM(d.bat_runs) DESC, SUM(d.balls_faced) DESC, p.name" :
-                "SUM(CASE WHEN d.wicket_type IS NOT NULL THEN 1 ELSE 0 END) DESC, SUM(d.runs_conceded) ASC, p.name";
-        String sql = """
-                SELECT p.id player_id, p.name player_name,
-                       SUM(d.bat_runs) runs,
-                       SUM(CASE WHEN d.legal_delivery AND d.extra_type NOT IN ('WIDE','NO_BALL') THEN 1 ELSE 0 END) balls_faced,
-                       SUM(CASE WHEN d.wicket_type IS NOT NULL THEN 1 ELSE 0 END) wickets,
-                       SUM(CASE WHEN d.extra_type IN ('WIDE','NO_BALL') THEN d.extra_runs ELSE d.bat_runs + d.extra_runs END) runs_conceded
+    private List<PlayerLeader> playerLeaders(UUID tournamentId, boolean runs, int limit) {
+        String sql = runs ? """
+                SELECT p.id player_id, p.name player_name, COALESCE(SUM(d.bat_runs),0) runs,
+                       0 wickets
                 FROM tournament_matches tm
                 JOIN matches m ON m.id=tm.match_id AND m.status='COMPLETED'
                 JOIN innings i ON i.match_id=m.id
                 JOIN delivery_events d ON d.innings_id=i.id
-                JOIN players p ON p.id=d.striker_id OR p.id=d.bowler_id
+                JOIN players p ON p.id=d.striker_id
                 WHERE tm.tournament_id=?
                 GROUP BY p.id,p.name
-                ORDER BY """ + order + " LIMIT ?";
+                ORDER BY SUM(d.bat_runs) DESC, p.name
+                LIMIT ?
+                """ : """
+                SELECT p.id player_id, p.name player_name, 0 runs,
+                       COUNT(*) FILTER (WHERE d.wicket_type IS NOT NULL) wickets
+                FROM tournament_matches tm
+                JOIN matches m ON m.id=tm.match_id AND m.status='COMPLETED'
+                JOIN innings i ON i.match_id=m.id
+                JOIN delivery_events d ON d.innings_id=i.id
+                JOIN players p ON p.id=d.bowler_id
+                WHERE tm.tournament_id=?
+                GROUP BY p.id,p.name
+                HAVING COUNT(*) FILTER (WHERE d.wicket_type IS NOT NULL) > 0
+                ORDER BY COUNT(*) FILTER (WHERE d.wicket_type IS NOT NULL) DESC, p.name
+                LIMIT ?
+                """;
         return jdbc.query(sql, (rs, row) -> new PlayerLeader(
                 rs.getObject("player_id", UUID.class), rs.getString("player_name"),
                 rs.getInt("runs"), rs.getInt("wickets")), tournamentId, limit);
