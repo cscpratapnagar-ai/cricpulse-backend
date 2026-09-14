@@ -42,12 +42,12 @@ TEAM_A="$(curl -fsS -X POST "$BASE_URL/teams" "${AUTH_A[@]}" -H 'Content-Type: a
 TEAM_B="$(curl -fsS -X POST "$BASE_URL/teams" "${AUTH_B[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg n "CricPulse CI B ${RUN_KEY}" '{name:$n,city:"CI"}')")"; TEAM_B_ID="$(jq -r '.id' <<<"$TEAM_B")"
 test -n "$TEAM_A_ID" && test -n "$TEAM_B_ID"
 
-# Ownership grants management authority, but every player selected into a
-# Playing XI must also be an explicit member of that team's roster.
-curl -fsS -X POST "$BASE_URL/teams/$TEAM_A_ID/members" "${AUTH_A[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg p "$OWNER_A_PLAYER_ID" '{playerId:$p,role:"PLAYER"}')" >/dev/null
+# Team creation already establishes the authenticated owner as team management
+# member. Only the additional player needs an explicit roster membership.
 curl -fsS -X POST "$BASE_URL/teams/$TEAM_A_ID/members" "${AUTH_A[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg p "$PLAYER_A_ID" '{playerId:$p,role:"PLAYER"}')" >/dev/null
-curl -fsS -X POST "$BASE_URL/teams/$TEAM_B_ID/members" "${AUTH_B[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg p "$OWNER_B_PLAYER_ID" '{playerId:$p,role:"PLAYER"}')" >/dev/null
 curl -fsS -X POST "$BASE_URL/teams/$TEAM_B_ID/members" "${AUTH_B[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg p "$PLAYER_B_ID" '{playerId:$p,role:"PLAYER"}')" >/dev/null
+
+echo "Created teams and populated disposable rosters"
 
 MATCH="$(curl -fsS -X POST "$BASE_URL/matches" "${AUTH_A[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg n "CricPulse CI Lifecycle ${RUN_KEY}" --arg a "$TEAM_A_ID" --arg b "$TEAM_B_ID" '{name:$n,teamAId:$a,teamBId:$b,format:"T20",totalOvers:20}')")"; MATCH_ID="$(jq -r '.id' <<<"$MATCH")"
 test -n "$MATCH_ID" && test "$MATCH_ID" != null
