@@ -42,17 +42,12 @@ TEAM_A="$(curl -fsS -X POST "$BASE_URL/teams" "${AUTH_A[@]}" -H 'Content-Type: a
 TEAM_B="$(curl -fsS -X POST "$BASE_URL/teams" "${AUTH_B[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg n "CricPulse CI B ${RUN_KEY}" '{name:$n,city:"CI"}')")"; TEAM_B_ID="$(jq -r '.id' <<<"$TEAM_B")"
 test -n "$TEAM_A_ID" && test -n "$TEAM_B_ID"
 
-# Ownership grants management authority, but a player still needs explicit
-# roster membership before SelectPlayingXi accepts that player.
-for spec in \
-  "$TEAM_A_ID:$OWNER_A_PLAYER_ID:${AUTH_A[*]}" \
-  "$TEAM_A_ID:$PLAYER_A_ID:${AUTH_A[*]}" \
-  "$TEAM_B_ID:$OWNER_B_PLAYER_ID:${AUTH_B[*]}" \
-  "$TEAM_B_ID:$PLAYER_B_ID:${AUTH_B[*]}"; do
-  team_id="${spec%%:*}"; rest="${spec#*:}"; player_id="${rest%%:*}"; auth_text="${rest#*:}"
-  read -r -a auth_args <<< "$auth_text"
-  curl -fsS -X POST "$BASE_URL/teams/$team_id/members" "${auth_args[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg p "$player_id" '{playerId:$p,role:"PLAYER"}')" >/dev/null
-done
+# Ownership grants management authority, but every player selected into a
+# Playing XI must also be an explicit member of that team's roster.
+curl -fsS -X POST "$BASE_URL/teams/$TEAM_A_ID/members" "${AUTH_A[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg p "$OWNER_A_PLAYER_ID" '{playerId:$p,role:"PLAYER"}')" >/dev/null
+curl -fsS -X POST "$BASE_URL/teams/$TEAM_A_ID/members" "${AUTH_A[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg p "$PLAYER_A_ID" '{playerId:$p,role:"PLAYER"}')" >/dev/null
+curl -fsS -X POST "$BASE_URL/teams/$TEAM_B_ID/members" "${AUTH_B[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg p "$OWNER_B_PLAYER_ID" '{playerId:$p,role:"PLAYER"}')" >/dev/null
+curl -fsS -X POST "$BASE_URL/teams/$TEAM_B_ID/members" "${AUTH_B[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg p "$PLAYER_B_ID" '{playerId:$p,role:"PLAYER"}')" >/dev/null
 
 MATCH="$(curl -fsS -X POST "$BASE_URL/matches" "${AUTH_A[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg n "CricPulse CI Lifecycle ${RUN_KEY}" --arg a "$TEAM_A_ID" --arg b "$TEAM_B_ID" '{name:$n,teamAId:$a,teamBId:$b,format:"T20",totalOvers:20}')")"; MATCH_ID="$(jq -r '.id' <<<"$MATCH")"
 test -n "$MATCH_ID" && test "$MATCH_ID" != null
