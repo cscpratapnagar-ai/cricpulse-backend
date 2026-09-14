@@ -1,0 +1,44 @@
+package com.cricket.platform.match;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
+
+import java.util.List;
+import java.util.UUID;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+class GetMatchAnalyticsTest {
+    @Test
+    void aggregatesOversAndPhasesFromAuthoritativeDeliveryEvents() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        UUID matchId = UUID.randomUUID();
+        UUID inningsId = UUID.randomUUID();
+
+        when(jdbc.query(anyString(), any(RowMapper.class), eq(matchId)))
+                .thenReturn(List.of(new GetMatchAnalytics.InningsRow(
+                        inningsId, 1, "Falcons", 18, 1, 12, 20, null)));
+        when(jdbc.query(anyString(), any(RowMapper.class), eq(inningsId)))
+                .thenReturn(List.of(
+                        new GetMatchAnalytics.OverAnalytics(1, 8, 6, 0, 0, 0, 2, 0),
+                        new GetMatchAnalytics.OverAnalytics(2, 10, 6, 1, 1, 0, 0, 1)));
+
+        GetMatchAnalytics.MatchAnalytics result = new GetMatchAnalytics(jdbc).get(matchId);
+        GetMatchAnalytics.InningsAnalytics innings = result.innings().getFirst();
+
+        assertEquals(2, innings.overs().size());
+        assertEquals(18, innings.overs().stream().mapToInt(GetMatchAnalytics.OverAnalytics::runs).sum());
+        assertEquals(9.00, innings.runRate().doubleValue(), 0.001);
+        assertEquals(18, innings.powerplay().totals().runs());
+        assertEquals(1, innings.powerplay().totals().wickets());
+        assertEquals(9.00, innings.powerplay().totals().runRate().doubleValue(), 0.001);
+        assertEquals(0, innings.middle().totals().runs());
+        assertEquals(0, innings.death().totals().runs());
+    }
+}
