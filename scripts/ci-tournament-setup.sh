@@ -35,19 +35,10 @@ for team_id in "$TEAM_A_ID" "$TEAM_B_ID" "$TEAM_C_ID"; do
   curl -fsS -X POST "$BASE_URL/tournaments/$TOURNAMENT_ID/teams/$team_id" "${AUTH[@]}" >/dev/null
 done
 
-generate="$(curl -fsS -X POST "$BASE_URL/tournaments/$TOURNAMENT_ID/fixtures/generate" "${AUTH[@]}" -H 'Accept: application/json')"
-fixture_count="$(jq '.fixtures | length' <<<"$generate")"
-FIXTURE_A_ID="$(jq -r '.fixtures[0].matchId // empty' <<<"$generate")"
-FIXTURE_B_ID="$(jq -r '.fixtures[1].matchId // empty' <<<"$generate")"
-[[ "$fixture_count" -eq 3 && -n "$FIXTURE_A_ID" && -n "$FIXTURE_B_ID" ]] || {
-  echo "ERROR: expected 3 generated fixtures, got $fixture_count" >&2
-  exit 1
-}
+echo "Tournament fixture setup complete: tournament=$TOURNAMENT_ID teams=$TEAM_A_ID,$TEAM_B_ID,$TEAM_C_ID"
 
-echo "Tournament fixture setup complete: tournament=$TOURNAMENT_ID fixtures=$FIXTURE_A_ID,$FIXTURE_B_ID"
+echo "Fixture generation is intentionally left to the hardening E2E so its first generation call can verify creation counters."
 
 cat >> "$GITHUB_ENV" <<EOF
 E2E_TOURNAMENT_ID=$TOURNAMENT_ID
-E2E_FIXTURE_A_ID=$FIXTURE_A_ID
-E2E_FIXTURE_B_ID=$FIXTURE_B_ID
 EOF
