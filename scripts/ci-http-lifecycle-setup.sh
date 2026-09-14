@@ -24,9 +24,6 @@ register() {
 }
 
 # Each match participant must belong to exactly one side of the fixture.
-# The production match_players key is (match_id, player_id), so reusing one
-# player in both teams would move that player between teams and make the first
-# team's Playing XI invalid.
 register 'CricPulse CI Owner A' "$OWNER_A_EMAIL" "$OWNER_A_PHONE"
 register 'CricPulse CI Player A' "$PLAYER_A_EMAIL" "$PLAYER_A_PHONE"
 register 'CricPulse CI Owner B' "$OWNER_B_EMAIL" "$OWNER_B_PHONE"
@@ -62,9 +59,8 @@ test -n "$PLAYER_B_ID" && test "$PLAYER_B_ID" != null
 
 TEAM_A="$(curl -fsS -X POST "$BASE_URL/teams" "${AUTH_A[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg n "CricPulse CI A ${RUN_KEY}" '{name:$n,city:"CI"}')")"
 TEAM_A_ID="$(jq -r '.id' <<<"$TEAM_A")"
-
-auto_team_b="$(curl -fsS -X POST "$BASE_URL/teams" "${AUTH_B[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg n "CricPulse CI B ${RUN_KEY}" '{name:$n,city:"CI"}')")"
-TEAM_B_ID="$(jq -r '.id' <<<"$auto_team_b")"
+TEAM_B="$(curl -fsS -X POST "$BASE_URL/teams" "${AUTH_B[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg n "CricPulse CI B ${RUN_KEY}" '{name:$n,city:"CI"}')")"
+TEAM_B_ID="$(jq -r '.id' <<<"$TEAM_B")"
 test -n "$TEAM_A_ID" && test -n "$TEAM_B_ID"
 
 curl -fsS -X POST "$BASE_URL/teams/$TEAM_A_ID/members" "${AUTH_A[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg p "$PLAYER_A_ID" '{playerId:$p,role:"PLAYER"}')" >/dev/null
@@ -75,6 +71,19 @@ MATCH_ID="$(jq -r '.id' <<<"$MATCH")"
 test -n "$MATCH_ID" && test "$MATCH_ID" != null
 
 echo "Created fixture match=$MATCH_ID teamA=$TEAM_A_ID teamB=$TEAM_B_ID"
+
+# Create a disposable tournament around the same fixture so CI proves the
+# tournament lifecycle as well as the underlying scoring lifecycle.
+TOURNAMENT="$(curl -fsS -X POST "$BASE_URL/tournaments" "${AUTH_A[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg n "CricPulse CI Tournament ${RUN_KEY}" '{name:$n,format:"T20",overs:20,location:"CI",startDate:(now|strftime("%Y-%m-%d"))}')")"
+TOURNAMENT_ID="$(jq -r '.id' <<<"$TOURNAMENT")"
+test -n "$TOURNAMENT_ID" && test "$TOURNAMENT_ID" != null
+
+curl -fsS -X POST "$BASE_URL/tournaments/$TOURNAMENT_ID/teams/$TEAM_A_ID" "${AUTH_A[@]}" >/dev/null
+curl -fsS -X POST "$BASE_URL/tournaments/$TOURNAMENT_ID/teams/$TEAM_B_ID" "${AUTH_A[@]}" >/dev/null
+curl -fsS -X POST "$BASE_URL/tournaments/$TOURNAMENT_ID/matches/$MATCH_ID?stage=LEAGUE" "${AUTH_A[@]}" >/dev/null
+curl -fsS -X PATCH "$BASE_URL/tournaments/$TOURNAMENT_ID/status" "${AUTH_A[@]}" -H 'Content-Type: application/json' --data '{"status":"ACTIVE"}' >/dev/null
+
+echo "Created tournament=$TOURNAMENT_ID, linked match=$MATCH_ID and activated it"
 
 select_xi() {
   local auth_name="$1" team_id="$2" player_id="$3"
@@ -99,7 +108,5 @@ E2E_PLAYER_ID=$PLAYER_A_ID
 E2E_B_OWNER_PLAYER_ID=$OWNER_B_PLAYER_ID
 E2E_B_PLAYER_ID=$PLAYER_B_ID
 E2E_MATCH_ID=$MATCH_ID
+E2E_TOURNAMENT_ID=$TOURNAMENT_ID
 EOF
-
-# The scoring workflow needs the Team B identities too; expose them under
-# dedicated variables so the lifecycle script never reuses Team A players.
