@@ -2,9 +2,9 @@
 set -euo pipefail
 
 # Tournament fixture-generation and scheduling regression.
-# Uses an existing DRAFT tournament owned by the supplied user. The script
-# intentionally performs no successful mutation; it verifies the current
-# fixture set and rejects unsafe lifecycle/scheduling requests.
+# Uses an existing DRAFT tournament owned by the supplied user. Fixture
+# generation is intentionally exercised twice to prove idempotency; all other
+# unsafe lifecycle/scheduling requests are rejected without mutation.
 #
 # Required:
 #   BASE_URL=http://localhost:8080/api
@@ -48,40 +48,60 @@ expect_status() {
   echo "    HTTP $status as expected"
 }
 
-echo "[1/6] Verify tournament ownership and current state"
+echo "[1/7] Verify tournament ownership and current state"
 tournament="$(curl -fsS "$BASE_URL/tournaments/$TOURNAMENT_ID" -H "Authorization: Bearer $TOKEN")"
 status="$(jq -r '.status // empty' <<<"$tournament")"
-[[ -n "$status" ]] || { echo "ERROR: tournament response has no status" >&2; exit 1; }
+[[ "$status" == "DRAFT" ]] || { echo "ERROR: fixture generation regression requires DRAFT status, got $status" >&2; exit 1; }
 echo "    status=$status"
 
-echo "[2/6] Verify registered teams and fixtures"
+echo "[2/7] Verify registered teams and current fixtures"
 teams="$(curl -fsS "$BASE_URL/tournaments/$TOURNAMENT_ID/teams" -H "Authorization: Bearer $TOKEN")"
 team_count="$(jq 'length' <<<"$teams")"
-fixtures="$(curl -fsS "$BASE_URL/tournaments/$TOURNAMENT_ID/fixtures" -H "Authorization: Bearer $TOKEN")"
-fixture_count="$(jq 'length' <<<"$fixtures")"
-(( team_count >= 1 )) || { echo "ERROR: tournament has no registered teams" >&2; exit 1; }
-(( fixture_count >= 1 )) || { echo "ERROR: tournament has no fixtures" >&2; exit 1; }
-FIXTURE_ID="$(jq -r '.[0].matchId // empty' <<<"$fixtures")"
+fixtures_before="$(curl -fsS "$BASE_URL/tournaments/$TOURNAMENT_ID/fixtures" -H "Authorization: Bearer $TOKEN")"
+fixture_count_before="$(jq 'length' <<<"$fixtures_before")"
+(( team_count >= 2 )) || { echo "ERROR: tournament needs at least 2 registered teams" >&2; exit 1; }
+echo "    teams=$team_count fixtures_before=$fixture_count_before"
+
+echo "[3/7] Generate fixtures once"
+generate1="$(curl -fsS -X POST "$BASE_URL/tournaments/$TOURNAMENT_ID/fixtures/generate" -H "Authorization: Bearer $TOKEN" -H 'Accept: application/json')"
+generated1="$(jq -r '.generated // -1' <<<"$generate1")"
+skipped1="$(jq -r '.skipped // -1' <<<"$generate1")"
+total1="$(jq -r '.total // -1' <<<"$generate1")"
+[[ "$generated1" =~ ^[0-9]+$ && "$skipped1" =~ ^[0-9]+$ && "$total1" =~ ^[0-9]+$ ]] || { echo "ERROR: first generation response missing counters" >&2; exit 1; }
+fixture_count_after_first="$(jq 'length' <<<"$(curl -fsS "$BASE_URL/tournaments/$TOURNAMENT_ID/fixtures" -H "Authorization: Bearer $TOKEN")")"
+expected_total=$((team_count * (team_count - 1) / 2))
+[[ "$fixture_count_after_first" -eq "$expected_total" ]] || { echo "ERROR: expected $expected_total unique fixtures after first generation, got $fixture_count_after_first" >&2; exit 1; }
+echo "    generated=$generated1 skipped=$skipped1 total=$total1 fixtures=$fixture_count_after_first"
+
+echo "[4/7] Generate fixtures a second time and require idempotency"
+generate2="$(curl -fsS -X POST "$BASE_URL/tournaments/$TOURNAMENT_ID/fixtures/generate" -H "Authorization: Bearer $TOKEN" -H 'Accept: application/json')"
+generated2="$(jq -r '.generated // -1' <<<"$generate2")"
+skipped2="$(jq -r '.skipped // -1' <<<"$generate2")"
+total2="$(jq -r '.total // -1' <<<"$generate2")"
+fixture_count_after_second="$(jq 'length' <<<"$(curl -fsS "$BASE_URL/tournaments/$TOURNAMENT_ID/fixtures" -H "Authorization: Bearer $TOKEN")")"
+[[ "$generated2" == "0" ]] || { echo "ERROR: second generation created $generated2 new fixtures" >&2; exit 1; }
+[[ "$skipped2" -eq "$expected_total" ]] || { echo "ERROR: second generation skipped $skipped2 pairs; expected $expected_total" >&2; exit 1; }
+[[ "$total2" -eq "$expected_total" ]] || { echo "ERROR: second generation total $total2; expected $expected_total" >&2; exit 1; }
+[[ "$fixture_count_after_second" -eq "$fixture_count_after_first" ]] || { echo "ERROR: fixture count changed from $fixture_count_after_first to $fixture_count_after_second" >&2; exit 1; }
+echo "    generated=$generated2 skipped=$skipped2 total=$total2 fixtures=$fixture_count_after_second"
+
+echo "[5/7] Reject unsupported fixture stage"
+FIXTURE_ID="$(jq -r '.[0].matchId // empty' <<<"$(curl -fsS "$BASE_URL/tournaments/$TOURNAMENT_ID/fixtures" -H "Authorization: Bearer $TOKEN")")"
 TEAM_ID="$(jq -r '.[0].id // empty' <<<"$teams")"
 [[ -n "$FIXTURE_ID" && -n "$TEAM_ID" ]] || { echo "ERROR: fixture/team identifiers missing" >&2; exit 1; }
-echo "    teams=$team_count fixtures=$fixture_count"
-
-echo "[3/6] Reject unsupported fixture stage"
 expect_status 400 POST "$BASE_URL/tournaments/$TOURNAMENT_ID/matches/$FIXTURE_ID?stage=INVALID_STAGE"
 
-echo "[4/6] Reject duplicate team registration"
+echo "[6/7] Reject duplicate team registration and past scheduling"
 expect_status 409 POST "$BASE_URL/tournaments/$TOURNAMENT_ID/teams/$TEAM_ID"
-
-echo "[5/6] Reject scheduling a fixture in the past"
 PAST_TIME="$(date -u -d '10 minutes ago' '+%Y-%m-%dT%H:%M:%SZ')"
 expect_status 400 POST "$BASE_URL/tournaments/$TOURNAMENT_ID/fixtures/$FIXTURE_ID/schedule" "$(jq -cn --arg t "$PAST_TIME" '{scheduledAt:$t}')"
 
-echo "[6/6] Verify points table remains readable"
+echo "[7/7] Verify points table remains readable"
 points="$(curl -fsS "$BASE_URL/tournaments/$TOURNAMENT_ID/points-table" -H "Authorization: Bearer $TOKEN")"
 point_rows="$(jq 'length' <<<"$points")"
 (( point_rows >= 1 )) || { echo "ERROR: points table returned no teams" >&2; exit 1; }
 echo "    point_rows=$point_rows"
 
 echo
-echo "=== TOURNAMENT FIXTURE HARDENING E2E PASSED ==="
-echo "No successful mutation was performed by this regression script."
+echo "=== TOURNAMENT FIXTURE IDEMPOTENCY E2E PASSED ==="
+echo "Fixture generation is idempotent for all registered unordered team pairs."
