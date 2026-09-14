@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Tournament API hardening regression test.
-# Uses an existing tournament owned by the supplied user and intentionally
-# exercises only negative/idempotency paths; it must not alter tournament
-# state when the API behaves correctly.
+# Tournament fixture-generation and scheduling regression.
+# Uses an existing DRAFT tournament owned by the supplied user. The script
+# intentionally performs no successful mutation; it verifies the current
+# fixture set and rejects unsafe lifecycle/scheduling requests.
 #
 # Required:
 #   BASE_URL=http://localhost:8080/api
@@ -48,36 +48,40 @@ expect_status() {
   echo "    HTTP $status as expected"
 }
 
-echo "[1/5] Verify tournament ownership and state"
+echo "[1/6] Verify tournament ownership and current state"
 tournament="$(curl -fsS "$BASE_URL/tournaments/$TOURNAMENT_ID" -H "Authorization: Bearer $TOKEN")"
 status="$(jq -r '.status // empty' <<<"$tournament")"
 [[ -n "$status" ]] || { echo "ERROR: tournament response has no status" >&2; exit 1; }
 echo "    status=$status"
 
-echo "[2/5] Verify registered teams and fixtures"
+echo "[2/6] Verify registered teams and fixtures"
 teams="$(curl -fsS "$BASE_URL/tournaments/$TOURNAMENT_ID/teams" -H "Authorization: Bearer $TOKEN")"
 team_count="$(jq 'length' <<<"$teams")"
-(( team_count >= 1 )) || { echo "ERROR: tournament has no registered teams" >&2; exit 1; }
 fixtures="$(curl -fsS "$BASE_URL/tournaments/$TOURNAMENT_ID/fixtures" -H "Authorization: Bearer $TOKEN")"
 fixture_count="$(jq 'length' <<<"$fixtures")"
+(( team_count >= 1 )) || { echo "ERROR: tournament has no registered teams" >&2; exit 1; }
 (( fixture_count >= 1 )) || { echo "ERROR: tournament has no fixtures" >&2; exit 1; }
 FIXTURE_ID="$(jq -r '.[0].matchId // empty' <<<"$fixtures")"
-TEAM_ID="$(jq -r '.[0].teamId // empty' <<<"$teams")"
+TEAM_ID="$(jq -r '.[0].id // empty' <<<"$teams")"
 [[ -n "$FIXTURE_ID" && -n "$TEAM_ID" ]] || { echo "ERROR: fixture/team identifiers missing" >&2; exit 1; }
 echo "    teams=$team_count fixtures=$fixture_count"
 
-echo "[3/5] Reject unsupported fixture stage"
+echo "[3/6] Reject unsupported fixture stage"
 expect_status 400 POST "$BASE_URL/tournaments/$TOURNAMENT_ID/matches/$FIXTURE_ID?stage=INVALID_STAGE"
 
-echo "[4/5] Reject duplicate team registration"
+echo "[4/6] Reject duplicate team registration"
 expect_status 409 POST "$BASE_URL/tournaments/$TOURNAMENT_ID/teams/$TEAM_ID"
 
-echo "[5/5] Verify points table remains readable"
+echo "[5/6] Reject scheduling a fixture in the past"
+PAST_TIME="$(date -u -d '10 minutes ago' '+%Y-%m-%dT%H:%M:%SZ')"
+expect_status 400 POST "$BASE_URL/tournaments/$TOURNAMENT_ID/fixtures/$FIXTURE_ID/schedule" "$(jq -cn --arg t "$PAST_TIME" '{scheduledAt:$t}')"
+
+echo "[6/6] Verify points table remains readable"
 points="$(curl -fsS "$BASE_URL/tournaments/$TOURNAMENT_ID/points-table" -H "Authorization: Bearer $TOKEN")"
 point_rows="$(jq 'length' <<<"$points")"
 (( point_rows >= 1 )) || { echo "ERROR: points table returned no teams" >&2; exit 1; }
 echo "    point_rows=$point_rows"
 
 echo
-echo "=== TOURNAMENT HARDENING E2E PASSED ==="
+echo "=== TOURNAMENT FIXTURE HARDENING E2E PASSED ==="
 echo "No successful mutation was performed by this regression script."
