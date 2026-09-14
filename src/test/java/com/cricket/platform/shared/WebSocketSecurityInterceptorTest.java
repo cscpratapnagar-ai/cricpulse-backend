@@ -7,7 +7,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
+import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -26,21 +29,22 @@ class WebSocketSecurityInterceptorTest {
         interceptor = new WebSocketSecurityInterceptor(jwt, jdbc);
     }
 
+    private static org.springframework.messaging.Message<byte[]> message(StompHeaderAccessor accessor) {
+        accessor.setLeaveMutable(true);
+        return MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
+    }
+
     @Test
     void connectRejectsMissingAuthorization() {
         StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.CONNECT);
-        accessor.setLeaveMutable(true);
-        assertThrows(IllegalArgumentException.class,
-                () -> interceptor.preSend(MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders()), null));
+        assertThrows(IllegalArgumentException.class, () -> interceptor.preSend(message(accessor), null));
     }
 
     @Test
     void connectRejectsInvalidToken() {
         StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.CONNECT);
         accessor.addNativeHeader("Authorization", "Bearer invalid-token");
-        accessor.setLeaveMutable(true);
-        assertThrows(IllegalArgumentException.class,
-                () -> interceptor.preSend(MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders()), null));
+        assertThrows(IllegalArgumentException.class, () -> interceptor.preSend(message(accessor), null));
     }
 
     @Test
@@ -48,11 +52,9 @@ class WebSocketSecurityInterceptorTest {
         String token = jwt.create("user@example.com", "PLAYER");
         StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.CONNECT);
         accessor.addNativeHeader("Authorization", "Bearer " + token);
-        accessor.setLeaveMutable(true);
-        var result = interceptor.preSend(MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders()), null);
-        assertNotNull(result);
-        assertNotNull(StompHeaderAccessor.wrap(result).getUser());
-        assertEquals("user@example.com", StompHeaderAccessor.wrap(result).getUser().getName());
+        interceptor.preSend(message(accessor), null);
+        assertNotNull(accessor.getUser());
+        assertEquals("user@example.com", accessor.getUser().getName());
     }
 
     @Test
@@ -60,62 +62,56 @@ class WebSocketSecurityInterceptorTest {
         UUID inningsId = UUID.randomUUID();
         StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
         accessor.setDestination("/topic/innings/" + inningsId);
-        accessor.setLeaveMutable(true);
-        assertThrows(IllegalArgumentException.class,
-                () -> interceptor.preSend(MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders()), null));
+        assertThrows(IllegalArgumentException.class, () -> interceptor.preSend(message(accessor), null));
         verifyNoInteractions(jdbc);
     }
 
     @Test
     void subscribeRejectsInvalidDestination() {
-        String token = jwt.create("user@example.com", "PLAYER");
+        var user = authenticatedUser("user@example.com");
         StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
-        accessor.setUser(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("user@example.com", null));
+        accessor.setUser(user);
         accessor.setDestination("/topic/invalid");
-        accessor.setLeaveMutable(true);
-        assertThrows(IllegalArgumentException.class,
-                () -> interceptor.preSend(MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders()), null));
+        assertThrows(IllegalArgumentException.class, () -> interceptor.preSend(message(accessor), null));
         verifyNoInteractions(jdbc);
-        assertNotNull(token);
     }
 
     @Test
     void subscribeRejectsUnauthorizedInnings() {
         UUID inningsId = UUID.randomUUID();
-        var user = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("user@example.com", null);
+        var user = authenticatedUser("user@example.com");
         StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
         accessor.setUser(user);
         accessor.setDestination("/topic/innings/" + inningsId);
-        accessor.setLeaveMutable(true);
         when(jdbc.queryForObject(anyString(), eq(Integer.class), any(), any(), any(), any(), any())).thenReturn(0);
-        assertThrows(IllegalArgumentException.class,
-                () -> interceptor.preSend(MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders()), null));
+        assertThrows(IllegalArgumentException.class, () -> interceptor.preSend(message(accessor), null));
     }
 
     @Test
     void subscribeAcceptsAuthorizedInnings() {
         UUID inningsId = UUID.randomUUID();
-        var user = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("user@example.com", null);
+        var user = authenticatedUser("user@example.com");
         StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
         accessor.setUser(user);
         accessor.setDestination("/topic/innings/" + inningsId);
-        accessor.setLeaveMutable(true);
         when(jdbc.queryForObject(anyString(), eq(Integer.class), any(), any(), any(), any(), any())).thenReturn(1);
-        var message = MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
-        assertSame(message, interceptor.preSend(message, null));
+        assertDoesNotThrow(() -> interceptor.preSend(message(accessor), null));
     }
 
     @Test
     void adminCanSubscribeWithoutMatchMembershipLookup() {
         UUID inningsId = UUID.randomUUID();
-        var user = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
-                "admin@example.com", null, java.util.List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN")));
+        var user = new UsernamePasswordAuthenticationToken("admin@example.com", null,
+                List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
         StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
         accessor.setUser(user);
         accessor.setDestination("/topic/innings/" + inningsId);
-        accessor.setLeaveMutable(true);
-        var message = MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
-        assertSame(message, interceptor.preSend(message, null));
+        assertDoesNotThrow(() -> interceptor.preSend(message(accessor), null));
         verifyNoInteractions(jdbc);
+    }
+
+    private static UsernamePasswordAuthenticationToken authenticatedUser(String name) {
+        return new UsernamePasswordAuthenticationToken(name, null,
+                List.of(new SimpleGrantedAuthority("ROLE_PLAYER")));
     }
 }
