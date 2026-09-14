@@ -3,11 +3,6 @@ set -euo pipefail
 
 # Tournament scheduling regression. The test deliberately mutates two
 # disposable fixtures and restores their original scheduled times on exit.
-#
-# Required:
-#   BASE_URL=http://localhost:8080/api
-#   EMAIL=... PASSWORD=... TOURNAMENT_ID=...
-#   FIXTURE_A_ID=... FIXTURE_B_ID=...
 
 BASE_URL="${BASE_URL:-http://localhost:8080/api}"
 EMAIL="${EMAIL:-}"
@@ -29,9 +24,6 @@ login_response="$(curl -fsS -X POST "$BASE_URL/auth/login" -H 'Content-Type: app
 TOKEN="$(jq -r '.token // .accessToken // .data.token // empty' <<<"$login_response")"
 [[ -n "$TOKEN" ]] || { echo "ERROR: login response did not contain a JWT" >&2; exit 1; }
 
-TMP_DIR="$(mktemp -d)"
-trap 'rm -rf "$TMP_DIR"' EXIT
-
 fixture_json() {
   curl -fsS "$BASE_URL/tournaments/$TOURNAMENT_ID/fixtures" -H "Authorization: Bearer $TOKEN" |
     jq -c --arg id "$1" '.[] | select(.matchId == $id)'
@@ -44,14 +36,14 @@ schedule() {
 }
 
 expect_status() {
-  local expected="$1" fixture="$2" timestamp="$3" output="$TMP_DIR/response.json" status
-  status="$(curl -sS -o "$output" -w '%{http_code}' -X POST \
+  local expected="$1" fixture="$2" timestamp="$3" status
+  status="$(curl -sS -o /tmp/cricpulse-schedule-response.json -w '%{http_code}' -X POST \
     "$BASE_URL/tournaments/$TOURNAMENT_ID/fixtures/$fixture/schedule" \
     -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
     --data "$(jq -cn --arg t "$timestamp" '{scheduledAt:$t}')")"
   if [[ "$status" != "$expected" ]]; then
     echo "ERROR: expected HTTP $expected, got $status" >&2
-    cat "$output" >&2
+    cat /tmp/cricpulse-schedule-response.json >&2
     exit 1
   fi
   echo "    HTTP $status as expected"
@@ -81,27 +73,39 @@ TIME_B="$(date -u -d "@$((BASE_EPOCH + 10800))" '+%Y-%m-%dT%H:%M:%SZ')"
 TIME_C="$(date -u -d "@$((BASE_EPOCH + 14400))" '+%Y-%m-%dT%H:%M:%SZ')"
 PAST="$(date -u -d "@$((BASE_EPOCH - 600))" '+%Y-%m-%dT%H:%M:%SZ')"
 
+# Compare instants rather than raw strings because PostgreSQL TIMESTAMPTZ
+# may serialize the same instant with a different offset/fractional precision.
+assert_scheduled() {
+  local fixture="$1" expected="$2" actual expected_epoch actual_epoch
+  actual="$(jq -r '.scheduledAt // empty' <<<"$(fixture_json "$fixture")")"
+  [[ -n "$actual" ]] || { echo "ERROR: fixture $fixture has no scheduledAt" >&2; exit 1; }
+  expected_epoch="$(date -u -d "$expected" '+%s')"
+  actual_epoch="$(date -u -d "$actual" '+%s')"
+  [[ "$actual_epoch" == "$expected_epoch" ]] || {
+    echo "ERROR: fixture $fixture was not scheduled at requested time" >&2
+    echo "    requested=$expected actual=$actual" >&2
+    exit 1
+  }
+}
+
 echo "[1/5] Reject a past scheduling time"
 expect_status 400 "$FIXTURE_A_ID" "$PAST"
 
 echo "[2/5] Schedule fixture A at a future time"
 schedule "$FIXTURE_A_ID" "$TIME_A" >/dev/null
-
-ECHO_FIXTURE_A="$(fixture_json "$FIXTURE_A_ID")"
-[[ "$(jq -r '.scheduledAt' <<<"$ECHO_FIXTURE_A")" == "$TIME_A" ]] || { echo "ERROR: fixture A was not scheduled at requested time" >&2; exit 1; }
+assert_scheduled "$FIXTURE_A_ID" "$TIME_A"
 
 echo "[3/5] Reject exact-time conflict for fixture B"
 expect_status 409 "$FIXTURE_B_ID" "$TIME_A"
 
-
 echo "[4/5] Allow fixture B at a different future time and allow fixture A rescheduling"
 schedule "$FIXTURE_B_ID" "$TIME_B" >/dev/null
 schedule "$FIXTURE_A_ID" "$TIME_C" >/dev/null
-[[ "$(jq -r '.scheduledAt' <<<"$(fixture_json "$FIXTURE_B_ID")")" == "$TIME_B" ]] || { echo "ERROR: fixture B reschedule failed" >&2; exit 1; }
-[[ "$(jq -r '.scheduledAt' <<<"$(fixture_json "$FIXTURE_A_ID")")" == "$TIME_C" ]] || { echo "ERROR: fixture A reschedule failed" >&2; exit 1; }
+assert_scheduled "$FIXTURE_B_ID" "$TIME_B"
+assert_scheduled "$FIXTURE_A_ID" "$TIME_C"
 
 echo "[5/5] Verify tournament remains accessible"
-curl -fsS "$BASE_URL/tournaments/$TOURNAMENT_ID" -H "Authorization: Bearer $TOKEN" | jq -e '.id == "'"$TOURNAMENT_ID"'"' >/dev/null
+curl -fsS "$BASE_URL/tournaments/$TOURNAMENT_ID" -H "Authorization: Bearer $TOKEN" | jq -e --arg id "$TOURNAMENT_ID" '.id == $id' >/dev/null
 
 echo
 echo "=== TOURNAMENT SCHEDULING HARDENING E2E PASSED ==="
