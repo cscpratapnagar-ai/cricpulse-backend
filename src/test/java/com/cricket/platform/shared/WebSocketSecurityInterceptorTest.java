@@ -78,6 +78,23 @@ class WebSocketSecurityInterceptorTest {
     }
 
     @Test
+    void publicSubscriptionDoesNotRequireAuthenticationOrMembershipLookup() {
+        UUID inningsId = UUID.randomUUID();
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
+        accessor.setDestination("/topic/public/innings/" + inningsId);
+        assertDoesNotThrow(() -> interceptor.preSend(message(accessor), null));
+        verifyNoInteractions(jdbc);
+    }
+
+    @Test
+    void publicSubscriptionRejectsMalformedInningsId() {
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
+        accessor.setDestination("/topic/public/innings/not-a-uuid");
+        assertThrows(IllegalArgumentException.class, () -> interceptor.preSend(message(accessor), null));
+        verifyNoInteractions(jdbc);
+    }
+
+    @Test
     void subscribeRejectsUnauthorizedInnings() {
         UUID inningsId = UUID.randomUUID();
         var user = authenticatedUser("user@example.com");
