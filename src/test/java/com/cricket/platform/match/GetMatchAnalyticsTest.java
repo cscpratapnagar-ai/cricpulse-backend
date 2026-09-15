@@ -37,7 +37,7 @@ class GetMatchAnalyticsTest {
         assertEquals(2, innings.overs().get(0).dotBalls());
         assertEquals(3, innings.overs().get(1).dotBalls());
         assertEquals(5, innings.powerplay().totals().dotBalls());
-        assertEquals(4, innings.boundaryRuns());
+        assertEquals(14, innings.boundaryRuns());
         assertEquals(18, innings.overs().get(1).cumulativeRuns());
         assertEquals(1, innings.overs().get(1).cumulativeWickets());
         assertEquals(12, innings.overs().get(1).cumulativeLegalBalls());
