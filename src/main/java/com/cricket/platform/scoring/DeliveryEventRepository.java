@@ -15,6 +15,19 @@ public class DeliveryEventRepository {
         this.jdbc = jdbc;
     }
 
+    /**
+     * Serializes scoring commands for one innings for the duration of the
+     * surrounding transaction. This prevents concurrent scorers from both
+     * observing the same MAX(sequence_no)/MAX(event_version) values.
+     */
+    public void lockInnings(UUID inningsId) {
+        jdbc.queryForObject(
+                "SELECT id FROM innings WHERE id = ? FOR UPDATE",
+                UUID.class,
+                inningsId
+        );
+    }
+
     public boolean commandExists(UUID commandId) {
         return findByCommandId(commandId) != null;
     }
