@@ -19,6 +19,12 @@ public class EventFirstDeliveryService {
                          int overNumber,
                          int ballNumber,
                          boolean legalDelivery) {
+        // Serialize the complete allocation/projection path for this innings.
+        // Without the row lock, two simultaneous scorers can both calculate
+        // the same next sequence/version from MAX(...), creating ambiguous
+        // realtime ordering even though command idempotency is enabled.
+        eventRepository.lockInnings(command.inningsId());
+
         DeliveryEvent existing = eventRepository.findByCommandId(command.commandId());
         if (existing != null) {
             return new Result(existing, false);
