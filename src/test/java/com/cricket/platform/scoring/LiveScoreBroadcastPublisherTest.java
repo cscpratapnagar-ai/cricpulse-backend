@@ -17,7 +17,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 class LiveScoreBroadcastPublisherTest {
 
     @Test
-    void publishesCommittedScoreToInningsTopicWithVersionMetadata() {
+    void publishesCommittedScoreToPrivateAndPublicTopicsWithVersionMetadata() {
         ApplicationEventPublisher events = org.mockito.Mockito.mock(ApplicationEventPublisher.class);
         SimpMessagingTemplate messaging = org.mockito.Mockito.mock(SimpMessagingTemplate.class);
         GetLiveScore liveScore = org.mockito.Mockito.mock(GetLiveScore.class);
@@ -45,8 +45,10 @@ class LiveScoreBroadcastPublisherTest {
                 inningsId, eventId, 9L, 6, "DELIVERY_RECORDED"));
 
         verify(messaging).convertAndSend(eq("/topic/innings/" + inningsId), any(Object.class));
+        verify(messaging).convertAndSend(eq("/topic/public/innings/" + inningsId), any(Object.class));
+
         org.mockito.ArgumentCaptor<Object> captor = org.mockito.ArgumentCaptor.forClass(Object.class);
-        verify(messaging).convertAndSend(eq("/topic/innings/" + inningsId), captor.capture());
+        verify(messaging).convertAndSend(eq("/topic/public/innings/" + inningsId), captor.capture());
 
         @SuppressWarnings("unchecked")
         Map<String, Object> payload = (Map<String, Object>) captor.getValue();
