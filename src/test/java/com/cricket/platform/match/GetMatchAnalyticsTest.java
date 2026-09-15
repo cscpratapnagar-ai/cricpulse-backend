@@ -26,14 +26,18 @@ class GetMatchAnalyticsTest {
                         inningsId, 1, "Falcons", 18, 1, 12, 20, null)));
         when(jdbc.query(anyString(), any(RowMapper.class), eq(inningsId)))
                 .thenReturn(List.of(
-                        new GetMatchAnalytics.RawOver(1, 8, 6, 0, 0, 0, 2, 0),
-                        new GetMatchAnalytics.RawOver(2, 10, 6, 1, 1, 0, 0, 1)));
+                        new GetMatchAnalytics.RawOver(1, 8, 6, 2, 0, 0, 0, 2, 0),
+                        new GetMatchAnalytics.RawOver(2, 10, 6, 3, 1, 1, 0, 0, 1)));
 
         GetMatchAnalytics.MatchAnalytics result = new GetMatchAnalytics(jdbc).get(matchId);
         GetMatchAnalytics.InningsAnalytics innings = result.innings().getFirst();
 
         assertEquals(2, innings.overs().size());
         assertEquals(18, innings.overs().stream().mapToInt(GetMatchAnalytics.OverAnalytics::runs).sum());
+        assertEquals(2, innings.overs().get(0).dotBalls());
+        assertEquals(3, innings.overs().get(1).dotBalls());
+        assertEquals(5, innings.powerplay().totals().dotBalls());
+        assertEquals(4, innings.boundaryRuns());
         assertEquals(18, innings.overs().get(1).cumulativeRuns());
         assertEquals(1, innings.overs().get(1).cumulativeWickets());
         assertEquals(12, innings.overs().get(1).cumulativeLegalBalls());
