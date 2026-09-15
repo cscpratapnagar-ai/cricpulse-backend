@@ -14,6 +14,9 @@ import java.util.UUID;
 
 @Component
 public class LiveScoreBroadcastPublisher {
+    private static final String PRIVATE_TOPIC_PREFIX = "/topic/innings/";
+    private static final String PUBLIC_TOPIC_PREFIX = "/topic/public/innings/";
+
     private final ApplicationEventPublisher applicationEventPublisher;
     private final SimpMessagingTemplate messagingTemplate;
     private final GetLiveScore getLiveScore;
@@ -71,9 +74,8 @@ public class LiveScoreBroadcastPublisher {
         payload.put("eventVersion", stateVersion != null ? stateVersion : (long) event.eventVersion());
         payload.put("occurredAt", OffsetDateTime.now());
 
-        messagingTemplate.convertAndSend(
-                "/topic/innings/" + event.inningsId(),
-                (Object) payload
-        );
+        String inningsId = event.inningsId().toString();
+        messagingTemplate.convertAndSend(PRIVATE_TOPIC_PREFIX + inningsId, (Object) payload);
+        messagingTemplate.convertAndSend(PUBLIC_TOPIC_PREFIX + inningsId, (Object) payload);
     }
 }
