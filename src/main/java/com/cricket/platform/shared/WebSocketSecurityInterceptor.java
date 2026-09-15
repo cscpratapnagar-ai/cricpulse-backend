@@ -36,7 +36,9 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
         if (StompCommand.CONNECT.equals(accessor.getCommand())) {
             Authentication authentication = authenticate(accessor.getFirstNativeHeader("Authorization"));
             if (authentication == null) {
-                throw new IllegalArgumentException("WebSocket authentication is required");
+                // Public match viewers do not need an account. Private topics
+                // remain protected at SUBSCRIBE time.
+                return message;
             }
             accessor.setUser(authentication);
             return MessageBuilder.createMessage(message.getPayload(), accessor.getMessageHeaders());
