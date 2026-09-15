@@ -18,6 +18,9 @@ import java.util.UUID;
 
 @Component
 public class WebSocketSecurityInterceptor implements ChannelInterceptor {
+    private static final String PRIVATE_TOPIC_PREFIX = "/topic/innings/";
+    private static final String PUBLIC_TOPIC_PREFIX = "/topic/public/innings/";
+
     private final JwtService jwtService;
     private final JdbcTemplate jdbc;
 
@@ -40,14 +43,22 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
         }
 
         if (StompCommand.SUBSCRIBE.equals(accessor.getCommand())) {
+            String destination = accessor.getDestination();
+            UUID inningsId = inningsId(destination);
+            if (inningsId == null) {
+                throw new IllegalArgumentException("Invalid live match subscription destination");
+            }
+
+            if (destination.startsWith(PUBLIC_TOPIC_PREFIX)) {
+                return message;
+            }
+
             Authentication authentication = asAuthentication(accessor.getUser());
             if (authentication == null || !authentication.isAuthenticated()) {
                 throw new IllegalArgumentException("WebSocket authentication is required");
             }
 
-            String destination = accessor.getDestination();
-            UUID inningsId = inningsId(destination);
-            if (inningsId == null || !canViewInnings(authentication, inningsId)) {
+            if (!canViewInnings(authentication, inningsId)) {
                 throw new IllegalArgumentException("You are not authorized to subscribe to this live match");
             }
         }
@@ -78,11 +89,18 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
     }
 
     private UUID inningsId(String destination) {
-        if (destination == null || !destination.startsWith("/topic/innings/")) {
+        String prefix = destination != null && destination.startsWith(PUBLIC_TOPIC_PREFIX)
+                ? PUBLIC_TOPIC_PREFIX
+                : PRIVATE_TOPIC_PREFIX;
+        if (destination == null || !destination.startsWith(prefix)) {
             return null;
         }
         try {
-            return UUID.fromString(destination.substring("/topic/innings/".length()));
+            String value = destination.substring(prefix.length());
+            if (value.isBlank() || value.contains("/")) {
+                return null;
+            }
+            return UUID.fromString(value);
         } catch (IllegalArgumentException ex) {
             return null;
         }
