@@ -35,16 +35,20 @@ class WebSocketSecurityInterceptorTest {
     }
 
     @Test
-    void connectRejectsMissingAuthorization() {
+    void connectAllowsAnonymousPublicViewer() {
         StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.CONNECT);
-        assertThrows(IllegalArgumentException.class, () -> interceptor.preSend(message(accessor), null));
+        Message<?> result = interceptor.preSend(message(accessor), null);
+        assertNotNull(result);
+        assertNull(StompHeaderAccessor.wrap(result).getUser());
     }
 
     @Test
-    void connectRejectsInvalidToken() {
+    void connectRejectsInvalidTokenByLeavingConnectionAnonymous() {
         StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.CONNECT);
         accessor.addNativeHeader("Authorization", "Bearer invalid-token");
-        assertThrows(IllegalArgumentException.class, () -> interceptor.preSend(message(accessor), null));
+        Message<?> result = interceptor.preSend(message(accessor), null);
+        assertNotNull(result);
+        assertNull(StompHeaderAccessor.wrap(result).getUser());
     }
 
     @Test
@@ -59,7 +63,7 @@ class WebSocketSecurityInterceptorTest {
     }
 
     @Test
-    void subscribeRejectsUnauthenticatedUser() {
+    void subscribeRejectsUnauthenticatedPrivateUser() {
         UUID inningsId = UUID.randomUUID();
         StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
         accessor.setDestination("/topic/innings/" + inningsId);
