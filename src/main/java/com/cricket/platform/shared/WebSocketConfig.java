@@ -17,9 +17,9 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     private final List<String> allowedOriginPatterns;
 
     public WebSocketConfig(WebSocketSecurityInterceptor webSocketSecurityInterceptor,
-                           @Value("${app.cors.allowed-origin-patterns}") List<String> allowedOriginPatterns) {
+                           @Value("${app.cors.allowed-origin-patterns:http://localhost:4200,https://*.app.github.dev,https://*.cricketpulse.app}") String allowedOriginPatterns) {
         this.webSocketSecurityInterceptor = webSocketSecurityInterceptor;
-        this.allowedOriginPatterns = allowedOriginPatterns;
+        this.allowedOriginPatterns = List.of(allowedOriginPatterns.split(","));
     }
 
     @Override
