@@ -17,6 +17,43 @@ public class ScoringAccess {
         this.jdbc = jdbc;
     }
 
+    public void requireMatchAccess(UUID matchId, Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication is required.");
+        }
+
+        if (hasGlobalRole(authentication, "ROLE_ADMIN") || hasGlobalRole(authentication, "ROLE_SCORER")) {
+            return;
+        }
+
+        String principal = authentication.getName();
+        Integer allowed = jdbc.queryForObject("""
+                SELECT COUNT(*)
+                FROM matches m
+                WHERE m.id = ?
+                  AND (
+                    EXISTS (
+                      SELECT 1 FROM teams t
+                      JOIN users u ON u.id = t.owner_id
+                      WHERE t.id IN (m.team_a_id, m.team_b_id)
+                        AND (LOWER(TRIM(u.email)) = LOWER(TRIM(?)) OR CAST(u.id AS TEXT) = ?)
+                    )
+                    OR EXISTS (
+                      SELECT 1 FROM team_members tm
+                      JOIN players p ON p.id = tm.player_id
+                      JOIN users u ON u.id = p.user_id
+                      WHERE tm.team_id IN (m.team_a_id, m.team_b_id)
+                        AND (LOWER(TRIM(u.email)) = LOWER(TRIM(?)) OR CAST(u.id AS TEXT) = ?)
+                    )
+                  )
+                """, Integer.class, matchId, principal, principal, principal, principal);
+
+        if (allowed == null || allowed == 0) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "You do not have access to this match.");
+        }
+    }
+
     public void requireMatchManager(UUID matchId, Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication is required.");
