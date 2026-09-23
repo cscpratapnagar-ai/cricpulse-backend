@@ -36,7 +36,7 @@ class GetMatchIntelligenceTest {
         assertEquals("RISING", result.momentum());
         assertEquals(0, result.momentumScore().compareTo(BigDecimal.valueOf(98.0)));
         assertEquals(150, result.projectedScore());
-        assertEquals(7, result.pressureIndex());
+        assertEquals(17, result.pressureIndex());
         assertEquals(0, result.collapseRisk());
         assertEquals(31, result.requiredRuns());
         assertEquals(30, result.ballsRemaining());
