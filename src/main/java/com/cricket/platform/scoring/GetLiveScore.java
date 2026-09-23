@@ -225,6 +225,19 @@ public class GetLiveScore {
         public Score(UUID inningsId, UUID matchId, int inningsNumber, int runs,
                      int wickets, int legalBalls, Integer totalOvers, String status,
                      Integer targetRuns, int currentOver, int currentBall,
+                     UUID strikerId, UUID nonStrikerId, UUID currentBowlerId,
+                     List<Batter> batters, List<Bowler> bowlers, List<OverSummary> overs,
+                     List<RecentBall> recentBalls, Partnership partnership,
+                     List<FallOfWicket> fallOfWickets) {
+            this(inningsId, matchId, inningsNumber, runs, wickets, legalBalls,
+                    totalOvers, status, targetRuns, currentOver, currentBall,
+                    strikerId, null, nonStrikerId, null, currentBowlerId, null,
+                    batters, bowlers, overs, recentBalls, partnership, fallOfWickets);
+        }
+
+        public Score(UUID inningsId, UUID matchId, int inningsNumber, int runs,
+                     int wickets, int legalBalls, Integer totalOvers, String status,
+                     Integer targetRuns, int currentOver, int currentBall,
                      UUID strikerId, String strikerName, UUID nonStrikerId, String nonStrikerName,
                      UUID currentBowlerId, String currentBowlerName) {
             this(inningsId, matchId, inningsNumber, runs, wickets, legalBalls,
