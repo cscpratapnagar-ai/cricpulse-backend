@@ -28,8 +28,8 @@ import org.springframework.beans.factory.annotation.Value;
 public class SecurityConfig {
     private final List<String> allowedOriginPatterns;
 
-    public SecurityConfig(@Value("${app.cors.allowed-origin-patterns}") List<String> allowedOriginPatterns) {
-        this.allowedOriginPatterns = allowedOriginPatterns;
+    public SecurityConfig(@Value("${app.cors.allowed-origin-patterns:http://localhost:4200,https://*.app.github.dev,https://*.cricketpulse.app}") String allowedOriginPatterns) {
+        this.allowedOriginPatterns = List.of(allowedOriginPatterns.split(","));
     }
 
     @Bean PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(); }
