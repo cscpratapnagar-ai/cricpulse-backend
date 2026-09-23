@@ -210,8 +210,11 @@ public class GetLiveScore {
             int currentOver,
             int currentBall,
             UUID strikerId,
+            String strikerName,
             UUID nonStrikerId,
+            String nonStrikerName,
             UUID currentBowlerId,
+            String currentBowlerName,
             List<Batter> batters,
             List<Bowler> bowlers,
             List<OverSummary> overs,
@@ -222,10 +225,11 @@ public class GetLiveScore {
         public Score(UUID inningsId, UUID matchId, int inningsNumber, int runs,
                      int wickets, int legalBalls, Integer totalOvers, String status,
                      Integer targetRuns, int currentOver, int currentBall,
-                     UUID strikerId, String strikerName, UUID nonStrikerId, String nonStrikerName,\n                     UUID currentBowlerId, String currentBowlerName) {
+                     UUID strikerId, String strikerName, UUID nonStrikerId, String nonStrikerName,
+                     UUID currentBowlerId, String currentBowlerName) {
             this(inningsId, matchId, inningsNumber, runs, wickets, legalBalls,
                     totalOvers, status, targetRuns, currentOver, currentBall,
-                    strikerId, nonStrikerId, currentBowlerId,
+                    strikerId, strikerName, nonStrikerId, nonStrikerName, currentBowlerId, currentBowlerName,
                     List.of(), List.of(), List.of(), List.of(), null, List.of());
         }
 
@@ -234,7 +238,7 @@ public class GetLiveScore {
                                  Partnership partnership, List<FallOfWicket> fallOfWickets) {
             return new Score(inningsId, matchId, inningsNumber, runs, wickets,
                     legalBalls, totalOvers, status, targetRuns, currentOver,
-                    currentBall, strikerId, nonStrikerId, currentBowlerId,
+                    currentBall, strikerId, strikerName, nonStrikerId, nonStrikerName, currentBowlerId, currentBowlerName,
                     batters, bowlers, overs, recentBalls, partnership, fallOfWickets);
         }
     }
