@@ -53,10 +53,6 @@ public class GetMatchIntelligence {
         BigDecimal inningsRate = rate(current.totalRuns(), current.legalBalls());
         BigDecimal recentRate = rate(recent.runs(), recent.legalBalls());
         String momentum = momentum(recentRate, inningsRate, recent.wickets());
-        BigDecimal momentumScore = momentumScore(recentRate, inningsRate, recent.wickets());
-        Integer projectedScore = projectedScore(current, recentRate);
-        Integer pressureIndex = pressureIndex(current, recent, requiredRateOrZero(target, current), ballsRemainingOrZero(target, current));
-        Integer collapseRisk = collapseRisk(current, recent);
 
         Integer target = current.targetRuns();
         Integer requiredRuns = null;
@@ -69,6 +65,12 @@ public class GetMatchIntelligence {
             requiredRate = ballsRemaining == 0 ? BigDecimal.ZERO : rate(requiredRuns, ballsRemaining);
             chasePressure = pressure(requiredRate, recentRate, current.wickets(), ballsRemaining);
         }
+
+        BigDecimal momentumScore = momentumScore(recentRate, inningsRate, recent.wickets());
+        Integer projectedScore = projectedScore(current, recentRate);
+        Integer pressureIndex = pressureIndex(current, recent, requiredRate == null ? BigDecimal.ZERO : requiredRate,
+                ballsRemaining == null ? 0 : ballsRemaining);
+        Integer collapseRisk = collapseRisk(current, recent);
 
         return new MatchIntelligence(matchId, current.inningsNumber(), current.battingTeam(), current.status(),
                 current.totalRuns(), current.wickets(), current.legalBalls(), current.totalOvers(), target,
