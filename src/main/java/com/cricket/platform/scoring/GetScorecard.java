@@ -1,6 +1,7 @@
 package com.cricket.platform.scoring;
 
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -27,7 +28,7 @@ public class GetScorecard {
         jdbc.query("SELECT i.id, i.match_id, i.innings_number, i.batting_team_id, " +
                 "t.name AS team_name, i.total_runs, i.wickets, i.legal_balls " +
                 "FROM innings i JOIN teams t ON t.id = i.batting_team_id " +
-                "WHERE i.id IN (" + placeholders + ") ORDER BY i.innings_number", rs ->
+                "WHERE i.id IN (" + placeholders + ") ORDER BY i.innings_number", (RowCallbackHandler) rs ->
                 bases.put(rs.getObject("id", UUID.class), new Scorecard(
                         rs.getObject("id", UUID.class), rs.getObject("match_id", UUID.class),
                         rs.getInt("innings_number"), rs.getObject("batting_team_id", UUID.class),
@@ -39,7 +40,7 @@ public class GetScorecard {
                 "b.fours, b.sixes, b.strike_rate, b.is_out, b.dismissal_type " +
                 "FROM innings_batters b JOIN players p ON p.id = b.player_id " +
                 "JOIN users u ON u.id = p.user_id WHERE b.innings_id IN (" + placeholders + ") " +
-                "ORDER BY b.innings_id, b.batting_position NULLS LAST, b.created_at", rs ->
+                "ORDER BY b.innings_id, b.batting_position NULLS LAST, b.created_at", (RowCallbackHandler) rs ->
                 batting.computeIfAbsent(rs.getObject("innings_id", UUID.class), k -> new ArrayList<>())
                         .add(new Batter(rs.getObject("player_id", UUID.class), rs.getString("full_name"),
                                 rs.getInt("runs"), rs.getInt("balls_faced"), rs.getInt("fours"),
@@ -50,7 +51,7 @@ public class GetScorecard {
         jdbc.query("SELECT b.innings_id, b.player_id, u.full_name, b.legal_balls, " +
                 "b.runs_conceded, b.wickets, b.economy FROM innings_bowlers b " +
                 "JOIN players p ON p.id = b.player_id JOIN users u ON u.id = p.user_id " +
-                "WHERE b.innings_id IN (" + placeholders + ") ORDER BY b.innings_id, b.created_at", rs ->
+                "WHERE b.innings_id IN (" + placeholders + ") ORDER BY b.innings_id, b.created_at", (RowCallbackHandler) rs ->
                 bowling.computeIfAbsent(rs.getObject("innings_id", UUID.class), k -> new ArrayList<>())
                         .add(new Bowler(rs.getObject("player_id", UUID.class), rs.getString("full_name"),
                                 rs.getInt("legal_balls"), rs.getInt("runs_conceded"), rs.getInt("wickets"),
@@ -59,7 +60,7 @@ public class GetScorecard {
         Map<UUID, List<FallOfWicket>> fow = new HashMap<>();
         jdbc.query("SELECT f.innings_id, f.wicket_number, u.full_name, f.runs, f.over_number, f.ball_number " +
                 "FROM fall_of_wickets f JOIN players p ON p.id = f.player_id JOIN users u ON u.id = p.user_id " +
-                "WHERE f.innings_id IN (" + placeholders + ") ORDER BY f.innings_id, f.wicket_number", rs ->
+                "WHERE f.innings_id IN (" + placeholders + ") ORDER BY f.innings_id, f.wicket_number", (RowCallbackHandler) rs ->
                 fow.computeIfAbsent(rs.getObject("innings_id", UUID.class), k -> new ArrayList<>())
                         .add(new FallOfWicket(rs.getInt("wicket_number"), rs.getString("full_name"),
                                 rs.getInt("runs"), rs.getInt("over_number"), rs.getInt("ball_number"))), args);
