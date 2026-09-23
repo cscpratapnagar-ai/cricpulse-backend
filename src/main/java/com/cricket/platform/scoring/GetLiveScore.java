@@ -90,6 +90,7 @@ public class GetLiveScore {
                 """,
                 (rs, row) -> new Bowler(
                         rs.getObject("player_id", UUID.class),
+                        rs.getString("player_name"),
                         rs.getInt("legal_balls"),
                         rs.getInt("runs_conceded"),
                         rs.getInt("wickets"),
