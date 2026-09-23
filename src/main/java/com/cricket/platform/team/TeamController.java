@@ -147,12 +147,14 @@ public class TeamController {
     }
 
     @GetMapping("/{id}")
-    GetTeam.TeamView get(@PathVariable UUID id) { return getTeam.execute(id); }
+    GetTeam.TeamView get(@PathVariable UUID id, Authentication authentication) {
+        requireTeamMemberOrOwner(id, authentication);
+        return getTeam.execute(id);
+    }
 
     @GetMapping
-    List<GetTeam.TeamView> list() {
-        return jdbc.query("SELECT id, name, city, owner_id FROM teams ORDER BY name",
-                (rs, row) -> new GetTeam.TeamView(rs.getObject("id", UUID.class), rs.getString("name"), rs.getString("city"), rs.getObject("owner_id", UUID.class)));
+    List<GetTeam.TeamView> list(Authentication authentication) {
+        return mine(authentication);
     }
 
     private UUID resolvePlayerId(AddMemberRequest request) {
