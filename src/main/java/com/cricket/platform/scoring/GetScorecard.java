@@ -68,7 +68,7 @@ public class GetScorecard {
         Map<UUID, Integer> extras = new HashMap<>();
         jdbc.query("SELECT innings_id, COALESCE(SUM(extra_runs), 0) AS extras " +
                 "FROM deliveries WHERE innings_id IN (" + placeholders + ") GROUP BY innings_id",
-                rs -> extras.put(rs.getObject("innings_id", UUID.class), rs.getInt("extras")), args);
+                (RowCallbackHandler) rs -> extras.put(rs.getObject("innings_id", UUID.class), rs.getInt("extras")), args);
 
         return inningsIds.stream().map(id -> {
             Scorecard base = bases.get(id);
