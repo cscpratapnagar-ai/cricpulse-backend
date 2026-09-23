@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.UUID;
 
 /** Public read-only live score endpoints. No scorer authentication is required. */
@@ -16,9 +17,10 @@ public class PublicLiveController {
     private final JdbcTemplate jdbc;
     private final GetLiveScore getLiveScore;\n    private final GetScorecard getScorecard;
 
-    public PublicLiveController(JdbcTemplate jdbc, GetLiveScore getLiveScore) {
+    public PublicLiveController(JdbcTemplate jdbc, GetLiveScore getLiveScore, GetScorecard getScorecard) {
         this.jdbc = jdbc;
         this.getLiveScore = getLiveScore;
+        this.getScorecard = getScorecard;
     }
 
     @GetMapping("/matches/{matchId}")\n    public PublicMatch match(@PathVariable UUID matchId) {\n        return jdbc.queryForObject("""\n                SELECT m.id, m.name, m.team_a_id, m.team_b_id,\n                       ta.name AS team_a_name, tb.name AS team_b_name,\n                       m.format, m.status, m.scheduled_at\n                FROM matches m\n                JOIN teams ta ON ta.id = m.team_a_id\n                JOIN teams tb ON tb.id = m.team_b_id\n                WHERE m.id = ?\n                """, (rs, row) -> new PublicMatch(\n                rs.getObject("id", UUID.class), rs.getString("name"),\n                rs.getObject("team_a_id", UUID.class), rs.getObject("team_b_id", UUID.class),\n                rs.getString("team_a_name"), rs.getString("team_b_name"),\n                rs.getString("format"), rs.getString("status"),\n                rs.getObject("scheduled_at", java.time.OffsetDateTime.class)), matchId);\n    }\n\n    @GetMapping("/matches/{matchId}/scorecard")\n    public List<GetScorecard.Scorecard> scorecard(@PathVariable UUID matchId) {\n        return jdbc.queryForList(\n                "SELECT id FROM innings WHERE match_id = ? ORDER BY innings_number",\n                UUID.class, matchId\n        ).stream().map(getScorecard::execute).toList();\n    }\n\n    @GetMapping("/matches/{matchId}/current-innings")
