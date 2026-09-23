@@ -107,7 +107,11 @@ public class ScoringController {
     }
 
     @GetMapping("/innings/{inningsId}")
-    public ResponseEntity<GetLiveScore.Score> getLiveScore(@PathVariable UUID inningsId) {
+    public ResponseEntity<GetLiveScore.Score> getLiveScore(
+            @PathVariable UUID inningsId,
+            Authentication authentication) {
+        UUID matchId = scoringAccess.matchIdForInnings(inningsId);
+        scoringAccess.requireMatchAccess(matchId, authentication);
         return ResponseEntity.ok(getLiveScore.execute(inningsId));
     }
 
