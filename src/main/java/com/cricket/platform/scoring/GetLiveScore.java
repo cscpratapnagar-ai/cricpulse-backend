@@ -20,8 +20,9 @@ public class GetLiveScore {
                 """
                 SELECT i.id, i.match_id, i.innings_number, i.total_runs, i.wickets,
                        legal_balls, total_overs, status, target_runs,
-                       current_over, current_ball, striker_id,
-                       non_striker_id, current_bowler_id
+                       current_over, current_ball, striker_id, su.full_name AS striker_name,
+                       non_striker_id, nsu.full_name AS non_striker_name,
+                       current_bowler_id, bu.full_name AS current_bowler_name
                 FROM innings i
                 LEFT JOIN players sp ON sp.id = i.striker_id
                 LEFT JOIN users su ON su.id = sp.user_id
@@ -44,8 +45,11 @@ public class GetLiveScore {
                         rs.getInt("current_over"),
                         rs.getInt("current_ball"),
                         rs.getObject("striker_id", UUID.class),
+                        rs.getString("striker_name"),
                         rs.getObject("non_striker_id", UUID.class),
-                        rs.getObject("current_bowler_id", UUID.class)
+                        rs.getString("non_striker_name"),
+                        rs.getObject("current_bowler_id", UUID.class),
+                        rs.getString("current_bowler_name")
                 ),
                 inningsId
         );
@@ -54,12 +58,15 @@ public class GetLiveScore {
                 """
                 SELECT ib.player_id, u.full_name AS player_name, ib.runs, ib.balls_faced, ib.fours, ib.sixes,
                        strike_rate, is_out, dismissal_type
-                FROM innings_batters
-                WHERE innings_id = ?
+                FROM innings_batters ib
+                JOIN players p ON p.id = ib.player_id
+                JOIN users u ON u.id = p.user_id
+                WHERE ib.innings_id = ?
                 ORDER BY batting_position NULLS LAST, created_at
                 """,
                 (rs, row) -> new Batter(
                         rs.getObject("player_id", UUID.class),
+                        rs.getString("player_name"),
                         rs.getInt("runs"),
                         rs.getInt("balls_faced"),
                         rs.getInt("fours"),
@@ -75,8 +82,10 @@ public class GetLiveScore {
                 """
                 SELECT ib.player_id, u.full_name AS player_name, ib.legal_balls, ib.runs_conceded, ib.wickets,
                        wides, no_balls, economy
-                FROM innings_bowlers
-                WHERE innings_id = ?
+                FROM innings_bowlers ib
+                JOIN players p ON p.id = ib.player_id
+                JOIN users u ON u.id = p.user_id
+                WHERE ib.innings_id = ?
                 ORDER BY created_at
                 """,
                 (rs, row) -> new Bowler(
@@ -116,11 +125,18 @@ public class GetLiveScore {
 
         List<RecentBall> recentBalls = jdbc.query(
                 """
-                SELECT id, over_number, ball_number, striker_id, non_striker_id,
-                       bowler_id, bat_runs, extra_runs, extra_type, wicket_type,
+                SELECT d.id, d.over_number, d.ball_number, d.striker_id, su.full_name AS striker_name,
+                       d.non_striker_id, nsu.full_name AS non_striker_name,
+                       d.bowler_id, bu.full_name AS bowler_name, d.bat_runs, d.extra_runs, d.extra_type, d.wicket_type,
                        legal_delivery, total_runs
-                FROM deliveries
-                WHERE innings_id = ?
+                FROM deliveries d
+                JOIN players sp ON sp.id = d.striker_id
+                JOIN users su ON su.id = sp.user_id
+                JOIN players np ON np.id = d.non_striker_id
+                JOIN users nsu ON nsu.id = np.user_id
+                JOIN players bp ON bp.id = d.bowler_id
+                JOIN users bu ON bu.id = bp.user_id
+                WHERE d.innings_id = ?
                 ORDER BY sequence_number DESC NULLS LAST, created_at DESC
                 LIMIT 12
                 """,
@@ -129,8 +145,11 @@ public class GetLiveScore {
                         rs.getInt("over_number"),
                         rs.getInt("ball_number"),
                         rs.getObject("striker_id", UUID.class),
+                        rs.getString("striker_name"),
                         rs.getObject("non_striker_id", UUID.class),
+                        rs.getString("non_striker_name"),
                         rs.getObject("bowler_id", UUID.class),
+                        rs.getString("bowler_name"),
                         rs.getInt("bat_runs"),
                         rs.getInt("extra_runs"),
                         rs.getString("extra_type"),
