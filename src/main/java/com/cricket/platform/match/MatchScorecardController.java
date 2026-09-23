@@ -36,6 +36,6 @@ public class MatchScorecardController {
                 UUID.class,
                 matchId
         );
-        return inningsIds.stream().map(getScorecard::execute).toList();
+        return getScorecard.executeAll(inningsIds);
     }
 }
