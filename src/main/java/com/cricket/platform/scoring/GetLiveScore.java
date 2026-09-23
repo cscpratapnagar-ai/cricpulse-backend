@@ -62,7 +62,7 @@ public class GetLiveScore {
                 JOIN players p ON p.id = ib.player_id
                 JOIN users u ON u.id = p.user_id
                 WHERE ib.innings_id = ?
-                ORDER BY batting_position NULLS LAST, created_at
+                ORDER BY ib.batting_position NULLS LAST, ib.created_at
                 """,
                 (rs, row) -> new Batter(
                         rs.getObject("player_id", UUID.class),
@@ -86,7 +86,7 @@ public class GetLiveScore {
                 JOIN players p ON p.id = ib.player_id
                 JOIN users u ON u.id = p.user_id
                 WHERE ib.innings_id = ?
-                ORDER BY created_at
+                ORDER BY ib.created_at
                 """,
                 (rs, row) -> new Bowler(
                         rs.getObject("player_id", UUID.class),
@@ -138,7 +138,7 @@ public class GetLiveScore {
                 JOIN players bp ON bp.id = d.bowler_id
                 JOIN users bu ON bu.id = bp.user_id
                 WHERE d.innings_id = ?
-                ORDER BY sequence_number DESC NULLS LAST, created_at DESC
+                ORDER BY d.sequence_number DESC NULLS LAST, d.created_at DESC
                 LIMIT 12
                 """,
                 (rs, row) -> new RecentBall(
