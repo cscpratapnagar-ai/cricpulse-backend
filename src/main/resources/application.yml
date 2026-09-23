@@ -48,4 +48,4 @@ management:
 
 logging:
   pattern:
-    level: "%5p [requestId:%X{requestId}]"\n
+    level: "%5p [requestId:%X{requestId}]"
