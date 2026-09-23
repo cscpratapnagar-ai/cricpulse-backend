@@ -53,6 +53,10 @@ public class GetMatchIntelligence {
         BigDecimal inningsRate = rate(current.totalRuns(), current.legalBalls());
         BigDecimal recentRate = rate(recent.runs(), recent.legalBalls());
         String momentum = momentum(recentRate, inningsRate, recent.wickets());
+        BigDecimal momentumScore = momentumScore(recentRate, inningsRate, recent.wickets());
+        Integer projectedScore = projectedScore(current, recentRate);
+        Integer pressureIndex = pressureIndex(current, recent, requiredRateOrZero(target, current), ballsRemainingOrZero(target, current));
+        Integer collapseRisk = collapseRisk(current, recent);
 
         Integer target = current.targetRuns();
         Integer requiredRuns = null;
@@ -69,7 +73,8 @@ public class GetMatchIntelligence {
         return new MatchIntelligence(matchId, current.inningsNumber(), current.battingTeam(), current.status(),
                 current.totalRuns(), current.wickets(), current.legalBalls(), current.totalOvers(), target,
                 inningsRate, recent.runs(), recent.deliveries(), recent.dots(), recent.fours(), recent.sixes(),
-                recent.wickets(), recentRate, momentum, requiredRuns, ballsRemaining, requiredRate, chasePressure);
+                recent.wickets(), recentRate, momentum, momentumScore, projectedScore, pressureIndex, collapseRisk,
+                requiredRuns, ballsRemaining, requiredRate, chasePressure);
     }
 
     private BigDecimal rate(int runs, int balls) {
@@ -82,6 +87,50 @@ public class GetMatchIntelligence {
         if (recent.compareTo(overall.add(BigDecimal.valueOf(1.5))) >= 0) return "RISING";
         if (recent.compareTo(overall.subtract(BigDecimal.valueOf(1.5))) <= 0) return "FALLING";
         return "STABLE";
+    }
+
+    private BigDecimal momentumScore(BigDecimal recent, BigDecimal overall, int recentWickets) {
+        BigDecimal score = BigDecimal.valueOf(50)
+                .add(recent.subtract(overall).multiply(BigDecimal.valueOf(8)))
+                .subtract(BigDecimal.valueOf(recentWickets * 12L));
+        return score.max(BigDecimal.ZERO).min(BigDecimal.valueOf(100)).setScale(1, RoundingMode.HALF_UP);
+    }
+
+    private Integer projectedScore(InningsData current, BigDecimal recentRate) {
+        if (current.legalBalls() <= 0 || current.totalOvers() <= 0) return null;
+        int remaining = Math.max(0, current.totalOvers() * 6 - current.legalBalls());
+        return current.totalRuns() + recentRate.multiply(BigDecimal.valueOf(remaining))
+                .divide(BigDecimal.valueOf(6), 0, RoundingMode.HALF_UP).intValue();
+    }
+
+    private Integer pressureIndex(InningsData current, RecentData recent, BigDecimal requiredRate, int ballsRemaining) {
+        int score = 0;
+        if (current.targetRuns() != null && current.targetRuns() > current.totalRuns()) {
+            score += Math.min(45, requiredRate.subtract(rate(current.totalRuns(), current.legalBalls()))
+                    .max(BigDecimal.ZERO).multiply(BigDecimal.valueOf(6)).intValue());
+            if (ballsRemaining <= 18) score += 20;
+        }
+        score += Math.min(20, recent.dots() * 4);
+        score += Math.min(25, recent.wickets() * 12);
+        return Math.min(100, score);
+    }
+
+    private Integer collapseRisk(InningsData current, RecentData recent) {
+        int score = recent.wickets() * 30;
+        if (recent.deliveries() > 0 && recent.dots() * 100 / recent.deliveries() >= 50) score += 25;
+        score += Math.max(0, current.wickets() - 4) * 5;
+        return Math.min(100, score);
+    }
+
+    private BigDecimal requiredRateOrZero(Integer target, InningsData current) {
+        if (target == null || target <= current.totalRuns()) return BigDecimal.ZERO;
+        int balls = Math.max(0, current.totalOvers() * 6 - current.legalBalls());
+        return balls == 0 ? BigDecimal.ZERO : rate(target - current.totalRuns(), balls);
+    }
+
+    private int ballsRemainingOrZero(Integer target, InningsData current) {
+        if (target == null || target <= current.totalRuns()) return 0;
+        return Math.max(0, current.totalOvers() * 6 - current.legalBalls());
     }
 
     private String pressure(BigDecimal required, BigDecimal recent, int wickets, int ballsRemaining) {
@@ -99,6 +148,7 @@ public class GetMatchIntelligence {
                                     int runs,int wickets,int legalBalls,int totalOvers,Integer targetRuns,
                                     BigDecimal inningsRunRate,int recentRuns,int recentDeliveries,int recentDots,
                                     int recentFours,int recentSixes,int recentWickets,BigDecimal recentRunRate,
-                                    String momentum,Integer requiredRuns,Integer ballsRemaining,BigDecimal requiredRate,
+                                    String momentum,BigDecimal momentumScore,Integer projectedScore,Integer pressureIndex,
+                                    Integer collapseRisk,Integer requiredRuns,Integer ballsRemaining,BigDecimal requiredRate,
                                     String chasePressure) {}
 }
