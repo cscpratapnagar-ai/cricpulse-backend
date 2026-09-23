@@ -37,29 +37,47 @@ public class PlayerController {
 
     @PostMapping
     CreatePlayer.PlayerResponse create(Authentication authentication, @Valid @RequestBody CreatePlayer.Request request) { return createPlayer.create(authentication, request); }
+
     @GetMapping("/me")
     CreatePlayer.PlayerResponse me(Authentication authentication) { return createPlayer.current(authentication); }
+
     @PutMapping("/me")
     CreatePlayer.PlayerResponse update(Authentication authentication, @Valid @RequestBody CreatePlayer.Request request) { return createPlayer.update(authentication, request); }
+
     @PostMapping("/teams/{teamId}")
     void addToTeam(@PathVariable UUID teamId, @Valid @RequestBody AddPlayerToTeam.Request request, Authentication authentication) { addPlayerToTeam.execute(teamId, request, authentication.getName()); }
+
     @GetMapping("/teams/{teamId}")
     List<PlayerView> teamPlayers(@PathVariable UUID teamId, Authentication authentication) {
-        requireTeamAccess(teamId, authentication); return jdbc.query("SELECT p.id, p.user_id, u.full_name, p.batting_style, p.bowling_style, tm.role FROM team_members tm JOIN players p ON p.id = tm.player_id JOIN users u ON u.id = p.user_id WHERE tm.team_id = ? ORDER BY u.full_name", (rs, row) -> new PlayerView(rs.getObject("id", UUID.class), rs.getObject("user_id", UUID.class), rs.getString("full_name"), rs.getString("batting_style"), rs.getString("bowling_style"), rs.getString("role")), teamId); }
+        requireTeamAccess(teamId, authentication);
+        return jdbc.query("SELECT p.id, p.user_id, u.full_name, p.batting_style, p.bowling_style, tm.role FROM team_members tm JOIN players p ON p.id = tm.player_id JOIN users u ON u.id = p.user_id WHERE tm.team_id = ? ORDER BY u.full_name", (rs, row) -> new PlayerView(rs.getObject("id", UUID.class), rs.getObject("user_id", UUID.class), rs.getString("full_name"), rs.getString("batting_style"), rs.getString("bowling_style"), rs.getString("role")), teamId);
+    }
+
     @GetMapping("/statistics")
     List<GetPlayerStatistics.PlayerStatistics> statistics(Authentication authentication) { return List.of(getPlayerStatistics.one(currentPlayerId(authentication))); }
+
     @GetMapping("/compare")
-    ComparePlayers.Comparison compare(@RequestParam UUID left, @RequestParam UUID right) { return comparePlayers.compare(left, right); }
+    ComparePlayers.Comparison compare(@RequestParam UUID left, @RequestParam UUID right, Authentication authentication) {
+        requirePlayerAccess(left, authentication);
+        requirePlayerAccess(right, authentication);
+        return comparePlayers.compare(left, right);
+    }
+
     @GetMapping("/{playerId}/statistics")
     GetPlayerStatistics.PlayerStatistics playerStatistics(@PathVariable UUID playerId, Authentication authentication) { requirePlayerAccess(playerId, authentication); return getPlayerStatistics.one(playerId); }
+
     @GetMapping("/{playerId}/recent-matches")
     List<GetPlayerPerformanceHistory.MatchPerformance> recentMatches(@PathVariable UUID playerId, @RequestParam(defaultValue = "10") int limit, Authentication authentication) { requirePlayerAccess(playerId, authentication); return getPlayerPerformanceHistory.recent(playerId, limit); }
+
     @GetMapping("/{playerId}/performance-trend")
     GetPlayerPerformanceHistory.PerformanceTrend performanceTrend(@PathVariable UUID playerId, @RequestParam(defaultValue = "10") int limit, Authentication authentication) { requirePlayerAccess(playerId, authentication); return getPlayerPerformanceHistory.trend(playerId, limit); }
+
     @GetMapping("/{playerId}/intelligence")
     GetPlayerIntelligence.Intelligence intelligence(@PathVariable UUID playerId, @RequestParam(defaultValue = "10") int matches, Authentication authentication) { requirePlayerAccess(playerId, authentication); return getPlayerIntelligence.get(playerId, matches); }
+
     @GetMapping("/{playerId}")
     GetPlayerProfile.Profile profile(@PathVariable UUID playerId, Authentication authentication) { requirePlayerAccess(playerId, authentication); return getPlayerProfile.get(playerId); }
+
     private UUID currentPlayerId(Authentication authentication) {
         return jdbc.queryForObject("SELECT p.id FROM players p JOIN users u ON u.id = p.user_id WHERE LOWER(TRIM(u.email)) = LOWER(TRIM(?)) OR CAST(u.id AS TEXT) = ?", UUID.class, authentication.getName(), authentication.getName());
     }
