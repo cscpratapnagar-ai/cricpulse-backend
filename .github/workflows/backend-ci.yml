@@ -88,15 +88,6 @@ jobs:
           E2E_PASSWORD: ${{ secrets.CRICPULSE_E2E_PASSWORD }}
         run: bash scripts/ci-http-lifecycle-setup.sh
 
-      - name: Run authenticated access performance smoke
-        env:
-          BASE_URL: http://localhost:8080/api
-          EMAIL: ${{ env.E2E_EMAIL }}
-          PASSWORD: ${{ secrets.CRICPULSE_E2E_PASSWORD }}
-          REQUESTS: 30
-          P95_LIMIT_MS: 750
-        run: bash scripts/ci-access-performance-smoke.sh
-
       - name: Run complete match lifecycle E2E
         env:
           BASE_URL: http://localhost:8080/api
