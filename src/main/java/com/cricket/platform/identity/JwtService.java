@@ -17,8 +17,10 @@ public class JwtService {
 
     public JwtService(@Value("${security.jwt.secret}") String secret,
                       @Value("${security.jwt.expiration-seconds:86400}") long expirationSeconds) {
-        if (secret.getBytes(StandardCharsets.UTF_8).length < 32)
-            throw new IllegalArgumentException("security.jwt.secret must be at least 32 characters");
+        if (secret == null || secret.isBlank() || secret.getBytes(StandardCharsets.UTF_8).length < 32)
+            throw new IllegalArgumentException("security.jwt.secret must be set and at least 32 characters");
+        if (expirationSeconds <= 0)
+            throw new IllegalArgumentException("security.jwt.expiration-seconds must be greater than 0");
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.expirationSeconds = expirationSeconds;
     }
