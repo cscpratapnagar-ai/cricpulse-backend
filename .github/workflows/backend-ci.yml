@@ -70,6 +70,11 @@ jobs:
 
       - name: Build production container
         run: docker build --tag cricpulse-backend:ci .
+      - name: Validate production compose
+        env:
+          POSTGRES_PASSWORD: ci-postgres-password
+          JWT_SECRET: ci-jwt-secret-at-least-32-bytes-long
+        run: docker compose -f docker-compose.production.yml config --quiet
 
       - name: Start application
         run: |
