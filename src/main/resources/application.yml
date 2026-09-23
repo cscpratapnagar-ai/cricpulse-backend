@@ -22,6 +22,11 @@ spring:
 
 server:
   port: ${PORT:8080}
+  shutdown: graceful
+
+spring:
+  lifecycle:
+    timeout-per-shutdown-phase: ${SHUTDOWN_TIMEOUT:30s}
 
 security:
   jwt:
