@@ -41,6 +41,17 @@ public class MatchController {
         return getMatch.execute(id);
     }
 
+    @GetMapping("/{id}/broadcast-access")
+    BroadcastAccessResponse broadcastAccess(@PathVariable UUID id, Authentication authentication) {
+        requireAuthenticated(authentication);
+        MatchTeams teams = teamsFor(id);
+        if (!canManageEitherTeam(teams.teamAId(), teams.teamBId(), authentication)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only a team owner, manager or captain can open broadcast control.");
+        }
+        return new BroadcastAccessResponse(id, true);
+    }
+
     @GetMapping("/{id}/toss")
     TossResponse getToss(@PathVariable UUID id, Authentication authentication) {
         requireAuthenticated(authentication);
@@ -206,6 +217,8 @@ public class MatchController {
     }
 
     private record MatchTeams(UUID teamAId, UUID teamBId) {}
+
+    public record BroadcastAccessResponse(UUID matchId, boolean allowed) {}
 
     public record TossRequest(UUID matchId, UUID winnerTeamId, String decision) {}
 
