@@ -95,6 +95,9 @@ public class MatchController {
 
     @GetMapping
     List<GetMatch.MatchView> list(Authentication authentication) {
+        requireAuthenticated(authentication);
+        String principal = authentication.getName();
+
         return jdbc.query("""
                         SELECT m.id,
                                m.name,
@@ -108,15 +111,73 @@ public class MatchController {
                         FROM matches m
                         JOIN teams ta ON ta.id = m.team_a_id
                         JOIN teams tb ON tb.id = m.team_b_id
-                        WHERE EXISTS (SELECT 1 FROM teams t WHERE t.id IN (m.team_a_id, m.team_b_id) AND (t.owner_id = (SELECT u.id FROM users u WHERE LOWER(TRIM(u.email)) = LOWER(TRIM(?)) OR CAST(u.id AS TEXT) = ?)))\n                           OR EXISTS (SELECT 1 FROM team_members tm JOIN players p ON p.id = tm.player_id WHERE tm.team_id IN (m.team_a_id, m.team_b_id) AND p.user_id = (SELECT u.id FROM users u WHERE LOWER(TRIM(u.email)) = LOWER(TRIM(?)) OR CAST(u.id AS TEXT) = ?))\n                        ORDER BY m.scheduled_at NULLS LAST, m.created_at DESC
+                        WHERE EXISTS (
+                            SELECT 1
+                            FROM teams t
+                            JOIN users u ON u.id = t.owner_id
+                            WHERE t.id IN (m.team_a_id, m.team_b_id)
+                              AND (LOWER(TRIM(u.email)) = LOWER(TRIM(?))
+                                   OR CAST(u.id AS TEXT) = ?)
+                        )
+                        OR EXISTS (
+                            SELECT 1
+                            FROM team_members tm
+                            JOIN players p ON p.id = tm.player_id
+                            WHERE tm.team_id IN (m.team_a_id, m.team_b_id)
+                              AND p.user_id = (
+                                  SELECT u.id
+                                  FROM users u
+                                  WHERE LOWER(TRIM(u.email)) = LOWER(TRIM(?))
+                                     OR CAST(u.id AS TEXT) = ?
+                              )
+                        )
+                        ORDER BY m.scheduled_at NULLS LAST, m.created_at DESC
                         """,
                 (rs, row) -> new GetMatch.MatchView(rs.getObject("id", UUID.class), rs.getString("name"),
                         rs.getObject("team_a_id", UUID.class), rs.getObject("team_b_id", UUID.class),
                         rs.getString("team_a_name"), rs.getString("team_b_name"),
-                        rs.getString("format"), rs.getString("status"), rs.getObject("scheduled_at", java.time.OffsetDateTime.class)), authentication.getName(), authentication.getName(), authentication.getName(), authentication.getName());
+                        rs.getString("format"), rs.getString("status"),
+                        rs.getObject("scheduled_at", java.time.OffsetDateTime.class)),
+                principal, principal, principal, principal);
     }
 
-    private MatchTeams teamsFor(UUID matchId) {\n        MatchTeams teams = jdbc.query("SELECT team_a_id, team_b_id FROM matches WHERE id = ?", rs -> rs.next() ? new MatchTeams(rs.getObject("team_a_id", UUID.class), rs.getObject("team_b_id", UUID.class)) : null, matchId);\n        if (teams == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Match was not found");\n        return teams;\n    }\n\n    private boolean canAccessEitherTeam(UUID teamAId, UUID teamBId, Authentication authentication) {\n        return canAccessTeam(teamAId, authentication) || canAccessTeam(teamBId, authentication);\n    }\n\n    private boolean canAccessTeam(UUID teamId, Authentication authentication) {\n        String principal = authentication.getName();\n        Integer owner = jdbc.queryForObject("SELECT COUNT(*) FROM teams t JOIN users u ON u.id = t.owner_id WHERE t.id = ? AND (LOWER(TRIM(u.email)) = LOWER(TRIM(?)) OR CAST(u.id AS TEXT) = ?)", Integer.class, teamId, principal, principal);\n        if (owner != null && owner > 0) return true;\n        Integer member = jdbc.queryForObject("SELECT COUNT(*) FROM team_members tm JOIN players p ON p.id = tm.player_id JOIN users u ON u.id = p.user_id WHERE tm.team_id = ? AND (LOWER(TRIM(u.email)) = LOWER(TRIM(?)) OR CAST(u.id AS TEXT) = ?)", Integer.class, teamId, principal, principal);\n        return member != null && member > 0;\n    }\n\n    private boolean canManageEitherTeam(UUID teamAId, UUID teamBId, Authentication authentication) {
+    private MatchTeams teamsFor(UUID matchId) {
+        MatchTeams teams = jdbc.query(
+                "SELECT team_a_id, team_b_id FROM matches WHERE id = ?",
+                rs -> rs.next()
+                        ? new MatchTeams(
+                                rs.getObject("team_a_id", UUID.class),
+                                rs.getObject("team_b_id", UUID.class))
+                        : null,
+                matchId);
+        if (teams == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Match was not found");
+        }
+        return teams;
+    }
+
+    private boolean canAccessEitherTeam(UUID teamAId, UUID teamBId, Authentication authentication) {
+        return canAccessTeam(teamAId, authentication) || canAccessTeam(teamBId, authentication);
+    }
+
+    private boolean canAccessTeam(UUID teamId, Authentication authentication) {
+        String principal = authentication.getName();
+        Integer owner = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM teams t JOIN users u ON u.id = t.owner_id " +
+                        "WHERE t.id = ? AND (LOWER(TRIM(u.email)) = LOWER(TRIM(?)) OR CAST(u.id AS TEXT) = ?)",
+                Integer.class, teamId, principal, principal);
+        if (owner != null && owner > 0) return true;
+
+        Integer member = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM team_members tm " +
+                        "JOIN players p ON p.id = tm.player_id " +
+                        "JOIN users u ON u.id = p.user_id " +
+                        "WHERE tm.team_id = ? AND (LOWER(TRIM(u.email)) = LOWER(TRIM(?)) OR CAST(u.id AS TEXT) = ?)",
+                Integer.class, teamId, principal, principal);
+        return member != null && member > 0;
+    }
+
+    private boolean canManageEitherTeam(UUID teamAId, UUID teamBId, Authentication authentication) {
         return canManageTeam(teamAId, authentication) || canManageTeam(teamBId, authentication);
     }
 
