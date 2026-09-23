@@ -34,6 +34,10 @@ class GetMatchIntelligenceTest {
         assertEquals(20, result.recentRuns());
         assertEquals(0, result.recentRunRate().compareTo(BigDecimal.valueOf(12.00)));
         assertEquals("RISING", result.momentum());
+        assertEquals(0, result.momentumScore().compareTo(BigDecimal.valueOf(98.0)));
+        assertEquals(150, result.projectedScore());
+        assertEquals(17, result.pressureIndex());
+        assertEquals(0, result.collapseRisk());
         assertEquals(31, result.requiredRuns());
         assertEquals(30, result.ballsRemaining());
         assertEquals("LOW", result.chasePressure());
