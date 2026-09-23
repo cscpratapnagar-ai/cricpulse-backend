@@ -28,7 +28,7 @@ server:
 
 security:
   jwt:
-    secret: ${JWT_SECRET:change-this-development-secret-to-a-long-random-value-123456}
+    secret: ${JWT_SECRET}
     expiration-seconds: ${JWT_EXPIRATION_SECONDS:86400}
 
 management:
