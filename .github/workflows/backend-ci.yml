@@ -68,6 +68,9 @@ jobs:
       - name: Build application
         run: mvn -B package -DskipTests
 
+      - name: Build production container
+        run: docker build --tag cricpulse-backend:ci .
+
       - name: Start application
         run: |
           nohup java -jar target/*.jar > "$RUNNER_TEMP/cricpulse-api.log" 2>&1 &
