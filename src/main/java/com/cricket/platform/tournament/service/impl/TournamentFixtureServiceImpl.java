@@ -74,7 +74,7 @@ public class TournamentFixtureServiceImpl implements TournamentFixtureService {
         Set<String> existingPairs = new HashSet<>();
         jdbc.query(
                 "SELECT m.team_a_id,m.team_b_id FROM tournament_matches tm JOIN matches m ON m.id=tm.match_id WHERE tm.tournament_id=?",
-                (org.springframework.jdbc.core.RowCallbackHandler) row -> existingPairs.add(pairKey(row.getObject("team_a_id", UUID.class), row.getObject("team_b_id", UUID.class))),
+                row -> existingPairs.add(pairKey(row.getObject("team_a_id", UUID.class), row.getObject("team_b_id", UUID.class))),
                 tournamentId);
 
         Integer maxFixture = jdbc.queryForObject(
