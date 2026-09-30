@@ -3,6 +3,7 @@ package com.cricket.platform.scoring;
 import java.util.UUID;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,6 +26,8 @@ public class ScoringController {
     private final LiveScoreBroadcastPublisher liveScoreBroadcastPublisher;
     private final ScoringAccess scoringAccess;
     private final GetLiveScore getLiveScore;
+    private final UndoDelivery undoDelivery;
+    private final JdbcTemplate jdbc;
 
     public ScoringController(
             EventFirstProjectionService eventFirstProjectionService,
@@ -32,13 +35,17 @@ public class ScoringController {
             MatchResultService matchResultService,
             LiveScoreBroadcastPublisher liveScoreBroadcastPublisher,
             ScoringAccess scoringAccess,
-            GetLiveScore getLiveScore) {
+            GetLiveScore getLiveScore,
+            UndoDelivery undoDelivery,
+            JdbcTemplate jdbc) {
         this.eventFirstProjectionService = eventFirstProjectionService;
         this.inningsLifecycle = inningsLifecycle;
         this.matchResultService = matchResultService;
         this.liveScoreBroadcastPublisher = liveScoreBroadcastPublisher;
         this.scoringAccess = scoringAccess;
         this.getLiveScore = getLiveScore;
+        this.undoDelivery = undoDelivery;
+        this.jdbc = jdbc;
     }
 
     @PostMapping("/innings/{inningsId}/deliveries")
@@ -104,6 +111,32 @@ public class ScoringController {
         }
 
         return ResponseEntity.ok(getLiveScore.execute(inningsId));
+    }
+
+    @PostMapping("/innings/{inningsId}/undo")
+    @Transactional
+    public ResponseEntity<GetLiveScore.Score> undoLastDelivery(
+            @PathVariable UUID inningsId,
+            Authentication authentication) {
+        UUID matchId = scoringAccess.matchIdForInnings(inningsId);
+        scoringAccess.requireMatchManager(matchId, authentication);
+
+        UndoDelivery.UndoResult result = undoDelivery.execute(inningsId);
+        if (result.mutated()) {
+            long sequenceNo = jdbc.queryForObject(
+                    "SELECT COALESCE(MAX(sequence_no), 0) FROM delivery_events WHERE innings_id = ?",
+                    Long.class,
+                    inningsId
+            );
+            liveScoreBroadcastPublisher.publishAfterCommit(new LiveScoreCommittedEvent(
+                    inningsId,
+                    UUID.randomUUID(),
+                    sequenceNo,
+                    0,
+                    "DELIVERY_UNDONE"
+            ));
+        }
+        return ResponseEntity.ok(result.score());
     }
 
     @GetMapping("/innings/{inningsId}")
