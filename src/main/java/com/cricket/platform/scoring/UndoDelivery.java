@@ -67,6 +67,7 @@ public class UndoDelivery {
                         (SELECT bowler_id FROM deliveries WHERE innings_id = ? ORDER BY sequence_number DESC NULLS LAST, created_at DESC LIMIT 1),
                         ?
                     ),
+                    state_version = state_version + 1,
                     status = 'LIVE'
                 WHERE id = ?
                 """, inningsId, inningsId, inningsId, inningsId, inningsId,
