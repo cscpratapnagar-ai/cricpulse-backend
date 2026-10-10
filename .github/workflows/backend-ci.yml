@@ -105,6 +105,8 @@ jobs:
           E2E_TEAM_A_ID: ${{ env.E2E_TEAM_A_ID }}
           E2E_TEAM_B_ID: ${{ env.E2E_TEAM_B_ID }}
           E2E_B_OWNER_PLAYER_ID: ${{ env.E2E_B_OWNER_PLAYER_ID }}
+          E2E_PRIVATE_MATCH_ID: ${{ env.E2E_PRIVATE_MATCH_ID }}
+          E2E_PRIVATE_TEAM_B2_ID: ${{ env.E2E_PRIVATE_TEAM_B2_ID }}
         run: bash scripts/e2e-owner-data-isolation.sh
 
       - name: Run complete match lifecycle E2E
