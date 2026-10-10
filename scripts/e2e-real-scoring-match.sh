@@ -14,10 +14,28 @@ for name in "${required[@]}"; do [[ -n "${!name}" ]] || { echo "ERROR: $name is 
 command -v curl >/dev/null || { echo "ERROR: curl is required" >&2; exit 1; }
 command -v jq >/dev/null || { echo "ERROR: jq is required" >&2; exit 1; }
 TMP_DIR="$(mktemp -d)"; trap 'rm -rf "$TMP_DIR"' EXIT
-request() { local method="$1" url="$2" body="${3:-}"; if [[ -n "$body" ]]; then curl -sS -f -X "$method" "$url" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d "$body"; else curl -sS -f -X "$method" "$url" -H "Authorization: Bearer $TOKEN"; fi; }
+# Keep failed API responses for diagnosis. Never replay a failed write request:
+# the server may have committed a POST even if the client did not receive its response.
+LAST_RESPONSE_FILE="$TMP_DIR/last-response"
+LAST_STATUS_FILE="$TMP_DIR/last-status"
+request() {
+  local method="$1" url="$2" body="${3:-}" status curl_status=0
+  if [[ -n "$body" ]]; then
+    status="$(curl -sS -o "$LAST_RESPONSE_FILE" -w '%{http_code}' -X "$method" "$url" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d "$body")" || curl_status=$?
+  else
+    status="$(curl -sS -o "$LAST_RESPONSE_FILE" -w '%{http_code}' -X "$method" "$url" -H "Authorization: Bearer $TOKEN")" || curl_status=$?
+  fi
+  printf '%s' "${status:-000}" > "$LAST_STATUS_FILE"
+  if [[ "$curl_status" -ne 0 || ! "$status" =~ ^2[0-9][0-9]$ ]]; then
+    echo "HTTP request failed: method=$method url=$url status=${status:-000} curl_exit=$curl_status" >&2
+    if [[ -s "$LAST_RESPONSE_FILE" ]]; then cat "$LAST_RESPONSE_FILE" >&2; echo >&2; fi
+    return 22
+  fi
+  cat "$LAST_RESPONSE_FILE"
+}
 request_status() { local method="$1" url="$2" body="${3:-}"; if [[ -n "$body" ]]; then curl -sS -o "$TMP_DIR/rejection-body" -w '%{http_code}' -X "$method" "$url" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d "$body"; else curl -sS -o "$TMP_DIR/rejection-body" -w '%{http_code}' -X "$method" "$url" -H "Authorization: Bearer $TOKEN"; fi; }
 expect_rejection() { local label="$1" method="$2" url="$3" body="${4:-}" status; status="$(request_status "$method" "$url" "$body")"; if [[ "$status" -lt 400 || "$status" -ge 500 ]]; then echo "FAIL: $label expected 4xx, received HTTP $status" >&2; cat "$TMP_DIR/rejection-body" >&2 || true; exit 1; fi; echo "PASS: $label (HTTP $status)"; }
-fail_with_body() { local label="$1" method="$2" url="$3" body="${4:-}"; echo "ERROR: $label" >&2; if [[ -n "$body" ]]; then curl -sS -X "$method" "$url" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d "$body" >&2 || true; else curl -sS -X "$method" "$url" -H "Authorization: Bearer $TOKEN" >&2 || true; fi; exit 1; }
+fail_with_body() { local label="$1"; echo "ERROR: $label" >&2; if [[ -f "$LAST_STATUS_FILE" ]]; then echo "Last HTTP status: $(cat "$LAST_STATUS_FILE")" >&2; fi; if [[ -s "$LAST_RESPONSE_FILE" ]]; then echo "Last response body:" >&2; cat "$LAST_RESPONSE_FILE" >&2; echo >&2; fi; exit 1; }
 
 echo "[1/10] Login"
 LOGIN_RESPONSE="$(curl -sS -f -X POST "$BASE_URL/auth/login" -H 'Content-Type: application/json' -d "$(jq -nc --arg email "$EMAIL" --arg password "$PASSWORD" '{email:$email,password:$password}')")"
