@@ -47,11 +47,20 @@ test -n "$TEAM_A_ID" && test -n "$TEAM_B_ID"
 curl -fsS -X POST "$BASE_URL/teams/$TEAM_A_ID/members" "${AUTH_A[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg p "$PLAYER_A_ID" '{playerId:$p,role:"PLAYER"}')" >/dev/null
 curl -fsS -X POST "$BASE_URL/teams/$TEAM_B_ID/members" "${AUTH_B[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg p "$PLAYER_B_ID" '{playerId:$p,role:"PLAYER"}')" >/dev/null
 
+TEAM_B2="$(curl -fsS -X POST "$BASE_URL/teams" "${AUTH_B[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg n "CricPulse CI B2 ${RUN_KEY}" '{name:$n,city:"CI"}')")"
+TEAM_B2_ID="$(jq -r '.id' <<<"$TEAM_B2")"
+test -n "$TEAM_B2_ID" && test "$TEAM_B2_ID" != null
+
 echo "Created teams and populated disposable rosters"
 
 MATCH="$(curl -fsS -X POST "$BASE_URL/matches" "${AUTH_A[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg n "CricPulse CI Lifecycle ${RUN_KEY}" --arg a "$TEAM_A_ID" --arg b "$TEAM_B_ID" '{name:$n,teamAId:$a,teamBId:$b,format:"T20",totalOvers:20}')")"; MATCH_ID="$(jq -r '.id' <<<"$MATCH")"
 test -n "$MATCH_ID" && test "$MATCH_ID" != null
 echo "Created fixture match=$MATCH_ID teamA=$TEAM_A_ID teamB=$TEAM_B_ID"
+
+PRIVATE_MATCH="$(curl -fsS -X POST "$BASE_URL/matches" "${AUTH_B[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg n "CricPulse CI Private ${RUN_KEY}" --arg a "$TEAM_B_ID" --arg b "$TEAM_B2_ID" '{name:$n,teamAId:$a,teamBId:$b,format:"T20",totalOvers:20}')")"
+PRIVATE_MATCH_ID="$(jq -r '.id' <<<"$PRIVATE_MATCH")"
+test -n "$PRIVATE_MATCH_ID" && test "$PRIVATE_MATCH_ID" != null
+echo "Created owner-B-only match=$PRIVATE_MATCH_ID"
 
 select_xi() { local auth_name="$1" team_id="$2" player_id="$3"; local -n auth_ref="$auth_name"; curl -fsS -X POST "$BASE_URL/matches/$MATCH_ID/playing-xi" "${auth_ref[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg t "$team_id" --arg p "$player_id" '{teamId:$t,playerId:$p,captain:false,viceCaptain:false,wicketKeeper:false}')" >/dev/null; }
 select_xi AUTH_A "$TEAM_A_ID" "$OWNER_A_PLAYER_ID"; select_xi AUTH_A "$TEAM_A_ID" "$PLAYER_A_ID"; select_xi AUTH_B "$TEAM_B_ID" "$OWNER_B_PLAYER_ID"; select_xi AUTH_B "$TEAM_B_ID" "$PLAYER_B_ID"
@@ -68,4 +77,6 @@ E2E_PLAYER_ID=$PLAYER_A_ID
 E2E_B_OWNER_PLAYER_ID=$OWNER_B_PLAYER_ID
 E2E_B_PLAYER_ID=$PLAYER_B_ID
 E2E_MATCH_ID=$MATCH_ID
+E2E_PRIVATE_MATCH_ID=$PRIVATE_MATCH_ID
+E2E_PRIVATE_TEAM_B2_ID=$TEAM_B2_ID
 EOF
