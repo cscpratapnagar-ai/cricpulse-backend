@@ -8,6 +8,8 @@ PASSWORD="${E2E_PASSWORD:?E2E_PASSWORD is required}"
 TEAM_A_ID="${E2E_TEAM_A_ID:?E2E_TEAM_A_ID is required}"
 TEAM_B_ID="${E2E_TEAM_B_ID:?E2E_TEAM_B_ID is required}"
 PLAYER_B_ID="${E2E_B_OWNER_PLAYER_ID:?E2E_B_OWNER_PLAYER_ID is required}"
+PRIVATE_MATCH_ID="${E2E_PRIVATE_MATCH_ID:?E2E_PRIVATE_MATCH_ID is required}"
+PRIVATE_TEAM_B2_ID="${E2E_PRIVATE_TEAM_B2_ID:?E2E_PRIVATE_TEAM_B2_ID is required}"
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -66,4 +68,14 @@ expect_forbidden "Owner B cannot read Team A access" "$TOKEN_B" "/teams/$TEAM_A_
 
 echo "[3/3] Verify cross-owner player profile is denied"
 expect_forbidden "Owner A cannot read Owner B player profile" "$TOKEN_A" "/players/$PLAYER_B_ID"
+echo "[4/4] Verify cross-owner match endpoints are denied"
+expect_forbidden "Owner A cannot read Owner B private match" "$TOKEN_A" "/matches/$PRIVATE_MATCH_ID"
+expect_forbidden "Owner A cannot open Owner B private broadcast controls" "$TOKEN_A" "/matches/$PRIVATE_MATCH_ID/broadcast-access"
+expect_forbidden "Owner A cannot read Owner B private toss setup" "$TOKEN_A" "/matches/$PRIVATE_MATCH_ID/toss"
+expect_forbidden "Owner A cannot read Owner B private scorecard" "$TOKEN_A" "/matches/$PRIVATE_MATCH_ID/scorecard"
+expect_forbidden "Owner A cannot read Owner B private current innings" "$TOKEN_A" "/matches/$PRIVATE_MATCH_ID/current-innings"
+expect_forbidden "Owner A cannot read Owner B private playing XI" "$TOKEN_A" "/matches/$PRIVATE_MATCH_ID/playing-xi"
+expect_forbidden "Owner A cannot read Owner B private team squad" "$TOKEN_A" "/matches/$PRIVATE_MATCH_ID/teams/$PRIVATE_TEAM_B2_ID/members"
+expect_forbidden "Owner A cannot read Owner B private match result" "$TOKEN_A" "/matches/$PRIVATE_MATCH_ID/result"
+expect_forbidden "Owner A cannot read Owner B private match analytics" "$TOKEN_A" "/matches/$PRIVATE_MATCH_ID/analytics"
 echo "PASS: owner data-isolation HTTP regression"
