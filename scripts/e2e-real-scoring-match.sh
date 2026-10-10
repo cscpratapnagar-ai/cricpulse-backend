@@ -37,32 +37,49 @@ done
 command -v curl >/dev/null || { echo "ERROR: curl is required" >&2; exit 1; }
 command -v jq >/dev/null || { echo "ERROR: jq is required" >&2; exit 1; }
 
+# Preserve the exact failed response for diagnostics. Never repeat a failed
+# POST just to print its error body: a timeout can happen after the server commits.
+TMP_DIR="$(mktemp -d)"
+trap 'rm -rf "$TMP_DIR"' EXIT
+LAST_RESPONSE_FILE="$TMP_DIR/last-response"
+LAST_STATUS_FILE="$TMP_DIR/last-status"
+
 request() {
-  local method="$1" url="$2" body="${3:-}"
+  local method="$1" url="$2" body="${3:-}" status curl_status=0
   if [[ -n "$body" ]]; then
-    curl -sS -f -X "$method" "$url" \
+    status="$(curl -sS -o "$LAST_RESPONSE_FILE" -w '%{http_code}' -X "$method" "$url" \
       -H "Authorization: Bearer $TOKEN" \
       -H 'Content-Type: application/json' \
-      -d "$body"
+      -d "$body")" || curl_status=$?
   else
-    curl -sS -f -X "$method" "$url" \
-      -H "Authorization: Bearer $TOKEN"
+    status="$(curl -sS -o "$LAST_RESPONSE_FILE" -w '%{http_code}' -X "$method" "$url" \
+      -H "Authorization: Bearer $TOKEN")" || curl_status=$?
   fi
+  printf '%s' "$status" > "$LAST_STATUS_FILE"
+
+  if [[ "$curl_status" -ne 0 || ! "$status" =~ ^2[0-9][0-9]$ ]]; then
+    echo "HTTP request failed: method=$method url=$url status=${status:-000} curl_exit=$curl_status" >&2
+    if [[ -s "$LAST_RESPONSE_FILE" ]]; then
+      echo "Response body:" >&2
+      cat "$LAST_RESPONSE_FILE" >&2
+      echo >&2
+    fi
+    return 22
+  fi
+  cat "$LAST_RESPONSE_FILE"
 }
 
 fail_with_body() {
-  local label="$1" method="$2" url="$3" body="${4:-}"
+  local label="$1"
   echo "ERROR: $label" >&2
-  if [[ -n "$body" ]]; then
-    curl -sS -X "$method" "$url" \
-      -H "Authorization: Bearer $TOKEN" \
-      -H 'Content-Type: application/json' \
-      -d "$body" >&2 || true
-  else
-    curl -sS -X "$method" "$url" \
-      -H "Authorization: Bearer $TOKEN" >&2 || true
+  if [[ -f "$LAST_STATUS_FILE" ]]; then
+    echo "Last HTTP status: $(cat "$LAST_STATUS_FILE")" >&2
   fi
-  echo >&2
+  if [[ -s "$LAST_RESPONSE_FILE" ]]; then
+    echo "Last response body:" >&2
+    cat "$LAST_RESPONSE_FILE" >&2
+    echo >&2
+  fi
   exit 1
 }
 
@@ -117,6 +134,7 @@ request POST "$BASE_URL/scoring/innings/$INNINGS1_ID/opening" "$OPEN1_BODY" >/de
 
 echo "[5/8] Score innings 1: 120 real legal dot deliveries"
 for ((ball=1; ball<=120; ball++)); do
+  if (( ball == 1 || ball % 10 == 0 )); then echo "    delivery $ball/120"; fi
   DELIVERY_BODY="$(jq -nc \
     --arg innings "$INNINGS1_ID" \
     --arg striker "$A_STRIKER_ID" --arg non "$A_NON_STRIKER_ID" --arg bowler "$B_BOWLER_ID" \
