@@ -19,15 +19,28 @@ match="$(curl -fsS -X POST "$BASE_URL/matches" "${auth[@]}" --data "$(jq -nc --a
 match_id="$(jq -r '.id // empty' <<<"$match")"
 test -n "$match_id" && test "$match_id" != null
 
+post_json() {
+  local label="$1" url="$2" body="$3" response status
+  status="$(curl -sS -o "$tmp/response.json" -w '%{http_code}' -X POST "$url" "${auth[@]}" --data "$body")"
+  response="$(cat "$tmp/response.json")"
+  if [[ ! "$status" =~ ^2[0-9][0-9]$ ]]; then
+    echo "FAIL: $label returned HTTP $status" >&2
+    echo "Request: $body" >&2
+    echo "Response: $response" >&2
+    exit 1
+  fi
+  printf '%s' "$response"
+}
+
 echo "[2/5] Toss and start innings"
-curl -fsS -X POST "$BASE_URL/matches/$match_id/toss" "${auth[@]}" \
-  --data "$(jq -nc --arg id "$match_id" --arg team "$TEAM_A_ID" '{matchId:$id,winnerTeamId:$team,decision:"BAT"}')" >/dev/null
-innings="$(curl -fsS -X POST "$BASE_URL/scoring/innings" "${auth[@]}" \
-  --data "$(jq -nc --arg match "$match_id" --arg team "$TEAM_A_ID" --arg striker "$A_STRIKER_ID" --arg non "$A_NON_STRIKER_ID" --arg bowler "$B_BOWLER_ID" '{matchId:$match,inningsNumber:1,battingTeamId:$team,strikerId:$striker,nonStrikerId:$non,currentBowlerId:$bowler}')")"
+toss_body="$(jq -nc --arg id "$match_id" --arg team "$TEAM_A_ID" '{matchId:$id,winnerTeamId:$team,decision:"BAT"}')"
+post_json "record toss" "$BASE_URL/matches/$match_id/toss" "$toss_body" >/dev/null
+innings_body="$(jq -nc --arg match "$match_id" --arg team "$TEAM_A_ID" --arg striker "$A_STRIKER_ID" --arg non "$A_NON_STRIKER_ID" --arg bowler "$B_BOWLER_ID" '{matchId:$match,inningsNumber:1,battingTeamId:$team,strikerId:$striker,nonStrikerId:$non,currentBowlerId:$bowler}')"
+innings="$(post_json "start innings" "$BASE_URL/scoring/innings" "$innings_body")"
 innings_id="$(jq -r '.id // .inningsId // empty' <<<"$innings")"
 test -n "$innings_id" && test "$innings_id" != null
-curl -fsS -X POST "$BASE_URL/scoring/innings/$innings_id/opening" "${auth[@]}" \
-  --data "$(jq -nc --arg striker "$A_STRIKER_ID" --arg non "$A_NON_STRIKER_ID" --arg bowler "$B_BOWLER_ID" '{strikerId:$striker,nonStrikerId:$non,bowlerId:$bowler}')" >/dev/null
+opening_body="$(jq -nc --arg striker "$A_STRIKER_ID" --arg non "$A_NON_STRIKER_ID" --arg bowler "$B_BOWLER_ID" '{strikerId:$striker,nonStrikerId:$non,bowlerId:$bowler}')"
+post_json "open innings" "$BASE_URL/scoring/innings/$innings_id/opening" "$opening_body" >/dev/null
 
 delivery="$(jq -nc --arg innings "$innings_id" --arg striker "$A_STRIKER_ID" --arg non "$A_NON_STRIKER_ID" --arg bowler "$B_BOWLER_ID" '{inningsId:$innings,strikerId:$striker,nonStrikerId:$non,bowlerId:$bowler,overNumber:0,ballNumber:1,batRuns:1,extraRuns:0,extraType:null,wicketType:null,dismissedPlayerId:null,newBatterId:null}')"
 command_id="$(cat /proc/sys/kernel/random/uuid)"
