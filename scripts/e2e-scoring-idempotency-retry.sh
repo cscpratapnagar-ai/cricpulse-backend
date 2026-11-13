@@ -66,6 +66,8 @@ post_json "open innings" "$BASE_URL/scoring/innings/$innings_id/opening" "$openi
 
 echo "[3/7] Connect public live-score WebSocket subscription"
 export WS_URL="${WS_URL:-${BASE_URL%/api}/ws}"
+export WS_URL="${WS_URL/http:\/\//ws:\/\/}"
+export WS_URL="${WS_URL/https:\/\//wss:\/\/}"
 export INNINGS_ID="$innings_id"
 export WS_READY_FILE="$tmp/ws-ready"
 export WS_DONE_FILE="$tmp/ws-done"
