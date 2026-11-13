@@ -113,6 +113,7 @@ jobs:
         env:
           BASE_URL: http://localhost:8080/api
           EMAIL: ${{ env.E2E_EMAIL }}
+          OWNER_B_EMAIL: ${{ env.E2E_OWNER_B_EMAIL }}
           PASSWORD: ${{ env.E2E_PASSWORD }}
           TEAM_A_ID: ${{ env.E2E_TEAM_A_ID }}
           TEAM_B_ID: ${{ env.E2E_TEAM_B_ID }}
