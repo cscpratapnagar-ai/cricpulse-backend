@@ -60,13 +60,17 @@ function handleFrame(command, headers, body) {
     sendFrame("SUBSCRIBE", {
       id: "live-score-e2e",
       destination: `/topic/public/innings/${inningsId}`,
-      ack: "auto",
-      receipt: "live-score-e2e-subscription"
+      ack: "auto"
     });
-  } else if (command === "RECEIPT" && headers["receipt-id"] === "live-score-e2e-subscription") {
-    subscribed = true;
-    fs.writeFileSync(readyFile, "ready");
-    console.log("PASS: WebSocket STOMP subscription established");
+    // Spring SimpleBroker does not provide STOMP RECEIPT acknowledgements.
+    // Allow its inbound channel to process SUBSCRIBE; the delivery/undo
+    // MESSAGE assertions below are the actual proof of subscription readiness.
+    setTimeout(() => {
+      if (failure || subscribed) return;
+      subscribed = true;
+      fs.writeFileSync(readyFile, "ready");
+      console.log("WebSocket SUBSCRIBE sent; monitor ready for live score messages");
+    }, Number(process.env.WS_SUBSCRIBE_SETTLE_MS || 500));
   } else if (command === "MESSAGE") {
     let payload;
     try { payload = JSON.parse(body); } catch { throw new Error(`WebSocket MESSAGE was not JSON: ${body}`); }
