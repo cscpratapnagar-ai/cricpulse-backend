@@ -70,7 +70,7 @@ export INNINGS_ID="$innings_id"
 export WS_READY_FILE="$tmp/ws-ready"
 export WS_DONE_FILE="$tmp/ws-done"
 export WS_OUTPUT_FILE="$tmp/ws-result.json"
-node scripts/e2e-scoring-websocket.js >"$tmp/ws-monitor.log" 2>&1 &
+node scripts/e2e-scoring-websocket.mjs >"$tmp/ws-monitor.log" 2>&1 &
 ws_monitor_pid=$!
 for attempt in {1..150}; do
   if [[ -f "$WS_READY_FILE" ]]; then break; fi
