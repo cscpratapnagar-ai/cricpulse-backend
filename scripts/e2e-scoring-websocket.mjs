@@ -56,6 +56,7 @@ function parseFrames() {
 function handleFrame(command, headers, body) {
   if (command === "CONNECTED") {
     connected = true;
+    console.log("WebSocket STOMP CONNECTED frame received");
     sendFrame("SUBSCRIBE", {
       id: "live-score-e2e",
       destination: `/topic/public/innings/${inningsId}`,
@@ -76,23 +77,27 @@ function handleFrame(command, headers, body) {
   }
 }
 
-socket.addEventListener("open", () => sendFrame("CONNECT", {
+socket.addEventListener("open", () => {
+  console.log(`WebSocket transport opened: ${wsUrl}`);
+  sendFrame("CONNECT", {
   "accept-version": "1.2",
   "heart-beat": "0,0"
-}));
+  });
+});
 socket.addEventListener("message", async event => {
   try {
     const data = typeof event.data === "string" ? event.data : await event.data.text();
-    buffer += data;
+    buffer += data.replace(/\\r\\n/g, "\\n");
     parseFrames();
   } catch (error) {
     failure = error;
     socket.close();
   }
 });
-socket.addEventListener("error", () => { failure = new Error("WebSocket transport error"); });
-socket.addEventListener("close", () => {
-  if (!finished && !failure) failure = new Error("WebSocket closed before verification completed");
+socket.addEventListener("error", event => { failure = new Error(`WebSocket transport error${event?.message ? `: ${event.message}` : ""}`); console.error(failure.message); });
+socket.addEventListener("close", event => {
+  if (!finished && !failure) failure = new Error(`WebSocket closed before verification completed (code=${event.code}, reason=${event.reason || "none"})`);
+  if (failure) console.error(failure.message);
 });
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
