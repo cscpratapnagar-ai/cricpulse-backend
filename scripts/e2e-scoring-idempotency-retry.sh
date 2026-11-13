@@ -86,5 +86,40 @@ if [[ "$balls_retry" != "$balls_first" || "$runs_retry" != "$runs_first" ]]; the
   exit 1
 fi
 
-echo "[5/5] PASS: same HTTP command replay did not double-apply delivery"
-echo "match=$match_id innings=$innings_id commandId=$command_id runs=$runs_retry legalBalls=$balls_retry"
+echo "[5/6] PASS: same HTTP command replay did not double-apply delivery"
+
+echo "[6/6] Undo delivery and verify score rollback"
+undo_status="$(curl -sS -o "$tmp/undo-response.json" -w '%{http_code}' -X POST "$BASE_URL/scoring/innings/$innings_id/undo" "${auth[@]}")"
+undo_response="$(cat "$tmp/undo-response.json")"
+if [[ ! "$undo_status" =~ ^2[0-9][0-9]$ ]]; then
+  echo "FAIL: undo delivery returned HTTP $undo_status" >&2
+  echo "Response: $undo_response" >&2
+  exit 1
+fi
+score_after_undo="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "${auth[@]}")"
+balls_undo="$(jq -r '.legalBalls // .legal_balls // -1' <<<"$score_after_undo")"
+runs_undo="$(jq -r '.runs // .totalRuns // .total_runs // -1' <<<"$score_after_undo")"
+if [[ "$balls_undo" != "0" || "$runs_undo" != "0" ]]; then
+  echo "FAIL: undo did not restore score to 0/0: runs=$runs_undo legalBalls=$balls_undo" >&2
+  echo "Undo response: $undo_response" >&2
+  echo "Score response: $score_after_undo" >&2
+  exit 1
+fi
+
+# Undo on an innings with no remaining deliveries must be a safe no-op.
+undo_empty_status="$(curl -sS -o "$tmp/undo-empty-response.json" -w '%{http_code}' -X POST "$BASE_URL/scoring/innings/$innings_id/undo" "${auth[@]}")"
+if [[ ! "$undo_empty_status" =~ ^2[0-9][0-9]$ ]]; then
+  echo "FAIL: empty undo returned HTTP $undo_empty_status" >&2
+  cat "$tmp/undo-empty-response.json" >&2
+  exit 1
+fi
+score_after_empty_undo="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "${auth[@]}")"
+balls_empty_undo="$(jq -r '.legalBalls // .legal_balls // -1' <<<"$score_after_empty_undo")"
+runs_empty_undo="$(jq -r '.runs // .totalRuns // .total_runs // -1' <<<"$score_after_empty_undo")"
+if [[ "$balls_empty_undo" != "0" || "$runs_empty_undo" != "0" ]]; then
+  echo "FAIL: empty undo changed score: runs=$runs_empty_undo legalBalls=$balls_empty_undo" >&2
+  exit 1
+fi
+
+echo "PASS: undo restored score to 0/0 and empty undo was a no-op"
+echo "match=$match_id innings=$innings_id commandId=$command_id runsAfterUndo=$runs_undo legalBallsAfterUndo=$balls_undo"
