@@ -107,7 +107,7 @@ socket.addEventListener("close", event => {
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const deadline = Date.now() + 45000;
 while (Date.now() < deadline && !subscribed && !failure) await sleep(100);
-if (!subscribed && !failure) failure = new Error("Timed out waiting for STOMP subscription receipt");
+if (!subscribed && !failure) failure = new Error("Timed out waiting for WebSocket SUBSCRIBE settle window");
 
 if (!failure) {
   while (Date.now() < deadline && !fs.existsSync(doneFile) && !failure) await sleep(100);
