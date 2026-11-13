@@ -2,7 +2,7 @@
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://localhost:8080/api}"
-: "${EMAIL:?EMAIL is required}" "${PASSWORD:?PASSWORD is required}"
+: "${EMAIL:?EMAIL is required}" "${PASSWORD:?PASSWORD is required}" "${OWNER_B_EMAIL:?OWNER_B_EMAIL is required}"
 : "${TEAM_A_ID:?TEAM_A_ID is required}" "${TEAM_B_ID:?TEAM_B_ID is required}"
 : "${A_STRIKER_ID:?A_STRIKER_ID is required}" "${A_NON_STRIKER_ID:?A_NON_STRIKER_ID is required}" "${B_BOWLER_ID:?B_BOWLER_ID is required}"
 
@@ -13,6 +13,11 @@ login="$(curl -fsS -X POST "$BASE_URL/auth/login" -H 'Content-Type: application/
 token="$(jq -r '.accessToken // .token // .data.accessToken // empty' <<<"$login")"
 test -n "$token" && test "$token" != null
 auth=(-H "Authorization: Bearer $token" -H 'Content-Type: application/json')
+owner_b_login="$(curl -fsS -X POST "$BASE_URL/auth/login" -H 'Content-Type: application/json' \
+  --data "$(jq -nc --arg email "$OWNER_B_EMAIL" --arg password "$PASSWORD" '{email:$email,password:$password}')")"
+owner_b_token="$(jq -r '.accessToken // .token // .data.accessToken // empty' <<<"$owner_b_login")"
+test -n "$owner_b_token" && test "$owner_b_token" != null
+auth_b=(-H "Authorization: Bearer $owner_b_token" -H 'Content-Type: application/json')
 
 echo "[1/5] Create isolated disposable match"
 match="$(curl -fsS -X POST "$BASE_URL/matches" "${auth[@]}" --data "$(jq -nc --arg name "CricPulse idempotency E2E $(date -u +%s)" --arg a "$TEAM_A_ID" --arg b "$TEAM_B_ID" '{name:$name,teamAId:$a,teamBId:$b,format:"T20",totalOvers:20}')")"
@@ -32,7 +37,23 @@ post_json() {
   printf '%s' "$response"
 }
 
-echo "[2/5] Toss and start innings"
+echo "[2/5] Select Playing XI, toss and start innings"
+select_xi() {
+  local -n request_auth="$1"
+  local team_id="$2" player_id="$3" body status response
+  body="$(jq -nc --arg team "$team_id" --arg player "$player_id" '{teamId:$team,playerId:$player,captain:false,viceCaptain:false,wicketKeeper:false}')"
+  status="$(curl -sS -o "$tmp/xi-response.json" -w '%{http_code}' -X POST "$BASE_URL/matches/$match_id/playing-xi" "${request_auth[@]}" --data "$body")"
+  response="$(cat "$tmp/xi-response.json")"
+  if [[ ! "$status" =~ ^2[0-9][0-9]$ ]]; then
+    echo "FAIL: select Playing XI returned HTTP $status" >&2
+    echo "Request: $body" >&2
+    echo "Response: $response" >&2
+    exit 1
+  fi
+}
+select_xi auth "$TEAM_A_ID" "$A_STRIKER_ID"
+select_xi auth "$TEAM_A_ID" "$A_NON_STRIKER_ID"
+select_xi auth_b "$TEAM_B_ID" "$B_BOWLER_ID"
 toss_body="$(jq -nc --arg id "$match_id" --arg team "$TEAM_A_ID" '{matchId:$id,winnerTeamId:$team,decision:"BAT"}')"
 post_json "record toss" "$BASE_URL/matches/$match_id/toss" "$toss_body" >/dev/null
 innings_body="$(jq -nc --arg match "$match_id" --arg team "$TEAM_A_ID" --arg striker "$A_STRIKER_ID" --arg non "$A_NON_STRIKER_ID" --arg bowler "$B_BOWLER_ID" '{matchId:$match,inningsNumber:1,battingTeamId:$team,strikerId:$striker,nonStrikerId:$non,currentBowlerId:$bowler}')"
