@@ -87,7 +87,7 @@ socket.addEventListener("open", () => {
 socket.addEventListener("message", async event => {
   try {
     const data = typeof event.data === "string" ? event.data : await event.data.text();
-    buffer += data.replace(/\\r\\n/g, "\\n");
+    buffer += data.replace(/\r\n/g, "\n");
     parseFrames();
   } catch (error) {
     failure = error;
