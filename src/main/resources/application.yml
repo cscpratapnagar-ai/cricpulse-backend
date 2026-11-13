@@ -28,7 +28,9 @@ server:
 
 security:
   jwt:
-    secret: ${JWT_SECRET}
+    # Local Maven runs can start without manually exporting a secret. Production
+    # deployments still provide JWT_SECRET explicitly through docker-compose.
+    secret: ${JWT_SECRET:local-only-cricpulse-jwt-secret-change-me-2026}
     expiration-seconds: ${JWT_EXPIRATION_SECONDS:86400}
 
 management:
