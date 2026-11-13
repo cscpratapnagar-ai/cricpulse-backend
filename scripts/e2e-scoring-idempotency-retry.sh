@@ -21,7 +21,7 @@ test -n "$match_id" && test "$match_id" != null
 
 echo "[2/5] Toss and start innings"
 curl -fsS -X POST "$BASE_URL/matches/$match_id/toss" "${auth[@]}" \
-  --data "$(jq -nc --arg id "$match_id" --arg team "$TEAM_A_ID" '{matchId:$id,winnerTeamId:$team,decision:"BAT}')" >/dev/null
+  --data "$(jq -nc --arg id "$match_id" --arg team "$TEAM_A_ID" '{matchId:$id,winnerTeamId:$team,decision:"BAT"}')" >/dev/null
 innings="$(curl -fsS -X POST "$BASE_URL/scoring/innings" "${auth[@]}" \
   --data "$(jq -nc --arg match "$match_id" --arg team "$TEAM_A_ID" --arg striker "$A_STRIKER_ID" --arg non "$A_NON_STRIKER_ID" --arg bowler "$B_BOWLER_ID" '{matchId:$match,inningsNumber:1,battingTeamId:$team,strikerId:$striker,nonStrikerId:$non,currentBowlerId:$bowler}')")"
 innings_id="$(jq -r '.id // .inningsId // empty' <<<"$innings")"
