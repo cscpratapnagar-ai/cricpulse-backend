@@ -261,7 +261,7 @@ public class BroadcastSponsorController {
             @NotNull @Min(5) @Max(30) Integer displayDurationSeconds,
             Boolean active) {}
     public record PlacementRequest(@NotBlank String eventType, Boolean enabled, Integer priority) {}
-    public record ImpressionRequest(@NotBlank String eventType, @Size(max = 120) String sessionKey) {}
+    public record ImpressionRequest(@NotBlank String eventType, @NotBlank @Size(max = 120) String sessionKey) {}
     public record SponsorView(UUID id, UUID matchId, String name, String tagline, String logoUrl,
                               String sponsorType, int displayDurationSeconds, boolean active,
                               OffsetDateTime createdAt, OffsetDateTime updatedAt, List<PlacementView> placements) {}
