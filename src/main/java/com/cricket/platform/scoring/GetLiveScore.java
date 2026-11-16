@@ -129,17 +129,22 @@ public class GetLiveScore {
                 SELECT d.id, d.over_number, d.ball_number, d.striker_id, su.full_name AS striker_name,
                        d.non_striker_id, nsu.full_name AS non_striker_name,
                        d.bowler_id, bu.full_name AS bowler_name, d.bat_runs, d.extra_runs, d.extra_type, d.wicket_type,
-                       legal_delivery, total_runs
-                FROM deliveries d
+                       d.legal_delivery, d.total_runs
+                FROM (
+                    SELECT id, sequence_number, created_at
+                    FROM deliveries
+                    WHERE innings_id = ?
+                    ORDER BY sequence_number DESC NULLS LAST, created_at DESC
+                    LIMIT 12
+                ) latest
+                JOIN deliveries d ON d.id = latest.id
                 JOIN players sp ON sp.id = d.striker_id
                 JOIN users su ON su.id = sp.user_id
                 JOIN players np ON np.id = d.non_striker_id
                 JOIN users nsu ON nsu.id = np.user_id
                 JOIN players bp ON bp.id = d.bowler_id
                 JOIN users bu ON bu.id = bp.user_id
-                WHERE d.innings_id = ?
-                ORDER BY d.sequence_number DESC NULLS LAST, d.created_at DESC
-                LIMIT 12
+                ORDER BY latest.sequence_number ASC NULLS FIRST, latest.created_at ASC
                 """,
                 (rs, row) -> new RecentBall(
                         rs.getObject("id", UUID.class),
