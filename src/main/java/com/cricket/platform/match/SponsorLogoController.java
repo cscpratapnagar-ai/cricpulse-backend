@@ -2,7 +2,6 @@ package com.cricket.platform.match;
 
 import com.cricket.platform.scoring.ScoringAccess;
 import org.springframework.http.CacheControl;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -77,7 +76,7 @@ public class SponsorLogoController {
             return ResponseEntity.ok()
                     .contentType(MediaType.parseMediaType(rs.getString("content_type")))
                     .cacheControl(CacheControl.maxAge(1, TimeUnit.DAYS).cachePublic())
-                    .header(HttpHeaders.X_CONTENT_TYPE_OPTIONS, "nosniff")
+                    .header("X-Content-Type-Options", "nosniff")
                     .body(rs.getBytes("image_data"));
         }, sponsorId);
     }
