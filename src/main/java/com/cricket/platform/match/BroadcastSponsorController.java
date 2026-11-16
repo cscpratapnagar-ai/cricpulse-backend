@@ -169,7 +169,7 @@ public class BroadcastSponsorController {
 
     private List<SponsorView> sponsors(UUID matchId) {
         return jdbc.query("""
-                SELECT id, name, tagline, logo_url, sponsor_type, display_duration_seconds, active, created_at, updated_at
+                SELECT id, match_id, name, tagline, logo_url, sponsor_type, display_duration_seconds, active, created_at, updated_at
                 FROM broadcast_sponsors WHERE match_id = ? ORDER BY created_at DESC
                 """, (rs, row) -> new SponsorView(
                 rs.getObject("id", UUID.class), rs.getObject("match_id", UUID.class),
