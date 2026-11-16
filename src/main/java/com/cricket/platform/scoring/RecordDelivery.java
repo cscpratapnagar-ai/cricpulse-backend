@@ -69,8 +69,7 @@ public class RecordDelivery {
                             runs = 0,
                             balls = 0,
                             is_current = TRUE
-                        WHERE partnerships.is_current = FALSE
-                        """, r.inningsId(), newWickets, ns, nn);
+                                                """, r.inningsId(), newWickets, ns, nn);
             }
         }
         if(legal&&newLegal%6==0&&newWickets<10){UUID t=ns;ns=nn;nn=t;}
