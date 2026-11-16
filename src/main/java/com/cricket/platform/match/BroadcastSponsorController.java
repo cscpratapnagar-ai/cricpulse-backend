@@ -129,6 +129,30 @@ public class BroadcastSponsorController {
                 rs.getInt("display_duration_seconds"), rs.getString("event_type")), matchId, event);
     }
 
+    @PostMapping("/api/public/matches/{matchId}/sponsors/{sponsorId}/impressions")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void recordPublicImpression(@PathVariable UUID matchId, @PathVariable UUID sponsorId,
+                                        @Valid @RequestBody ImpressionRequest request) {
+        String event = normalize(request.eventType());
+        if (!EVENTS.contains(event)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported sponsor event type.");
+        }
+        Integer active = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM broadcast_sponsors s
+                JOIN broadcast_sponsor_placements p ON p.sponsor_id = s.id
+                WHERE s.id = ? AND s.match_id = ? AND s.active = TRUE
+                  AND p.enabled = TRUE AND p.event_type = ?
+                """, Integer.class, sponsorId, matchId, event);
+        if (active == null || active == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Active sponsor placement was not found.");
+        }
+        jdbc.update("""
+                INSERT INTO broadcast_sponsor_impressions (id, sponsor_id, event_type, session_key)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT (session_key) WHERE session_key IS NOT NULL DO NOTHING
+                """, UUID.randomUUID(), sponsorId, event, request.sessionKey());
+    }
+
     @PostMapping("/api/matches/{matchId}/sponsors/{sponsorId}/impressions")
     @ResponseStatus(HttpStatus.CREATED)
     public ImpressionView recordImpression(@PathVariable UUID matchId, @PathVariable UUID sponsorId,
