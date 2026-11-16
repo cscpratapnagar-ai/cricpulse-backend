@@ -57,7 +57,20 @@ public class RecordDelivery {
                               )
                             """,r.inningsId(),r.inningsId());
                 }
-                jdbc.update("INSERT INTO partnerships(innings_id,wicket_number,batter_one_id,batter_two_id,runs,balls,is_current) VALUES(?,?,?, ?,0,0,TRUE)",r.inningsId(),newWickets,ns,nn);
+                jdbc.update("""
+                        INSERT INTO partnerships(
+                            innings_id, wicket_number, batter_one_id, batter_two_id, runs, balls, is_current
+                        )
+                        VALUES (?, ?, ?, ?, 0, 0, TRUE)
+                        ON CONFLICT (innings_id, wicket_number)
+                        DO UPDATE SET
+                            batter_one_id = EXCLUDED.batter_one_id,
+                            batter_two_id = EXCLUDED.batter_two_id,
+                            runs = 0,
+                            balls = 0,
+                            is_current = TRUE
+                        WHERE partnerships.is_current = FALSE
+                        """, r.inningsId(), newWickets, ns, nn);
             }
         }
         if(legal&&newLegal%6==0&&newWickets<10){UUID t=ns;ns=nn;nn=t;}
