@@ -60,7 +60,7 @@ public class SponsorLogoController {
                     SET content_type = EXCLUDED.content_type, image_data = EXCLUDED.image_data,
                         byte_size = EXCLUDED.byte_size, updated_at = now()
                     """, sponsorId, contentType, bytes, bytes.length);
-            String url = "/api/public/sponsor-assets/" + sponsorId;
+            String url = "/api/public/sponsor-assets/" + sponsorId + "?v=" + System.currentTimeMillis();
             jdbc.update("UPDATE broadcast_sponsors SET logo_url = ?, updated_at = now() WHERE id = ?",
                     url, sponsorId);
             return new LogoUploadView(url, contentType, bytes.length);
