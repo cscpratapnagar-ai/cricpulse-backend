@@ -1,6 +1,7 @@
 package com.cricket.platform.scoring;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
@@ -64,11 +65,15 @@ public class ScorerLeaseService {
 
     @Transactional
     public void requireHolder(UUID inningsId, String holderKey, UUID token) {
-        Integer count = jdbc.queryForObject("""
-                SELECT COUNT(*) FROM scorer_leases
+        // Lock the lease row until the scoring transaction commits. A takeover
+        // cannot race between lease validation and delivery persistence.
+        List<UUID> held = jdbc.query("""
+                SELECT lease_token FROM scorer_leases
                 WHERE innings_id = ? AND holder_key = ? AND lease_token = ? AND expires_at > now()
-                """, Integer.class, inningsId, holderKey, token);
-        if (count == null || count != 1) {
+                FOR UPDATE
+                """, (rs, rowNum) -> rs.getObject("lease_token", UUID.class),
+                inningsId, holderKey, token);
+        if (held.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Scoring lease is missing or expired. Refresh the scoring session before recording a delivery.");
         }
