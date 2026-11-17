@@ -8,6 +8,7 @@ import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.web.csrf.CsrfToken;
 
 import java.time.Duration;
 
@@ -43,6 +44,11 @@ public class AuthController {
         return ResponseEntity.noContent()
                 .header(HttpHeaders.SET_COOKIE, expiredCookie.toString())
                 .build();
+    }
+
+    @GetMapping("/csrf")
+    java.util.Map<String, String> csrf(CsrfToken token) {
+        return java.util.Map.of("token", token.getToken());
     }
 
     @GetMapping("/me")
