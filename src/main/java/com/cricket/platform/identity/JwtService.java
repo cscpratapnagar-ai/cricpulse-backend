@@ -12,6 +12,8 @@ import java.util.Date;
 
 @Component
 public class JwtService {
+    public static final String ACCESS_COOKIE_NAME = "CRICPULSE_ACCESS";
+
     private final SecretKey key;
     private final long expirationSeconds;
 

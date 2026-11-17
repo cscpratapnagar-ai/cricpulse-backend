@@ -3,6 +3,7 @@ package com.cricket.platform.shared;
 import com.cricket.platform.identity.JwtService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
@@ -21,6 +22,7 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 
@@ -52,7 +54,7 @@ public class SecurityConfig {
                 .cors(cors -> {})
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/login", "/api/users", "/api/public/**", "/ws/**", "/actuator/health", "/actuator/health/liveness", "/actuator/health/readiness", "/error").permitAll()
+                        .requestMatchers("/api/auth/login", "/api/auth/logout", "/api/users", "/api/public/**", "/ws/**", "/actuator/health", "/actuator/health/liveness", "/actuator/health/readiness", "/error").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         // Scoring uses match/team membership authorization in ScoringAccess.
                         // This is required because a user can be globally PLAYER while being
@@ -71,10 +73,12 @@ public class SecurityConfig {
         @Override
         protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
                 throws ServletException, IOException {
-            String header = request.getHeader("Authorization");
-            if (header != null && header.startsWith("Bearer ")) {
+            String token = bearerToken(request);
+            if (token == null) {
+                token = cookieToken(request);
+            }
+            if (token != null) {
                 try {
-                    String token = header.substring(7);
                     String subject = jwt.subject(token);
                     String role = jwt.role(token).toUpperCase();
                     var authentication = new UsernamePasswordAuthenticationToken(
@@ -86,6 +90,23 @@ public class SecurityConfig {
                 }
             }
             chain.doFilter(request, response);
+        }
+
+        private String bearerToken(HttpServletRequest request) {
+            String header = request.getHeader("Authorization");
+            return header != null && header.startsWith("Bearer ") ? header.substring(7) : null;
+        }
+
+        private String cookieToken(HttpServletRequest request) {
+            Cookie[] cookies = request.getCookies();
+            if (cookies == null) {
+                return null;
+            }
+            return Arrays.stream(cookies)
+                    .filter(cookie -> JwtService.ACCESS_COOKIE_NAME.equals(cookie.getName()))
+                    .map(Cookie::getValue)
+                    .findFirst()
+                    .orElse(null);
         }
     }
 }
