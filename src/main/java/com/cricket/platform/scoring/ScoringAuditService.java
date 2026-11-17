@@ -22,6 +22,7 @@ public class ScoringAuditService {
                 SELECT COUNT(*) AS event_count,
                        COALESCE(MAX(sequence_no), 0) AS last_sequence,
                        COALESCE(MAX(event_version), 0) AS last_version,
+                       (SELECT COUNT(*) FROM scoring_corrections WHERE innings_id = ?) AS correction_count,
                        MIN(created_at) AS first_event_at,
                        MAX(created_at) AS last_event_at
                 FROM delivery_events
@@ -31,9 +32,10 @@ public class ScoringAuditService {
                 rs.getLong("event_count"),
                 rs.getLong("last_sequence"),
                 rs.getInt("last_version"),
+                rs.getLong("correction_count"),
                 rs.getObject("first_event_at", OffsetDateTime.class),
                 rs.getObject("last_event_at", OffsetDateTime.class)
-        ), inningsId);
+        ), inningsId, inningsId);
     }
 
     public record AuditSnapshot(
@@ -41,6 +43,7 @@ public class ScoringAuditService {
             long eventCount,
             long lastSequence,
             int lastVersion,
+            long correctionCount,
             OffsetDateTime firstEventAt,
             OffsetDateTime lastEventAt
     ) {}
