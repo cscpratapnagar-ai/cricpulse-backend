@@ -9,15 +9,26 @@ BASE_URL="${BASE_URL:-http://localhost:8080/api}"
 tmp="$(mktemp -d)"
 ws_monitor_pid=""
 trap 'if [[ -n "$ws_monitor_pid" ]]; then kill "$ws_monitor_pid" 2>/dev/null || true; fi; rm -rf "$tmp"' EXIT
-login="$(curl -fsS -X POST "$BASE_URL/auth/login" -H 'Content-Type: application/json' \
-  --data "$(jq -nc --arg email "$EMAIL" --arg password "$PASSWORD" '{email:$email,password:$password}')")"
-token="$(jq -r '.accessToken // .token // .data.accessToken // empty' <<<"$login")"
-test -n "$token" && test "$token" != null
+# Cookie-based login: each identity gets its own CSRF and HttpOnly cookie jar.
+login_token() {
+  local email="$1" jar="$2" csrf token
+  curl -fsS -b "$jar" -c "$jar" "$BASE_URL/auth/csrf" >/dev/null
+  csrf="$(awk '$6 == "XSRF-TOKEN" { value=$7 } END { print value }' "$jar")"
+  [[ -n "$csrf" ]] || { echo "CSRF cookie missing for $email" >&2; return 1; }
+  curl -fsS -b "$jar" -c "$jar" -X POST "$BASE_URL/auth/login" \
+    -H 'Content-Type: application/json' -H "X-XSRF-TOKEN: $csrf" \
+    --data "$(jq -nc --arg email "$email" --arg password "$PASSWORD" '{email:$email,password:$password}')" >/dev/null
+  token="$(awk '$6 == "CRICPULSE_ACCESS" { value=$7 } END { print value }' "$jar")"
+  [[ -n "$token" ]] || { echo "HttpOnly access cookie missing after login for $email" >&2; return 1; }
+  printf '%s' "$token"
+}
+JAR_A="$tmp/owner-a.cookies"
+JAR_B="$tmp/owner-b.cookies"
+token="$(login_token "$EMAIL" "$JAR_A")"
+test -n "$token"
 auth=(-H "Authorization: Bearer $token" -H 'Content-Type: application/json')
-owner_b_login="$(curl -fsS -X POST "$BASE_URL/auth/login" -H 'Content-Type: application/json' \
-  --data "$(jq -nc --arg email "$OWNER_B_EMAIL" --arg password "$PASSWORD" '{email:$email,password:$password}')")"
-owner_b_token="$(jq -r '.accessToken // .token // .data.accessToken // empty' <<<"$owner_b_login")"
-test -n "$owner_b_token" && test "$owner_b_token" != null
+owner_b_token="$(login_token "$OWNER_B_EMAIL" "$JAR_B")"
+test -n "$owner_b_token"
 auth_b=(-H "Authorization: Bearer $owner_b_token" -H 'Content-Type: application/json')
 
 echo "[1/5] Create isolated disposable match"
