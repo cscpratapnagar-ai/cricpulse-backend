@@ -27,6 +27,11 @@ public class EventFirstDeliveryService {
 
         DeliveryEvent existing = eventRepository.findByCommandId(command.commandId());
         if (existing != null) {
+            if (!command.inningsId().equals(existing.inningsId())) {
+                throw new IllegalArgumentException(
+                        "X-Command-Id has already been used for a different innings"
+                );
+            }
             return new Result(existing, false);
         }
 
