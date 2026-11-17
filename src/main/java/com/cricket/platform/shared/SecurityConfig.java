@@ -6,8 +6,10 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -15,6 +17,8 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.cors.CorsConfiguration;
@@ -24,14 +28,20 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
-import org.springframework.beans.factory.annotation.Value;
 
 @Configuration
 public class SecurityConfig {
     private final List<String> allowedOriginPatterns;
+    private final boolean cookieSecure;
+    private final String cookieSameSite;
 
-    public SecurityConfig(@Value("${app.cors.allowed-origin-patterns:http://localhost:4200,https://*.app.github.dev,https://*.cricketpulse.app}") String allowedOriginPatterns) {
+    public SecurityConfig(
+            @Value("${app.cors.allowed-origin-patterns:http://localhost:4200,https://*.app.github.dev,https://*.cricketpulse.app}") String allowedOriginPatterns,
+            @Value("${security.auth.cookie-secure:true}") boolean cookieSecure,
+            @Value("${security.auth.cookie-same-site:Lax}") String cookieSameSite) {
         this.allowedOriginPatterns = List.of(allowedOriginPatterns.split(","));
+        this.cookieSecure = cookieSecure;
+        this.cookieSameSite = cookieSameSite;
     }
 
     @Bean PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(); }
@@ -41,7 +51,7 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOriginPatterns(allowedOriginPatterns);
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-Command-Id", "X-Scorer-Lease"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-Command-Id", "X-Scorer-Lease", "X-XSRF-TOKEN"));
         configuration.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
@@ -50,17 +60,23 @@ public class SecurityConfig {
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http, JwtService jwtService) throws Exception {
-        http.csrf(csrf -> csrf.disable())
+        CookieCsrfTokenRepository csrfRepository = CookieCsrfTokenRepository.withHttpOnlyFalse();
+        csrfRepository.setCookiePath("/api");
+        csrfRepository.setCookieCustomizer(cookie -> cookie
+                .secure(cookieSecure)
+                .sameSite(cookieSameSite));
+        CsrfTokenRequestAttributeHandler csrfHandler = new CsrfTokenRequestAttributeHandler();
+
+        http.csrf(csrf -> csrf
+                        .csrfTokenRepository(csrfRepository)
+                        .csrfTokenRequestHandler(csrfHandler))
                 .cors(cors -> {})
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/login", "/api/auth/logout", "/api/users", "/api/public/**", "/ws/**", "/actuator/health", "/actuator/health/liveness", "/actuator/health/readiness", "/error").permitAll()
+                        .requestMatchers("/api/auth/login", "/api/auth/logout", "/api/auth/csrf", "/api/users", "/api/public/**", "/ws/**", "/actuator/health", "/actuator/health/liveness", "/actuator/health/readiness", "/error").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                        // Scoring uses match/team membership authorization in ScoringAccess.
-                        // This is required because a user can be globally PLAYER while being
-                        // OWNER/MANAGER/CAPTAIN of a specific team.
                         .requestMatchers("/api/scoring/**").authenticated()
-                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/matches/**").hasAnyRole("ADMIN", "CAPTAIN", "PLAYER")
+                        .requestMatchers(HttpMethod.POST, "/api/matches/**").hasAnyRole("ADMIN", "CAPTAIN", "PLAYER")
                         .anyRequest().authenticated())
                 .addFilterBefore(new JwtFilter(jwtService), UsernamePasswordAuthenticationFilter.class);
         return http.build();
@@ -74,17 +90,14 @@ public class SecurityConfig {
         protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
                 throws ServletException, IOException {
             String token = bearerToken(request);
-            if (token == null) {
-                token = cookieToken(request);
-            }
+            if (token == null) token = cookieToken(request);
             if (token != null) {
                 try {
                     String subject = jwt.subject(token);
                     String role = jwt.role(token).toUpperCase();
                     var authentication = new UsernamePasswordAuthenticationToken(
                             subject, null, List.of(new SimpleGrantedAuthority("ROLE_" + role)));
-                    org.springframework.security.core.context.SecurityContextHolder.getContext()
-                            .setAuthentication(authentication);
+                    org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(authentication);
                 } catch (RuntimeException ignored) {
                     org.springframework.security.core.context.SecurityContextHolder.clearContext();
                 }
@@ -99,14 +112,11 @@ public class SecurityConfig {
 
         private String cookieToken(HttpServletRequest request) {
             Cookie[] cookies = request.getCookies();
-            if (cookies == null) {
-                return null;
-            }
+            if (cookies == null) return null;
             return Arrays.stream(cookies)
                     .filter(cookie -> JwtService.ACCESS_COOKIE_NAME.equals(cookie.getName()))
                     .map(Cookie::getValue)
-                    .findFirst()
-                    .orElse(null);
+                    .findFirst().orElse(null);
         }
     }
 }
