@@ -15,7 +15,8 @@ PLAYER_A_PHONE="901${RUN_DIGITS}"
 OWNER_B_PHONE="902${RUN_DIGITS}"
 PLAYER_B_PHONE="903${RUN_DIGITS}"
 COOKIE_JAR="$(mktemp)"
-trap 'rm -f "$COOKIE_JAR"' EXIT
+COOKIE_AUTH_JAR="$(mktemp)"
+trap 'rm -f "$COOKIE_JAR" "$COOKIE_AUTH_JAR"' EXIT
 curl_api() {
   local response_file status
   response_file="$(mktemp)"
@@ -44,6 +45,28 @@ register 'CricPulse CI Owner A' "$OWNER_A_EMAIL" "$OWNER_A_PHONE"
 register 'CricPulse CI Player A' "$PLAYER_A_EMAIL" "$PLAYER_A_PHONE"
 register 'CricPulse CI Owner B' "$OWNER_B_EMAIL" "$OWNER_B_PHONE"
 register 'CricPulse CI Player B' "$PLAYER_B_EMAIL" "$PLAYER_B_PHONE"
+
+# Exercise the browser cookie contract itself (no Authorization header).
+curl -fsS -b "$COOKIE_AUTH_JAR" -c "$COOKIE_AUTH_JAR" "$BASE_URL/auth/csrf" >/dev/null
+COOKIE_CSRF="$(awk '$6 == "XSRF-TOKEN" { value=$7 } END { print value }' "$COOKIE_AUTH_JAR")"
+[[ -n "$COOKIE_CSRF" ]] || { echo "Cookie-auth CSRF bootstrap failed" >&2; exit 1; }
+COOKIE_LOGIN_STATUS="$(curl -sS -b "$COOKIE_AUTH_JAR" -c "$COOKIE_AUTH_JAR" -o /dev/null -w '%{http_code}' \
+  -X POST "$BASE_URL/auth/login" -H 'Content-Type: application/json' -H "X-XSRF-TOKEN: $COOKIE_CSRF" \
+  --data "$(jq -nc --arg email "$OWNER_A_EMAIL" --arg password "$PASSWORD" '{email:$email,password:$password}')")"
+[[ "$COOKIE_LOGIN_STATUS" == "200" ]] || { echo "Cookie-auth login failed: HTTP $COOKIE_LOGIN_STATUS" >&2; exit 1; }
+COOKIE_PROFILE="$(curl -fsS -b "$COOKIE_AUTH_JAR" "$BASE_URL/players/me")"
+COOKIE_PLAYER_ID="$(jq -r '.id' <<<"$COOKIE_PROFILE")"
+[[ -n "$COOKIE_PLAYER_ID" && "$COOKIE_PLAYER_ID" != "null" ]] || { echo "Cookie-only /players/me did not return a player" >&2; exit 1; }
+NO_CSRF_STATUS="$(curl -sS -b "$COOKIE_AUTH_JAR" -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/teams" \
+  -H 'Content-Type: application/json' --data '{"name":"must-be-rejected","city":"CI"}')"
+[[ "$NO_CSRF_STATUS" == "403" ]] || { echo "Expected cookie-auth POST without CSRF to return 403, got $NO_CSRF_STATUS" >&2; exit 1; }
+COOKIE_CSRF="$(curl -fsS -b "$COOKIE_AUTH_JAR" -c "$COOKIE_AUTH_JAR" "$BASE_URL/auth/csrf" | jq -r '.token')"
+LOGOUT_STATUS="$(curl -sS -b "$COOKIE_AUTH_JAR" -c "$COOKIE_AUTH_JAR" -o /dev/null -w '%{http_code}' \
+  -X POST "$BASE_URL/auth/logout" -H "X-XSRF-TOKEN: $COOKIE_CSRF")"
+[[ "$LOGOUT_STATUS" == "204" ]] || { echo "Cookie-auth logout failed: HTTP $LOGOUT_STATUS" >&2; exit 1; }
+AFTER_LOGOUT_STATUS="$(curl -sS -b "$COOKIE_AUTH_JAR" -o /dev/null -w '%{http_code}' "$BASE_URL/auth/me")"
+[[ "$AFTER_LOGOUT_STATUS" == "401" ]] || { echo "Expected /auth/me after logout to return 401, got $AFTER_LOGOUT_STATUS" >&2; exit 1; }
+echo "Verified HttpOnly cookie login, cookie-only API access, CSRF rejection, and logout"
 
 # Login success clears the previous CSRF token; bootstrap a fresh token before every unsafe cookie-auth request.
 refresh_csrf() {
