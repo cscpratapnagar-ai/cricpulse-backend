@@ -32,7 +32,7 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    LoginUser.AuthResponse login(@Valid @RequestBody LoginUser.Request request, HttpServletResponse response) {
+    SessionResponse login(@Valid @RequestBody LoginUser.Request request, HttpServletResponse response) {
         LoginUser.AuthResponse auth = loginUser.execute(request);
         response.addHeader(HttpHeaders.SET_COOKIE, accessCookie(auth.accessToken(), Duration.ofSeconds(tokenExpirationSeconds)).toString());
         return new SessionResponse(auth.userId(), auth.fullName(), auth.email(), auth.role());
