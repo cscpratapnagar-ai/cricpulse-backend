@@ -83,7 +83,7 @@ public class RecordDelivery {
         int expectedOver=s.legalBalls()/6;
         int expectedBall=(s.legalBalls()%6)+1;
         if(r.overNumber()!=expectedOver||r.ballNumber()!=expectedBall){
-            Integer duplicate=jdbc.queryForObject("SELECT COUNT(*) FROM deliveries WHERE innings_id=? AND over_number=? AND ball_number=?",Integer.class,r.inningsId(),r.overNumber(),r.ballNumber());
+            Integer duplicate=jdbc.queryForObject("SELECT COUNT(*) FROM deliveries WHERE innings_id=? AND over_number=? AND ball_number=? AND legal_delivery=TRUE",Integer.class,r.inningsId(),r.overNumber(),r.ballNumber());
             if(duplicate!=null&&duplicate>0)throw new IllegalArgumentException("This delivery position has already been recorded. Expected over "+expectedOver+", ball "+expectedBall);
             throw new IllegalArgumentException("Invalid delivery position. Expected over "+expectedOver+", ball "+expectedBall);
         }
