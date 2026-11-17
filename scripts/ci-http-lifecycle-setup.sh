@@ -56,6 +56,7 @@ refresh_csrf() {
   fi
 }
 # CI reads the JWT only from the HttpOnly cookie jar; the login JSON no longer exposes it.
+# All downstream lifecycle E2E scripts use the same cookie-backed login contract.
 login_token() {
   refresh_csrf
   curl_json POST "$BASE_URL/auth/login" "$(jq -nc --arg e "$1" --arg p "$PASSWORD" '{email:$e,password:$p}')" >/dev/null
