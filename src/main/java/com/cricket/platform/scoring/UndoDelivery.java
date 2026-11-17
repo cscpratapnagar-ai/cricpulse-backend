@@ -38,6 +38,20 @@ public class UndoDelivery {
 
         DeliverySnapshot deleted = deliveries.get(0);
         UUID deliveryId = deleted.id();
+
+        // Preserve an immutable correction record before removing the delivery
+        // from the mutable score projection. Both writes share this transaction.
+        jdbc.update("""
+                INSERT INTO scoring_corrections(
+                    innings_id, correction_type, affected_delivery_id, details
+                ) VALUES (?, 'DELIVERY_UNDONE', ?, jsonb_build_object(
+                    'strikerId', ?::text,
+                    'nonStrikerId', ?::text,
+                    'bowlerId', ?::text
+                ))
+                """, inningsId, deliveryId, deleted.strikerId(),
+                deleted.nonStrikerId(), deleted.bowlerId());
+
         jdbc.update("DELETE FROM fall_of_wickets WHERE innings_id = ?", inningsId);
         jdbc.update("DELETE FROM innings_batters WHERE innings_id = ?", inningsId);
         jdbc.update("DELETE FROM innings_bowlers WHERE innings_id = ?", inningsId);
