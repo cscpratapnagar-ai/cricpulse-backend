@@ -16,7 +16,19 @@ OWNER_B_PHONE="902${RUN_DIGITS}"
 PLAYER_B_PHONE="903${RUN_DIGITS}"
 COOKIE_JAR="$(mktemp)"
 trap 'rm -f "$COOKIE_JAR"' EXIT
-curl_api() { curl -fsS -b "$COOKIE_JAR" -c "$COOKIE_JAR" -H "X-XSRF-TOKEN: $CSRF_TOKEN" "$@"; }
+curl_api() {
+  local response_file status
+  response_file="$(mktemp)"
+  status="$(curl -sS -b "$COOKIE_JAR" -c "$COOKIE_JAR" -H "X-XSRF-TOKEN: $CSRF_TOKEN" -o "$response_file" -w '%{http_code}' "$@")"
+  if [[ "$status" -lt 200 || "$status" -ge 300 ]]; then
+    echo "HTTP $status for request: $*" >&2
+    cat "$response_file" >&2
+    rm -f "$response_file"
+    return 22
+  fi
+  cat "$response_file"
+  rm -f "$response_file"
+}
 # Bootstrap the CSRF cookie, then use the exact value persisted by curl's cookie jar.
 CSRF_RESPONSE="$(curl -fsS -b "$COOKIE_JAR" -c "$COOKIE_JAR" "$BASE_URL/auth/csrf")"
 CSRF_TOKEN="$(awk '$6 == "XSRF-TOKEN" { token=$7 } END { print token }' "$COOKIE_JAR")"
