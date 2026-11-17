@@ -64,6 +64,21 @@ test -n "$innings_id" && test "$innings_id" != null
 opening_body="$(jq -nc --arg striker "$A_STRIKER_ID" --arg non "$A_NON_STRIKER_ID" --arg bowler "$B_BOWLER_ID" '{strikerId:$striker,nonStrikerId:$non,bowlerId:$bowler}')"
 post_json "open innings" "$BASE_URL/scoring/innings/$innings_id/opening" "$opening_body" >/dev/null
 
+lease_token="$(cat /proc/sys/kernel/random/uuid)"
+lease_body="$(jq -nc --arg token "$lease_token" '{leaseToken:$token}')"
+curl -fsS -X POST "$BASE_URL/scoring/innings/$innings_id/lease" "${auth[@]}" --data "$lease_body" >/dev/null
+lease=(-H "X-Scorer-Lease: $lease_token")
+
+# A second authorized team owner must not acquire an active innings lease.
+other_lease_token="$(cat /proc/sys/kernel/random/uuid)"
+other_lease_body="$(jq -nc --arg token "$other_lease_token" '{leaseToken:$token}')"
+lease_conflict_status="$(curl -sS -o "$tmp/lease-conflict.json" -w '%{http_code}' -X POST "$BASE_URL/scoring/innings/$innings_id/lease" "${auth_b[@]}" --data "$other_lease_body")"
+if [[ "$lease_conflict_status" != "409" ]]; then
+  echo "FAIL: second scorer expected HTTP 409 lease conflict, received $lease_conflict_status" >&2
+  cat "$tmp/lease-conflict.json" >&2
+  exit 1
+fi
+
 echo "[3/7] Connect public live-score WebSocket subscription"
 export WS_URL="${WS_URL:-${BASE_URL%/api}/ws}"
 export WS_URL="${WS_URL/http:\/\//ws:\/\/}"
@@ -92,7 +107,7 @@ delivery="$(jq -nc --arg innings "$innings_id" --arg striker "$A_STRIKER_ID" --a
 command_id="$(cat /proc/sys/kernel/random/uuid)"
 
 echo "[4/7] Submit delivery once with command ID"
-first="$(curl -fsS -X POST "$BASE_URL/scoring/innings/$innings_id/deliveries" "${auth[@]}" -H "X-Command-Id: $command_id" --data "$delivery")"
+first="$(curl -fsS -X POST "$BASE_URL/scoring/innings/$innings_id/deliveries" "${auth[@]}" "${lease[@]}" -H "X-Command-Id: $command_id" --data "$delivery")"
 score_after_first="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "${auth[@]}")"
 balls_first="$(jq -r '.legalBalls // .legal_balls // -1' <<<"$score_after_first")"
 runs_first="$(jq -r '.runs // .totalRuns // .total_runs // -1' <<<"$score_after_first")"
@@ -114,7 +129,7 @@ fi
 echo "[6/7] PASS: same HTTP command replay did not double-apply delivery"
 
 echo "[7/7] Undo delivery and verify score rollback"
-undo_status="$(curl -sS -o "$tmp/undo-response.json" -w '%{http_code}' -X POST "$BASE_URL/scoring/innings/$innings_id/undo" "${auth[@]}")"
+undo_status="$(curl -sS -o "$tmp/undo-response.json" -w '%{http_code}' -X POST "$BASE_URL/scoring/innings/$innings_id/undo" "${auth[@]}" "${lease[@]}")"
 undo_response="$(cat "$tmp/undo-response.json")"
 if [[ ! "$undo_status" =~ ^2[0-9][0-9]$ ]]; then
   echo "FAIL: undo delivery returned HTTP $undo_status" >&2
