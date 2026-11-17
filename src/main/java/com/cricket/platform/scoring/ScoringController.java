@@ -6,8 +6,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -28,6 +30,7 @@ public class ScoringController {
     private final GetLiveScore getLiveScore;
     private final UndoDelivery undoDelivery;
     private final JdbcTemplate jdbc;
+    private final ScorerLeaseService scorerLeaseService;
 
     public ScoringController(
             EventFirstProjectionService eventFirstProjectionService,
@@ -37,7 +40,8 @@ public class ScoringController {
             ScoringAccess scoringAccess,
             GetLiveScore getLiveScore,
             UndoDelivery undoDelivery,
-            JdbcTemplate jdbc) {
+            JdbcTemplate jdbc,
+            ScorerLeaseService scorerLeaseService) {
         this.eventFirstProjectionService = eventFirstProjectionService;
         this.inningsLifecycle = inningsLifecycle;
         this.matchResultService = matchResultService;
@@ -46,6 +50,7 @@ public class ScoringController {
         this.getLiveScore = getLiveScore;
         this.undoDelivery = undoDelivery;
         this.jdbc = jdbc;
+        this.scorerLeaseService = scorerLeaseService;
     }
 
     @PostMapping("/innings/{inningsId}/deliveries")
@@ -53,11 +58,13 @@ public class ScoringController {
     public ResponseEntity<GetLiveScore.Score> recordDelivery(
             @PathVariable UUID inningsId,
             @RequestHeader(value = "X-Command-Id", required = false) String commandIdHeader,
+            @RequestHeader(value = "X-Scorer-Lease") UUID scorerLeaseToken,
             @RequestBody RecordDelivery.Request request,
             Authentication authentication) {
         UUID commandId = parseCommandId(commandIdHeader);
         UUID matchId = scoringAccess.matchIdForInnings(inningsId);
         scoringAccess.requireMatchManager(matchId, authentication);
+        scorerLeaseService.requireHolder(inningsId, authentication.getName(), scorerLeaseToken);
 
         if (!inningsId.equals(request.inningsId())) {
             throw new IllegalArgumentException("Path inningsId must match the request inningsId");
@@ -117,9 +124,11 @@ public class ScoringController {
     @Transactional
     public ResponseEntity<GetLiveScore.Score> undoLastDelivery(
             @PathVariable UUID inningsId,
+            @RequestHeader(value = "X-Scorer-Lease") UUID scorerLeaseToken,
             Authentication authentication) {
         UUID matchId = scoringAccess.matchIdForInnings(inningsId);
         scoringAccess.requireMatchManager(matchId, authentication);
+        scorerLeaseService.requireHolder(inningsId, authentication.getName(), scorerLeaseToken);
 
         UndoDelivery.UndoResult result = undoDelivery.execute(inningsId);
         if (result.mutated()) {
@@ -138,6 +147,42 @@ public class ScoringController {
         }
         return ResponseEntity.ok(result.score());
     }
+
+
+    @PostMapping("/innings/{inningsId}/lease")
+    public ResponseEntity<ScorerLeaseService.LeaseState> acquireScorerLease(
+            @PathVariable UUID inningsId,
+            @RequestBody ScorerLeaseRequest request,
+            Authentication authentication) {
+        UUID matchId = scoringAccess.matchIdForInnings(inningsId);
+        scoringAccess.requireMatchManager(matchId, authentication);
+        return ResponseEntity.ok(scorerLeaseService.acquire(
+                inningsId, authentication.getName(), request.leaseToken()));
+    }
+
+    @PutMapping("/innings/{inningsId}/lease")
+    public ResponseEntity<ScorerLeaseService.LeaseState> renewScorerLease(
+            @PathVariable UUID inningsId,
+            @RequestBody ScorerLeaseRequest request,
+            Authentication authentication) {
+        UUID matchId = scoringAccess.matchIdForInnings(inningsId);
+        scoringAccess.requireMatchManager(matchId, authentication);
+        return ResponseEntity.ok(scorerLeaseService.renew(
+                inningsId, authentication.getName(), request.leaseToken()));
+    }
+
+    @DeleteMapping("/innings/{inningsId}/lease")
+    public ResponseEntity<Void> releaseScorerLease(
+            @PathVariable UUID inningsId,
+            @RequestHeader(value = "X-Scorer-Lease") UUID leaseToken,
+            Authentication authentication) {
+        UUID matchId = scoringAccess.matchIdForInnings(inningsId);
+        scoringAccess.requireMatchManager(matchId, authentication);
+        scorerLeaseService.release(inningsId, authentication.getName(), leaseToken);
+        return ResponseEntity.noContent().build();
+    }
+
+    public record ScorerLeaseRequest(UUID leaseToken) {}
 
     @GetMapping("/innings/{inningsId}")
     public ResponseEntity<GetLiveScore.Score> getLiveScore(
