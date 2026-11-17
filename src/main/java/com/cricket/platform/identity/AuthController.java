@@ -35,7 +35,7 @@ public class AuthController {
     LoginUser.AuthResponse login(@Valid @RequestBody LoginUser.Request request, HttpServletResponse response) {
         LoginUser.AuthResponse auth = loginUser.execute(request);
         response.addHeader(HttpHeaders.SET_COOKIE, accessCookie(auth.accessToken(), Duration.ofSeconds(tokenExpirationSeconds)).toString());
-        return auth;
+        return new SessionResponse(auth.userId(), auth.fullName(), auth.email(), auth.role());
     }
 
     @PostMapping("/logout")
@@ -52,9 +52,12 @@ public class AuthController {
     }
 
     @GetMapping("/me")
-    LoginUser.AuthResponse me(Authentication authentication) {
-        return loginUser.current(authentication.getName());
+    SessionResponse me(Authentication authentication) {
+        LoginUser.AuthResponse user = loginUser.current(authentication.getName());
+        return new SessionResponse(user.userId(), user.fullName(), user.email(), user.role());
     }
+
+    public record SessionResponse(String userId, String fullName, String email, String role) {}
 
     private ResponseCookie accessCookie(String value, Duration maxAge) {
         return ResponseCookie.from(JwtService.ACCESS_COOKIE_NAME, value)
