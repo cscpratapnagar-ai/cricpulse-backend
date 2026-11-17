@@ -45,8 +45,22 @@ register 'CricPulse CI Player A' "$PLAYER_A_EMAIL" "$PLAYER_A_PHONE"
 register 'CricPulse CI Owner B' "$OWNER_B_EMAIL" "$OWNER_B_PHONE"
 register 'CricPulse CI Player B' "$PLAYER_B_EMAIL" "$PLAYER_B_PHONE"
 
+# Login success clears the previous CSRF token; bootstrap a fresh token before every unsafe cookie-auth request.
+refresh_csrf() {
+  local response
+  response="$(curl -fsS -b "$COOKIE_JAR" -c "$COOKIE_JAR" "$BASE_URL/auth/csrf")"
+  CSRF_TOKEN="$(awk '$6 == "XSRF-TOKEN" { token=$7 } END { print token }' "$COOKIE_JAR")"
+  if [[ -z "$CSRF_TOKEN" ]]; then
+    echo "CSRF refresh did not persist XSRF-TOKEN. Response: $response" >&2
+    exit 1
+  fi
+}
 # CI reads the JWT only from the HttpOnly cookie jar; the login JSON no longer exposes it.
-login_token() { curl_json POST "$BASE_URL/auth/login" "$(jq -nc --arg e "$1" --arg p "$PASSWORD" '{email:$e,password:$p}')" >/dev/null; awk '$6 == "CRICPULSE_ACCESS" { print $7 }' "$COOKIE_JAR" | tail -n 1; }
+login_token() {
+  refresh_csrf
+  curl_json POST "$BASE_URL/auth/login" "$(jq -nc --arg e "$1" --arg p "$PASSWORD" '{email:$e,password:$p}')" >/dev/null
+  awk '$6 == "CRICPULSE_ACCESS" { print $7 }' "$COOKIE_JAR" | tail -n 1
+}
 OWNER_A_TOKEN="$(login_token "$OWNER_A_EMAIL")"; OWNER_B_TOKEN="$(login_token "$OWNER_B_EMAIL")"
 test -n "$OWNER_A_TOKEN" && test "$OWNER_A_TOKEN" != null; test -n "$OWNER_B_TOKEN" && test "$OWNER_B_TOKEN" != null
 AUTH_A=(-H "Authorization: Bearer $OWNER_A_TOKEN"); AUTH_B=(-H "Authorization: Bearer $OWNER_B_TOKEN")
