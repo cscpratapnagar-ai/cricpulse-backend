@@ -35,6 +35,8 @@ class EventFirstProjectionServiceTest {
 
         when(jdbc.queryForObject(anyString(), eq(UUID.class), any(Object[].class)))
                 .thenReturn(inningsId);
+        when(jdbc.queryForObject(anyString(), eq(String.class), any(Object[].class)))
+                .thenReturn("LIVE");
         when(jdbc.queryForObject(anyString(), eq(Boolean.class), any(Object[].class)))
                 .thenReturn(true);
 
