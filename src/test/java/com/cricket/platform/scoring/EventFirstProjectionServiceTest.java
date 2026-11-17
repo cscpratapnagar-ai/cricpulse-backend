@@ -7,6 +7,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -73,6 +74,8 @@ class EventFirstProjectionServiceTest {
                 .thenReturn(inningsId);
         when(jdbc.queryForObject(anyString(), eq(Boolean.class), any(Object[].class)))
                 .thenReturn(false);
+        when(jdbc.queryForObject(anyString(), eq(String.class), any(Object[].class)))
+                .thenReturn("LIVE");
         when(eventService.record(command, 11, 2, true))
                 .thenReturn(new EventFirstDeliveryService.Result(event, true));
 
