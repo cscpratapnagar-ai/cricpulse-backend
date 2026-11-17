@@ -69,7 +69,13 @@ public class SecurityConfig {
 
         http.csrf(csrf -> csrf
                         .csrfTokenRepository(csrfRepository)
-                        .csrfTokenRequestHandler(csrfHandler))
+                        .csrfTokenRequestHandler(csrfHandler)
+                        // Bearer tokens are explicitly supplied by API clients and are not ambient browser credentials.
+                        // Keep CSRF protection enabled for cookie-authenticated browser requests.
+                        .ignoringRequestMatchers(request -> {
+                            String authorization = request.getHeader("Authorization");
+                            return authorization != null && authorization.startsWith("Bearer ");
+                        }))
                 .cors(cors -> {})
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
