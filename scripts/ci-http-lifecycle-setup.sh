@@ -65,7 +65,7 @@ LOGOUT_STATUS="$(curl -sS -b "$COOKIE_AUTH_JAR" -c "$COOKIE_AUTH_JAR" -o /dev/nu
   -X POST "$BASE_URL/auth/logout" -H "X-XSRF-TOKEN: $COOKIE_CSRF")"
 [[ "$LOGOUT_STATUS" == "204" ]] || { echo "Cookie-auth logout failed: HTTP $LOGOUT_STATUS" >&2; exit 1; }
 AFTER_LOGOUT_STATUS="$(curl -sS -b "$COOKIE_AUTH_JAR" -o /dev/null -w '%{http_code}' "$BASE_URL/auth/me")"
-[[ "$AFTER_LOGOUT_STATUS" == "401" ]] || { echo "Expected /auth/me after logout to return 401, got $AFTER_LOGOUT_STATUS" >&2; exit 1; }
+[[ "$AFTER_LOGOUT_STATUS" == "403" ]] || { echo "Expected unauthenticated /auth/me after logout to be rejected (403), got $AFTER_LOGOUT_STATUS" >&2; exit 1; }
 echo "Verified HttpOnly cookie login, cookie-only API access, CSRF rejection, and logout"
 
 # Login success clears the previous CSRF token; bootstrap a fresh token before every unsafe cookie-auth request.
