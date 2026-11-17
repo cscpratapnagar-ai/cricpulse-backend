@@ -15,6 +15,21 @@ public class EventFirstDeliveryService {
     }
 
     @Transactional
+    public Result findExisting(DeliveryCommand command) {
+        eventRepository.lockInnings(command.inningsId());
+        DeliveryEvent existing = eventRepository.findByCommandId(command.commandId());
+        if (existing == null) {
+            return null;
+        }
+        if (!command.inningsId().equals(existing.inningsId())) {
+            throw new IllegalArgumentException(
+                    "X-Command-Id has already been used for a different innings"
+            );
+        }
+        return new Result(existing, false);
+    }
+
+    @Transactional
     public Result record(DeliveryCommand command,
                          int overNumber,
                          int ballNumber,
