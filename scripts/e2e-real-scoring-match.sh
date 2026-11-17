@@ -56,8 +56,21 @@ renew_scorer_lease() {
 fail_with_body() { local label="$1"; echo "ERROR: $label" >&2; if [[ -f "$LAST_STATUS_FILE" ]]; then echo "Last HTTP status: $(cat "$LAST_STATUS_FILE")" >&2; fi; if [[ -s "$LAST_RESPONSE_FILE" ]]; then echo "Last response body:" >&2; cat "$LAST_RESPONSE_FILE" >&2; echo >&2; fi; exit 1; }
 
 echo "[1/10] Login"
-LOGIN_RESPONSE="$(curl -sS -f -X POST "$BASE_URL/auth/login" -H 'Content-Type: application/json' -d "$(jq -nc --arg email "$EMAIL" --arg password "$PASSWORD" '{email:$email,password:$password}')")"
-TOKEN="$(jq -r '.accessToken // .token // .data.accessToken // empty' <<<"$LOGIN_RESPONSE")"; [[ -n "$TOKEN" && "$TOKEN" != null ]] || { echo "ERROR: login token missing" >&2; exit 1; }
+# Cookie-auth login requires a CSRF token; access JWT is returned only as HttpOnly cookie.
+AUTH_COOKIE_JAR="$TMP_DIR/auth.cookies"
+curl -fsS -b "$AUTH_COOKIE_JAR" -c "$AUTH_COOKIE_JAR" "$BASE_URL/auth/csrf" >/dev/null
+CSRF_TOKEN="$(awk '$6 == "XSRF-TOKEN" { value=$7 } END { print value }' "$AUTH_COOKIE_JAR")"
+[[ -n "$CSRF_TOKEN" ]] || { echo "ERROR: CSRF cookie missing after bootstrap" >&2; exit 1; }
+LOGIN_STATUS="$(curl -sS -b "$AUTH_COOKIE_JAR" -c "$AUTH_COOKIE_JAR" -o "$TMP_DIR/login-response.json" -w '%{http_code}' \
+  -X POST "$BASE_URL/auth/login" -H 'Content-Type: application/json' -H "X-XSRF-TOKEN: $CSRF_TOKEN" \
+  -d "$(jq -nc --arg email "$EMAIL" --arg password "$PASSWORD" '{email:$email,password:$password}')")"
+if [[ "$LOGIN_STATUS" != "200" ]]; then
+  echo "ERROR: login failed (HTTP $LOGIN_STATUS)" >&2
+  cat "$TMP_DIR/login-response.json" >&2
+  exit 1
+fi
+TOKEN="$(awk '$6 == "CRICPULSE_ACCESS" { value=$7 } END { print value }' "$AUTH_COOKIE_JAR")"
+[[ -n "$TOKEN" && "$TOKEN" != null ]] || { echo "ERROR: HttpOnly access cookie missing after login" >&2; exit 1; }
 
 echo "[2/10] Prepare disposable match"
 if [[ -z "$MATCH_ID" ]]; then MATCH_BODY="$(jq -nc --arg name "$MATCH_NAME" --arg teamA "$TEAM_A_ID" --arg teamB "$TEAM_B_ID" '{name:$name,teamAId:$teamA,teamBId:$teamB,format:"T20",totalOvers:20}')"; CREATED_MATCH="$(request POST "$BASE_URL/matches" "$MATCH_BODY")" || fail_with_body "create disposable match failed" POST "$BASE_URL/matches" "$MATCH_BODY"; MATCH_ID="$(jq -r '.id // empty' <<<"$CREATED_MATCH")"; [[ -n "$MATCH_ID" ]] || { echo "ERROR: created match ID missing" >&2; exit 1; }; fi
