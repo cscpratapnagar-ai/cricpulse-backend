@@ -17,8 +17,14 @@ PLAYER_B_PHONE="903${RUN_DIGITS}"
 COOKIE_JAR="$(mktemp)"
 trap 'rm -f "$COOKIE_JAR"' EXIT
 curl_api() { curl -fsS -b "$COOKIE_JAR" -c "$COOKIE_JAR" -H "X-XSRF-TOKEN: $CSRF_TOKEN" "$@"; }
-CSRF_TOKEN="$(curl -fsS -c "$COOKIE_JAR" "$BASE_URL/auth/csrf" | jq -r '.token')"
-test -n "$CSRF_TOKEN" && test "$CSRF_TOKEN" != null
+# Bootstrap the CSRF cookie, then use the exact value persisted by curl's cookie jar.
+CSRF_RESPONSE="$(curl -fsS -b "$COOKIE_JAR" -c "$COOKIE_JAR" "$BASE_URL/auth/csrf")"
+CSRF_TOKEN="$(awk '$6 == "XSRF-TOKEN" { token=$7 } END { print token }' "$COOKIE_JAR")"
+if [[ -z "$CSRF_TOKEN" ]]; then
+  echo "CSRF bootstrap did not persist XSRF-TOKEN. Response: $CSRF_RESPONSE" >&2
+  cat "$COOKIE_JAR" >&2
+  exit 1
+fi
 curl_json() { curl_api -X "$1" "$2" -H 'Content-Type: application/json' ${3:+--data "$3"}; }
 register() { curl_json POST "$BASE_URL/users" "$(jq -nc --arg n "$1" --arg e "$2" --arg p "$3" --arg pw "$PASSWORD" '{fullName:$n,email:$e,phone:$p,password:$pw}')" >/dev/null; }
 
