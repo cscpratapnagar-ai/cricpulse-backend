@@ -7,6 +7,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
@@ -35,6 +36,28 @@ class EventFirstDeliveryServiceTest {
         assertSame(existing, result.event());
         assertFalse(result.created());
         verify(repository).lockInnings(inningsId);
+        verify(repository).findByCommandId(commandId);
+        verify(repository, never()).nextSequence(any());
+        verify(repository, never()).nextVersion(any());
+        verifyNoRecordExecution(recorder);
+    }
+
+    @Test
+    void reusedCommandIdFromAnotherInningsIsRejectedAndNeverAcknowledgedAsSynced() {
+        DeliveryEventRepository repository = mock(DeliveryEventRepository.class);
+        RecordDeliveryEvent recorder = mock(RecordDeliveryEvent.class);
+        EventFirstDeliveryService service = new EventFirstDeliveryService(repository, recorder);
+
+        UUID commandId = UUID.randomUUID();
+        DeliveryCommand command = command(commandId, UUID.randomUUID());
+        DeliveryEvent existing = event(command, 4L, 4);
+        DeliveryCommand replayForDifferentInnings = command(commandId, UUID.randomUUID());
+
+        when(repository.findByCommandId(commandId)).thenReturn(existing);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service.record(replayForDifferentInnings, 0, 1, true));
+        verify(repository).lockInnings(replayForDifferentInnings.inningsId());
         verify(repository).findByCommandId(commandId);
         verify(repository, never()).nextSequence(any());
         verify(repository, never()).nextVersion(any());
