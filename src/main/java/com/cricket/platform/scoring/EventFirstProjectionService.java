@@ -73,6 +73,25 @@ public class EventFirstProjectionService {
             return new Result(null, false);
         }
 
+        // Serialize scoring against match completion. MatchResultService also
+        // locks the match row before setting COMPLETED, so a delivery either
+        // commits before the result or is rejected after it; it cannot slip
+        // through the completed-match boundary.
+        String matchStatus = jdbc.queryForObject(
+                """
+                SELECT m.status
+                FROM matches m
+                JOIN innings i ON i.match_id = m.id
+                WHERE i.id = ?
+                FOR UPDATE OF m
+                """,
+                String.class,
+                command.inningsId()
+        );
+        if (!"LIVE".equals(matchStatus)) {
+            throw new IllegalArgumentException("Scoring is unavailable because the match is not live");
+        }
+
         EventFirstDeliveryService.Result eventResult = eventFirstDeliveryService.record(
                 command,
                 overNumber,
