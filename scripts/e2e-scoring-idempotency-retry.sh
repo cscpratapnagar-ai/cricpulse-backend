@@ -115,7 +115,7 @@ test "$balls_first" = "1"
 test "$runs_first" = "1"
 
 echo "[5/7] Replay exact same delivery with same command ID"
-retry="$(curl -fsS -X POST "$BASE_URL/scoring/innings/$innings_id/deliveries" "${auth[@]}" -H "X-Command-Id: $command_id" --data "$delivery")"
+retry="$(curl -fsS -X POST "$BASE_URL/scoring/innings/$innings_id/deliveries" "${auth[@]}" "${lease[@]}" -H "X-Command-Id: $command_id" --data "$delivery")"
 score_after_retry="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "${auth[@]}")"
 balls_retry="$(jq -r '.legalBalls // .legal_balls // -1' <<<"$score_after_retry")"
 runs_retry="$(jq -r '.runs // .totalRuns // .total_runs // -1' <<<"$score_after_retry")"
@@ -129,7 +129,7 @@ fi
 echo "[6/7] PASS: same HTTP command replay did not double-apply delivery"
 
 echo "[7/7] Undo delivery and verify score rollback"
-undo_status="$(curl -sS -o "$tmp/undo-response.json" -w '%{http_code}' -X POST "$BASE_URL/scoring/innings/$innings_id/undo" "${auth[@]}" "${lease[@]}")"
+undo_status="$(curl -sS -o "$tmp/undo-response.json" -w '%{http_code}' -X POST "$BASE_URL/scoring/innings/$innings_id/undo" "${auth[@]}" "${lease[@]}" "${lease[@]}")"
 undo_response="$(cat "$tmp/undo-response.json")"
 if [[ ! "$undo_status" =~ ^2[0-9][0-9]$ ]]; then
   echo "FAIL: undo delivery returned HTTP $undo_status" >&2
@@ -147,7 +147,7 @@ if [[ "$balls_undo" != "0" || "$runs_undo" != "0" ]]; then
 fi
 
 # Undo on an innings with no remaining deliveries must be a safe no-op.
-undo_empty_status="$(curl -sS -o "$tmp/undo-empty-response.json" -w '%{http_code}' -X POST "$BASE_URL/scoring/innings/$innings_id/undo" "${auth[@]}")"
+undo_empty_status="$(curl -sS -o "$tmp/undo-empty-response.json" -w '%{http_code}' -X POST "$BASE_URL/scoring/innings/$innings_id/undo" "${auth[@]}" "${lease[@]}")"
 if [[ ! "$undo_empty_status" =~ ^2[0-9][0-9]$ ]]; then
   echo "FAIL: empty undo returned HTTP $undo_empty_status" >&2
   cat "$tmp/undo-empty-response.json" >&2
