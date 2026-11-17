@@ -55,6 +55,15 @@ public class EventFirstProjectionService {
             throw new IllegalArgumentException("Scoring is unavailable because the match is not live");
         }
 
+        String inningsStatus = jdbc.queryForObject(
+                "SELECT status FROM innings WHERE id = ?",
+                String.class,
+                command.inningsId()
+        );
+        if (!"LIVE".equals(inningsStatus)) {
+            throw new IllegalArgumentException("Scoring is unavailable because the innings is not live");
+        }
+
         boolean legalDelivery = !"WIDE".equals(command.extraType())
                 && !"NO_BALL".equals(command.extraType());
 
