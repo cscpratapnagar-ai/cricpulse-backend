@@ -16,10 +16,9 @@ OWNER_B_PHONE="902${RUN_DIGITS}"
 PLAYER_B_PHONE="903${RUN_DIGITS}"
 COOKIE_JAR="$(mktemp)"
 trap 'rm -f "$COOKIE_JAR"' EXIT
-CSRF_TOKEN="$(curl_api -c "$COOKIE_JAR" "$BASE_URL/auth/csrf" | jq -r '.token')"
-test -n "$CSRF_TOKEN" && test "$CSRF_TOKEN" != null
-
 curl_api() { curl -fsS -b "$COOKIE_JAR" -c "$COOKIE_JAR" -H "X-XSRF-TOKEN: $CSRF_TOKEN" "$@"; }
+CSRF_TOKEN="$(curl -fsS -c "$COOKIE_JAR" "$BASE_URL/auth/csrf" | jq -r '.token')"
+test -n "$CSRF_TOKEN" && test "$CSRF_TOKEN" != null
 curl_json() { curl_api -X "$1" "$2" -H 'Content-Type: application/json' ${3:+--data "$3"}; }
 register() { curl_json POST "$BASE_URL/users" "$(jq -nc --arg n "$1" --arg e "$2" --arg p "$3" --arg pw "$PASSWORD" '{fullName:$n,email:$e,phone:$p,password:$pw}')" >/dev/null; }
 
