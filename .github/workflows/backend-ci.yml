@@ -14,6 +14,8 @@ env:
   DATABASE_USERNAME: cricket_app
   DATABASE_PASSWORD: cricket_dev_password
   JWT_SECRET: ci-only-cricpulse-jwt-secret-change-me-2026
+  # CI runs the API over localhost HTTP; production must keep Secure cookies enabled behind HTTPS.
+  AUTH_COOKIE_SECURE: 'false'
   PORT: 8080
 
 jobs:

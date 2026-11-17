@@ -20,12 +20,17 @@ if [[ -z "$EMAIL" || -z "$PASSWORD" || -z "$TOURNAMENT_ID" ]]; then
 fi
 
 login_payload="$(jq -cn --arg email "$EMAIL" --arg password "$PASSWORD" '{email:$email,password:$password}')"
-login_response="$(curl -fsS -X POST "$BASE_URL/auth/login" -H 'Content-Type: application/json' --data "$login_payload")"
-TOKEN="$(jq -r '.token // .accessToken // .data.token // empty' <<<"$login_response")"
-[[ -n "$TOKEN" ]] || { echo "ERROR: login response did not contain a JWT" >&2; exit 1; }
+COOKIE_JAR="$(mktemp)"
+curl -fsS -b "$COOKIE_JAR" -c "$COOKIE_JAR" "$BASE_URL/auth/csrf" >/dev/null
+CSRF_TOKEN="$(awk '$6 == "XSRF-TOKEN" { value=$7 } END { print value }' "$COOKIE_JAR")"
+[[ -n "$CSRF_TOKEN" ]] || { echo "ERROR: CSRF cookie missing" >&2; exit 1; }
+LOGIN_STATUS="$(curl -sS -b "$COOKIE_JAR" -c "$COOKIE_JAR" -o /tmp/cricpulse-tournament-hardening-login.json -w '%{http_code}' -X POST "$BASE_URL/auth/login" -H 'Content-Type: application/json' -H "X-XSRF-TOKEN: $CSRF_TOKEN" --data "$login_payload")"
+[[ "$LOGIN_STATUS" == "200" ]] || { echo "ERROR: login HTTP $LOGIN_STATUS" >&2; cat /tmp/cricpulse-tournament-hardening-login.json >&2; exit 1; }
+TOKEN="$(awk '$6 == "CRICPULSE_ACCESS" { value=$7 } END { print value }' "$COOKIE_JAR")"
+[[ -n "$TOKEN" ]] || { echo "ERROR: HttpOnly access cookie missing" >&2; exit 1; }
 
 TMP_DIR="$(mktemp -d)"
-trap 'rm -rf "$TMP_DIR"' EXIT
+trap 'rm -rf "$TMP_DIR"; rm -f "$COOKIE_JAR"' EXIT
 
 expect_status() {
   local expected="$1" method="$2" url="$3" body="${4:-}" output="$TMP_DIR/response.json" status

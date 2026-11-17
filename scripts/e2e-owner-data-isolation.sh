@@ -15,13 +15,24 @@ TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 BODY_FILE="$TMP_DIR/body"
 
+# Login now uses an HttpOnly cookie and no longer returns a JWT in JSON.
+# Use an isolated cookie jar per owner and submit the matching CSRF cookie/header.
 login_token() {
-  curl -fsS -X POST "$BASE_URL/auth/login" -H 'Content-Type: application/json' \
-    --data "$(jq -nc --arg email "$1" --arg password "$PASSWORD" '{email:$email,password:$password}')" |
-    jq -er '.accessToken // .token // .data.accessToken'
+  local email="$1" jar="$2" csrf token
+  curl -fsS -b "$jar" -c "$jar" "$BASE_URL/auth/csrf" >/dev/null
+  csrf="$(awk '$6 == "XSRF-TOKEN" { value=$7 } END { print value }' "$jar")"
+  [[ -n "$csrf" ]] || { echo "CSRF cookie missing for $email" >&2; return 1; }
+  curl -fsS -b "$jar" -c "$jar" -X POST "$BASE_URL/auth/login" \
+    -H 'Content-Type: application/json' -H "X-XSRF-TOKEN: $csrf" \
+    --data "$(jq -nc --arg email "$email" --arg password "$PASSWORD" '{email:$email,password:$password}')" >/dev/null
+  token="$(awk '$6 == "CRICPULSE_ACCESS" { value=$7 } END { print value }' "$jar")"
+  [[ -n "$token" ]] || { echo "HttpOnly access cookie missing after login for $email" >&2; return 1; }
+  printf '%s' "$token"
 }
-TOKEN_A="$(login_token "$OWNER_A_EMAIL")"
-TOKEN_B="$(login_token "$OWNER_B_EMAIL")"
+JAR_A="$TMP_DIR/owner-a.cookies"
+JAR_B="$TMP_DIR/owner-b.cookies"
+TOKEN_A="$(login_token "$OWNER_A_EMAIL" "$JAR_A")"
+TOKEN_B="$(login_token "$OWNER_B_EMAIL" "$JAR_B")"
 [[ -n "$TOKEN_A" && -n "$TOKEN_B" ]]
 
 request_status() {
