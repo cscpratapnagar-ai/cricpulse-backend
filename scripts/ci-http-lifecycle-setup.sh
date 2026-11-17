@@ -27,6 +27,7 @@ register 'CricPulse CI Player A' "$PLAYER_A_EMAIL" "$PLAYER_A_PHONE"
 register 'CricPulse CI Owner B' "$OWNER_B_EMAIL" "$OWNER_B_PHONE"
 register 'CricPulse CI Player B' "$PLAYER_B_EMAIL" "$PLAYER_B_PHONE"
 
+# CI reads the JWT only from the HttpOnly cookie jar; the login JSON no longer exposes it.
 login_token() { curl_json POST "$BASE_URL/auth/login" "$(jq -nc --arg e "$1" --arg p "$PASSWORD" '{email:$e,password:$p}')" >/dev/null; awk '$6 == "CRICPULSE_ACCESS" { print $7 }' "$COOKIE_JAR" | tail -n 1; }
 OWNER_A_TOKEN="$(login_token "$OWNER_A_EMAIL")"; OWNER_B_TOKEN="$(login_token "$OWNER_B_EMAIL")"
 test -n "$OWNER_A_TOKEN" && test "$OWNER_A_TOKEN" != null; test -n "$OWNER_B_TOKEN" && test "$OWNER_B_TOKEN" != null
