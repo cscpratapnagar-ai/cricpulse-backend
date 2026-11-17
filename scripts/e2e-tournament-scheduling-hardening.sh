@@ -19,6 +19,7 @@ if [[ -z "$EMAIL" || -z "$PASSWORD" || -z "$TOURNAMENT_ID" || -z "$FIXTURE_A_ID"
   exit 2
 fi
 
+login_payload="$(jq -cn --arg email "$EMAIL" --arg password "$PASSWORD" '{email:$email,password:$password}')"
 COOKIE_JAR="$(mktemp)"
 trap 'rm -f "$COOKIE_JAR"' EXIT
 curl -fsS -b "$COOKIE_JAR" -c "$COOKIE_JAR" "$BASE_URL/auth/csrf" >/dev/null
