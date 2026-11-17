@@ -8,6 +8,7 @@ A_STRIKER_ID="${A_STRIKER_ID:-}"; A_NON_STRIKER_ID="${A_NON_STRIKER_ID:-}"
 B_BOWLER_ID="${B_BOWLER_ID:-}"; B_STRIKER_ID="${B_STRIKER_ID:-}"
 B_NON_STRIKER_ID="${B_NON_STRIKER_ID:-}"; A_BOWLER_ID="${A_BOWLER_ID:-}"
 TOURNAMENT_ID="${TOURNAMENT_ID:-}"
+SCORER_LEASE_TOKEN=""
 MATCH_NAME="${MATCH_NAME:-CricPulse Lifecycle E2E $(date -u +%Y%m%d-%H%M%S)}"
 required=(EMAIL PASSWORD TEAM_A_ID TEAM_B_ID A_STRIKER_ID A_NON_STRIKER_ID B_BOWLER_ID B_STRIKER_ID B_NON_STRIKER_ID A_BOWLER_ID)
 for name in "${required[@]}"; do [[ -n "${!name}" ]] || { echo "ERROR: $name is required" >&2; exit 1; }; done
@@ -20,10 +21,12 @@ LAST_RESPONSE_FILE="$TMP_DIR/last-response"
 LAST_STATUS_FILE="$TMP_DIR/last-status"
 request() {
   local method="$1" url="$2" body="${3:-}" status curl_status=0
+  local -a headers=(-H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json')
+  if [[ -n "$SCORER_LEASE_TOKEN" ]]; then headers+=(-H "X-Scorer-Lease: $SCORER_LEASE_TOKEN"); fi
   if [[ -n "$body" ]]; then
-    status="$(curl -sS -o "$LAST_RESPONSE_FILE" -w '%{http_code}' -X "$method" "$url" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d "$body")" || curl_status=$?
+    status="$(curl -sS -o "$LAST_RESPONSE_FILE" -w '%{http_code}' -X "$method" "$url" "${headers[@]}" -d "$body")" || curl_status=$?
   else
-    status="$(curl -sS -o "$LAST_RESPONSE_FILE" -w '%{http_code}' -X "$method" "$url" -H "Authorization: Bearer $TOKEN")" || curl_status=$?
+    status="$(curl -sS -o "$LAST_RESPONSE_FILE" -w '%{http_code}' -X "$method" "$url" "${headers[@]}")" || curl_status=$?
   fi
   printf '%s' "${status:-000}" > "$LAST_STATUS_FILE"
   if [[ "$curl_status" -ne 0 || ! "$status" =~ ^2[0-9][0-9]$ ]]; then
@@ -35,6 +38,21 @@ request() {
 }
 request_status() { local method="$1" url="$2" body="${3:-}"; if [[ -n "$body" ]]; then curl -sS -o "$TMP_DIR/rejection-body" -w '%{http_code}' -X "$method" "$url" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d "$body"; else curl -sS -o "$TMP_DIR/rejection-body" -w '%{http_code}' -X "$method" "$url" -H "Authorization: Bearer $TOKEN"; fi; }
 expect_rejection() { local label="$1" method="$2" url="$3" body="${4:-}" status; status="$(request_status "$method" "$url" "$body")"; if [[ "$status" -lt 400 || "$status" -ge 500 ]]; then echo "FAIL: $label expected 4xx, received HTTP $status" >&2; cat "$TMP_DIR/rejection-body" >&2 || true; exit 1; fi; echo "PASS: $label (HTTP $status)"; }
+
+acquire_scorer_lease() {
+  local innings_id="$1" response
+  SCORER_LEASE_TOKEN="$(cat /proc/sys/kernel/random/uuid)"
+  response="$(curl -fsS -X POST "$BASE_URL/scoring/innings/$innings_id/lease" \
+    -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+    --data "$(jq -nc --arg token "$SCORER_LEASE_TOKEN" '{leaseToken:$token}')")"
+  [[ -n "$response" ]] || { echo "ERROR: scorer lease response is empty" >&2; exit 1; }
+}
+renew_scorer_lease() {
+  local innings_id="$1"
+  curl -fsS -X PUT "$BASE_URL/scoring/innings/$innings_id/lease" \
+    -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+    --data "$(jq -nc --arg token "$SCORER_LEASE_TOKEN" '{leaseToken:$token}')" >/dev/null
+}
 fail_with_body() { local label="$1"; echo "ERROR: $label" >&2; if [[ -f "$LAST_STATUS_FILE" ]]; then echo "Last HTTP status: $(cat "$LAST_STATUS_FILE")" >&2; fi; if [[ -s "$LAST_RESPONSE_FILE" ]]; then echo "Last response body:" >&2; cat "$LAST_RESPONSE_FILE" >&2; echo >&2; fi; exit 1; }
 
 echo "[1/10] Login"
@@ -52,10 +70,13 @@ TOSS_BODY="$(jq -nc --arg id "$MATCH_ID" --arg winner "$TEAM_A_ID" '{matchId:$id
 echo "[4/10] Start innings 1"
 INNINGS1_BODY="$(jq -nc --arg match "$MATCH_ID" --arg team "$TEAM_A_ID" --arg striker "$A_STRIKER_ID" --arg non "$A_NON_STRIKER_ID" --arg bowler "$B_BOWLER_ID" '{matchId:$match,inningsNumber:1,battingTeamId:$team,strikerId:$striker,nonStrikerId:$non,currentBowlerId:$bowler}')"; INNINGS1="$(request POST "$BASE_URL/scoring/innings" "$INNINGS1_BODY")" || fail_with_body "start innings 1 failed" POST "$BASE_URL/scoring/innings" "$INNINGS1_BODY"; INNINGS1_ID="$(jq -r '.id // .inningsId // empty' <<<"$INNINGS1")"; [[ -n "$INNINGS1_ID" ]] || { echo "ERROR: innings 1 ID missing" >&2; exit 1; }
 OPEN1_BODY="$(jq -nc --arg striker "$A_STRIKER_ID" --arg non "$A_NON_STRIKER_ID" --arg bowler "$B_BOWLER_ID" '{strikerId:$striker,nonStrikerId:$non,bowlerId:$bowler}')"; request POST "$BASE_URL/scoring/innings/$INNINGS1_ID/opening" "$OPEN1_BODY" >/dev/null || fail_with_body "opening innings 1 failed" POST "$BASE_URL/scoring/innings/$INNINGS1_ID/opening" "$OPEN1_BODY"
+acquire_scorer_lease "$INNINGS1_ID"
 
 echo "[5/10] Score innings 1: 120 real legal dot deliveries"
 CURRENT_STRIKER="$A_STRIKER_ID"; CURRENT_NON="$A_NON_STRIKER_ID"; CURRENT_BOWLER="$B_BOWLER_ID"
-for ((delivery=1; delivery<=120; delivery++)); do OVER_NUMBER=$(( (delivery - 1) / 6 )); BALL_NUMBER=$(( ((delivery - 1) % 6) + 1 )); DELIVERY_BODY="$(jq -nc --arg innings "$INNINGS1_ID" --arg striker "$CURRENT_STRIKER" --arg non "$CURRENT_NON" --arg bowler "$CURRENT_BOWLER" --argjson over "$OVER_NUMBER" --argjson ball "$BALL_NUMBER" '{inningsId:$innings,overNumber:$over,ballNumber:$ball,strikerId:$striker,nonStrikerId:$non,bowlerId:$bowler,batRuns:0,extraRuns:0,extraType:null,wicketType:null,dismissedPlayerId:null,newBatterId:null}')"; request POST "$BASE_URL/scoring/innings/$INNINGS1_ID/deliveries" "$DELIVERY_BODY" >/dev/null || fail_with_body "innings 1 delivery $delivery failed" POST "$BASE_URL/scoring/innings/$INNINGS1_ID/deliveries" "$DELIVERY_BODY"; if (( BALL_NUMBER == 6 )); then tmp="$CURRENT_STRIKER"; CURRENT_STRIKER="$CURRENT_NON"; CURRENT_NON="$tmp"; if [[ "$CURRENT_BOWLER" == "$B_BOWLER_ID" ]]; then CURRENT_BOWLER="$B_STRIKER_ID"; else CURRENT_BOWLER="$B_BOWLER_ID"; fi; fi; done
+for ((delivery=1; delivery<=120; delivery++)); do
+  if (( delivery > 1 && delivery % 8 == 0 )); then renew_scorer_lease "$INNINGS1_ID"; fi
+  OVER_NUMBER=$(( (delivery - 1) / 6 )); BALL_NUMBER=$(( ((delivery - 1) % 6) + 1 )); DELIVERY_BODY="$(jq -nc --arg innings "$INNINGS1_ID" --arg striker "$CURRENT_STRIKER" --arg non "$CURRENT_NON" --arg bowler "$CURRENT_BOWLER" --argjson over "$OVER_NUMBER" --argjson ball "$BALL_NUMBER" '{inningsId:$innings,overNumber:$over,ballNumber:$ball,strikerId:$striker,nonStrikerId:$non,bowlerId:$bowler,batRuns:0,extraRuns:0,extraType:null,wicketType:null,dismissedPlayerId:null,newBatterId:null}')"; request POST "$BASE_URL/scoring/innings/$INNINGS1_ID/deliveries" "$DELIVERY_BODY" >/dev/null || fail_with_body "innings 1 delivery $delivery failed" POST "$BASE_URL/scoring/innings/$INNINGS1_ID/deliveries" "$DELIVERY_BODY"; if (( BALL_NUMBER == 6 )); then tmp="$CURRENT_STRIKER"; CURRENT_STRIKER="$CURRENT_NON"; CURRENT_NON="$tmp"; if [[ "$CURRENT_BOWLER" == "$B_BOWLER_ID" ]]; then CURRENT_BOWLER="$B_STRIKER_ID"; else CURRENT_BOWLER="$B_BOWLER_ID"; fi; fi; done
 SCORE1="$(request GET "$BASE_URL/scoring/innings/$INNINGS1_ID")"; STATUS1="$(jq -r '.status // empty' <<<"$SCORE1")"; BALLS1="$(jq -r '.legalBalls // .legal_balls // -1' <<<"$SCORE1")"; [[ "$STATUS1" == "COMPLETED" && "$BALLS1" == "120" ]] || { echo "ERROR: innings 1 status=$STATUS1 legalBalls=$BALLS1" >&2; exit 1; }
 expect_rejection "cannot restart completed innings 1" POST "$BASE_URL/scoring/innings" "$INNINGS1_BODY"
 WRONG_INNINGS2_BODY="$(jq -nc --arg match "$MATCH_ID" --arg team "$TEAM_A_ID" --arg striker "$A_STRIKER_ID" --arg non "$A_NON_STRIKER_ID" --arg bowler "$B_BOWLER_ID" '{matchId:$match,inningsNumber:2,battingTeamId:$team,strikerId:$striker,nonStrikerId:$non,currentBowlerId:$bowler}')"; expect_rejection "innings 2 rejects wrong batting team" POST "$BASE_URL/scoring/innings" "$WRONG_INNINGS2_BODY"
@@ -63,6 +84,7 @@ WRONG_INNINGS2_BODY="$(jq -nc --arg match "$MATCH_ID" --arg team "$TEAM_A_ID" --
 echo "[6/10] Start innings 2 with Team B"
 INNINGS2_BODY="$(jq -nc --arg match "$MATCH_ID" --arg team "$TEAM_B_ID" --arg striker "$B_STRIKER_ID" --arg non "$B_NON_STRIKER_ID" --arg bowler "$A_BOWLER_ID" '{matchId:$match,inningsNumber:2,battingTeamId:$team,strikerId:$striker,nonStrikerId:$non,currentBowlerId:$bowler}')"; INNINGS2="$(request POST "$BASE_URL/scoring/innings" "$INNINGS2_BODY")" || fail_with_body "start innings 2 failed" POST "$BASE_URL/scoring/innings" "$INNINGS2_BODY"; INNINGS2_ID="$(jq -r '.id // .inningsId // empty' <<<"$INNINGS2")"; [[ -n "$INNINGS2_ID" ]] || { echo "ERROR: innings 2 ID missing" >&2; exit 1; }
 OPEN2_BODY="$(jq -nc --arg striker "$B_STRIKER_ID" --arg non "$B_NON_STRIKER_ID" --arg bowler "$A_BOWLER_ID" '{strikerId:$striker,nonStrikerId:$non,bowlerId:$bowler}')"; request POST "$BASE_URL/scoring/innings/$INNINGS2_ID/opening" "$OPEN2_BODY" >/dev/null || fail_with_body "opening innings 2 failed" POST "$BASE_URL/scoring/innings/$INNINGS2_ID/opening" "$OPEN2_BODY"
+acquire_scorer_lease "$INNINGS2_ID"
 
 echo "[7/10] Score innings 2: reach target"
 DELIVERY2_BODY="$(jq -nc --arg innings "$INNINGS2_ID" --arg striker "$B_STRIKER_ID" --arg non "$B_NON_STRIKER_ID" --arg bowler "$A_BOWLER_ID" '{inningsId:$innings,overNumber:0,ballNumber:1,strikerId:$striker,nonStrikerId:$non,bowlerId:$bowler,batRuns:1,extraRuns:0,extraType:null,wicketType:null,dismissedPlayerId:null,newBatterId:null}')"; request POST "$BASE_URL/scoring/innings/$INNINGS2_ID/deliveries" "$DELIVERY2_BODY" >/dev/null || fail_with_body "innings 2 delivery failed" POST "$BASE_URL/scoring/innings/$INNINGS2_ID/deliveries" "$DELIVERY2_BODY"; SCORE2="$(request GET "$BASE_URL/scoring/innings/$INNINGS2_ID")"; STATUS2="$(jq -r '.status // empty' <<<"$SCORE2")"; [[ "$STATUS2" == "COMPLETED" ]] || { echo "ERROR: innings 2 status=$STATUS2" >&2; exit 1; }
