@@ -26,17 +26,17 @@ public class ScorerLeaseService {
         }
         jdbc.update("""
                 INSERT INTO scorer_leases(innings_id, holder_key, lease_token, acquired_at, expires_at, updated_at)
-                VALUES (?, ?, ?, now(), now() + (? * interval '1 second'), now())
+                VALUES (?, ?, ?, clock_timestamp(), clock_timestamp() + (? * interval '1 second'), clock_timestamp())
                 ON CONFLICT (innings_id) DO UPDATE SET
                     holder_key = EXCLUDED.holder_key,
                     lease_token = EXCLUDED.lease_token,
                     acquired_at = CASE
                         WHEN scorer_leases.holder_key = EXCLUDED.holder_key
                          AND scorer_leases.lease_token = EXCLUDED.lease_token
-                        THEN scorer_leases.acquired_at ELSE now() END,
+                        THEN scorer_leases.acquired_at ELSE clock_timestamp() END,
                     expires_at = EXCLUDED.expires_at,
-                    updated_at = now()
-                WHERE scorer_leases.expires_at <= now()
+                    updated_at = clock_timestamp()
+                WHERE scorer_leases.expires_at <= clock_timestamp()
                    OR (scorer_leases.holder_key = EXCLUDED.holder_key
                        AND scorer_leases.lease_token = EXCLUDED.lease_token)
                 """, inningsId, holderKey, token, LEASE_SECONDS);
@@ -53,8 +53,8 @@ public class ScorerLeaseService {
     public LeaseState renew(UUID inningsId, String holderKey, UUID token) {
         int updated = jdbc.update("""
                 UPDATE scorer_leases
-                SET expires_at = now() + (? * interval '1 second'), updated_at = now()
-                WHERE innings_id = ? AND holder_key = ? AND lease_token = ? AND expires_at > now()
+                SET expires_at = clock_timestamp() + (? * interval '1 second'), updated_at = clock_timestamp()
+                WHERE innings_id = ? AND holder_key = ? AND lease_token = ? AND expires_at > clock_timestamp()
                 """, LEASE_SECONDS, inningsId, holderKey, token);
         if (updated != 1) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -69,7 +69,7 @@ public class ScorerLeaseService {
         // cannot race between lease validation and delivery persistence.
         List<UUID> held = jdbc.query("""
                 SELECT lease_token FROM scorer_leases
-                WHERE innings_id = ? AND holder_key = ? AND lease_token = ? AND expires_at > now()
+                WHERE innings_id = ? AND holder_key = ? AND lease_token = ? AND expires_at > clock_timestamp()
                 FOR UPDATE
                 """, (rs, rowNum) -> rs.getObject("lease_token", UUID.class),
                 inningsId, holderKey, token);
