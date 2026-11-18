@@ -114,7 +114,7 @@ test -n "$TEAM_B2_ID" && test "$TEAM_B2_ID" != null
 
 echo "Created teams and populated disposable rosters"
 
-MATCH="$(curl_api -X POST "$BASE_URL/matches" "${AUTH_A[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg n "CricPulse CI Lifecycle ${RUN_KEY}" --arg a "$TEAM_A_ID" --arg b "$TEAM_B_ID" '{name:$n,teamAId:$a,teamBId:$b,format:"T20",totalOvers:20}')")"; MATCH_ID="$(jq -r '.id' <<<"$MATCH")"
+MATCH="$(curl_api -X POST "$BASE_URL/matches" "${AUTH_A[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg n "CricPulse CI Lifecycle ${RUN_KEY}" --arg a "$TEAM_A_ID" --arg b "$TEAM_B_ID" '{name:$n,teamAId:$a,teamBId:$b,format:"CUSTOM",totalOvers:4}')")"; MATCH_ID="$(jq -r '.id' <<<"$MATCH")"
 test -n "$MATCH_ID" && test "$MATCH_ID" != null
 echo "Created fixture match=$MATCH_ID teamA=$TEAM_A_ID teamB=$TEAM_B_ID"
 
