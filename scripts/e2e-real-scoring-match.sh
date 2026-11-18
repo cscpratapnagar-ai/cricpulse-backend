@@ -77,6 +77,29 @@ if [[ -z "$MATCH_ID" ]]; then MATCH_BODY="$(jq -nc --arg name "$MATCH_NAME" --ar
 MATCH="$(request GET "$BASE_URL/matches/$MATCH_ID")" || fail_with_body "GET match failed" GET "$BASE_URL/matches/$MATCH_ID"; STATUS="$(jq -r '.status // empty' <<<"$MATCH")"; [[ "$STATUS" != "COMPLETED" ]] || { echo "ERROR: match is already COMPLETED" >&2; exit 1; }
 TEAM_A_FROM_MATCH="$(jq -r '.teamAId // .team_a_id // empty' <<<"$MATCH")"; TEAM_B_FROM_MATCH="$(jq -r '.teamBId // .team_b_id // empty' <<<"$MATCH")"; [[ -z "$TEAM_A_FROM_MATCH" || "$TEAM_A_FROM_MATCH" == "$TEAM_A_ID" ]] || { echo "ERROR: Team A mismatch" >&2; exit 1; }; [[ -z "$TEAM_B_FROM_MATCH" || "$TEAM_B_FROM_MATCH" == "$TEAM_B_ID" ]] || { echo "ERROR: Team B mismatch" >&2; exit 1; }
 
+echo "[3/10] Ensure selected Playing XI for the disposable match"
+OWNER_B_COOKIE_JAR="$TMP_DIR/owner-b.cookies"
+curl -fsS -b "$OWNER_B_COOKIE_JAR" -c "$OWNER_B_COOKIE_JAR" "$BASE_URL/auth/csrf" >/dev/null
+OWNER_B_CSRF="$(awk '$6 == "XSRF-TOKEN" { value=$7 } END { print value }' "$OWNER_B_COOKIE_JAR")"
+[[ -n "$OWNER_B_CSRF" ]] || { echo "ERROR: owner B CSRF cookie missing" >&2; exit 1; }
+OWNER_B_LOGIN_STATUS="$(curl -sS -b "$OWNER_B_COOKIE_JAR" -c "$OWNER_B_COOKIE_JAR" -o "$TMP_DIR/owner-b-login.json" -w '%{http_code}' -X POST "$BASE_URL/auth/login" -H 'Content-Type: application/json' -H "X-XSRF-TOKEN: $OWNER_B_CSRF" -d "$(jq -nc --arg email "$OWNER_B_EMAIL" --arg password "$PASSWORD" '{email:$email,password:$password}')")"
+[[ "$OWNER_B_LOGIN_STATUS" == "200" ]] || { echo "ERROR: owner B login failed HTTP $OWNER_B_LOGIN_STATUS" >&2; cat "$TMP_DIR/owner-b-login.json" >&2; exit 1; }
+TOKEN_B="$(awk '$6 == "CRICPULSE_ACCESS" { value=$7 } END { print value }' "$OWNER_B_COOKIE_JAR")"
+[[ -n "$TOKEN_B" ]] || { echo "ERROR: owner B access cookie missing" >&2; exit 1; }
+select_playing_xi() {
+  local token="$1" team="$2" player="$3" body status
+  body="$(jq -nc --arg team "$team" --arg player "$player" '{teamId:$team,playerId:$player,captain:false,viceCaptain:false,wicketKeeper:false}')"
+  status="$(curl -sS -o "$TMP_DIR/playing-xi-response.json" -w '%{http_code}' -X POST "$BASE_URL/matches/$MATCH_ID/playing-xi" -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d "$body")"
+  if [[ ! "$status" =~ ^2[0-9][0-9]$ ]]; then
+    echo "ERROR: selected XI update failed HTTP $status team=$team player=$player" >&2
+    cat "$TMP_DIR/playing-xi-response.json" >&2
+    exit 1
+  fi
+}
+select_playing_xi "$TOKEN" "$TEAM_A_ID" "$A_STRIKER_ID"
+select_playing_xi "$TOKEN" "$TEAM_A_ID" "$A_NON_STRIKER_ID"
+select_playing_xi "$TOKEN_B" "$TEAM_B_ID" "$B_BOWLER_ID"
+select_playing_xi "$TOKEN_B" "$TEAM_B_ID" "$B_STRIKER_ID"
 echo "[3/10] Validate fixture Playing XI before toss"
 XI="$(request GET "$BASE_URL/matches/$MATCH_ID/playing-xi")" || fail_with_body "GET Playing XI failed"
 XI_A_STRIKER="$(jq -r --arg team "$TEAM_A_ID" --arg player "$A_STRIKER_ID" '[.[] | select(.teamId == $team and .playerId == $player)] | length' <<<"$XI")"
