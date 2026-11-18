@@ -32,7 +32,7 @@ class ScorerLeaseServiceTest {
         service.requireHolder(inningsId, "scorer-a", token);
 
         verify(jdbc).query(org.mockito.ArgumentMatchers.argThat(sql ->
-                sql.contains("expires_at > now()") && sql.contains("FOR UPDATE")),
+                sql.contains("expires_at > clock_timestamp()") && sql.contains("FOR UPDATE")),
                 any(RowMapper.class), eq(inningsId), eq("scorer-a"), eq(token));
     }
 
