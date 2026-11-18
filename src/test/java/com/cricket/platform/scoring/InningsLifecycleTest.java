@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
+import java.sql.ResultSet;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -52,10 +53,10 @@ class InningsLifecycleTest {
         verify(jdbc, never()).update(anyString(), any());
     }
 
-    private static void assertCompletion(StateFixture fixture, String expectedReason) {
+    private static void assertCompletion(Fixture fixture, String expectedReason) {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         InningsLifecycle lifecycle = new InningsLifecycle(jdbc);
-        stubState(jdbc, fixture.state());
+        stubState(jdbc, fixture);
 
         when(jdbc.update(anyString(), eq(INNINGS_ID))).thenReturn(1);
 
@@ -67,16 +68,25 @@ class InningsLifecycleTest {
         verify(jdbc).update(contains("status = 'COMPLETED'"), INNINGS_ID);
     }
 
-    private static void stubState(JdbcTemplate jdbc, InningsLifecycle.State state) {
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static void stubState(JdbcTemplate jdbc, Fixture fixture) {
+        ResultSet rs = mock(ResultSet.class);
+        when(rs.getInt("total_runs")).thenReturn(fixture.runs());
+        when(rs.getInt("wickets")).thenReturn(fixture.wickets());
+        when(rs.getInt("legal_balls")).thenReturn(fixture.legalBalls());
+        when(rs.getObject("total_overs")).thenReturn(fixture.overs());
+        when(rs.getObject("target_runs")).thenReturn(fixture.target());
+        when(rs.getString("status")).thenReturn(fixture.status());
+
         when(jdbc.queryForObject(anyString(), any(RowMapper.class), eq(INNINGS_ID)))
-                .thenReturn(state);
+                .thenAnswer(invocation -> ((RowMapper) invocation.getArgument(1)).mapRow(rs, 0));
     }
 
-    private static StateFixture state(int runs, int wickets, int legalBalls,
-                                      Integer overs, Integer target, String status) {
-        return new StateFixture(new InningsLifecycle.State(
-                runs, wickets, legalBalls, overs, target, status));
+    private static Fixture state(int runs, int wickets, int legalBalls,
+                                 Integer overs, Integer target, String status) {
+        return new Fixture(runs, wickets, legalBalls, overs, target, status);
     }
 
-    private record StateFixture(InningsLifecycle.State state) {}
+    private record Fixture(int runs, int wickets, int legalBalls,
+                          Integer overs, Integer target, String status) {}
 }
