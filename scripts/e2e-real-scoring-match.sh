@@ -77,6 +77,18 @@ if [[ -z "$MATCH_ID" ]]; then MATCH_BODY="$(jq -nc --arg name "$MATCH_NAME" --ar
 MATCH="$(request GET "$BASE_URL/matches/$MATCH_ID")" || fail_with_body "GET match failed" GET "$BASE_URL/matches/$MATCH_ID"; STATUS="$(jq -r '.status // empty' <<<"$MATCH")"; [[ "$STATUS" != "COMPLETED" ]] || { echo "ERROR: match is already COMPLETED" >&2; exit 1; }
 TEAM_A_FROM_MATCH="$(jq -r '.teamAId // .team_a_id // empty' <<<"$MATCH")"; TEAM_B_FROM_MATCH="$(jq -r '.teamBId // .team_b_id // empty' <<<"$MATCH")"; [[ -z "$TEAM_A_FROM_MATCH" || "$TEAM_A_FROM_MATCH" == "$TEAM_A_ID" ]] || { echo "ERROR: Team A mismatch" >&2; exit 1; }; [[ -z "$TEAM_B_FROM_MATCH" || "$TEAM_B_FROM_MATCH" == "$TEAM_B_ID" ]] || { echo "ERROR: Team B mismatch" >&2; exit 1; }
 
+echo "[3/10] Validate fixture Playing XI before toss"
+XI="$(request GET "$BASE_URL/matches/$MATCH_ID/playing-xi")" || fail_with_body "GET Playing XI failed"
+XI_A_STRIKER="$(jq -r --arg team "$TEAM_A_ID" --arg player "$A_STRIKER_ID" '[.[] | select(.teamId == $team and .playerId == $player)] | length' <<<"$XI")"
+XI_A_NON="$(jq -r --arg team "$TEAM_A_ID" --arg player "$A_NON_STRIKER_ID" '[.[] | select(.teamId == $team and .playerId == $player)] | length' <<<"$XI")"
+XI_B_BOWLER="$(jq -r --arg team "$TEAM_B_ID" --arg player "$B_BOWLER_ID" '[.[] | select(.teamId == $team and .playerId == $player)] | length' <<<"$XI")"
+XI_B_ALT="$(jq -r --arg team "$TEAM_B_ID" --arg player "$B_STRIKER_ID" '[.[] | select(.teamId == $team and .playerId == $player)] | length' <<<"$XI")"
+[[ "$XI_A_STRIKER" == "1" && "$XI_A_NON" == "1" && "$XI_B_BOWLER" == "1" && "$XI_B_ALT" == "1" ]] || {
+  echo "ERROR: fixture Playing XI mismatch. A striker=$XI_A_STRIKER A non=$XI_A_NON B bowler=$XI_B_BOWLER B alternate=$XI_B_ALT" >&2
+  echo "$XI" >&2
+  exit 1
+}
+echo "    PASS: all opening players and alternate bowler are selected"
 echo "[3/10] Record toss: Team A bats"
 TOSS_BODY="$(jq -nc --arg id "$MATCH_ID" --arg winner "$TEAM_A_ID" '{matchId:$id,winnerTeamId:$winner,decision:"BAT"}')"; request POST "$BASE_URL/matches/$MATCH_ID/toss" "$TOSS_BODY" >/dev/null || fail_with_body "record toss failed" POST "$BASE_URL/matches/$MATCH_ID/toss" "$TOSS_BODY"
 
