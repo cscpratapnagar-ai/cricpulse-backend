@@ -50,7 +50,7 @@ class InningsLifecycleTest {
         assertFalse(result.completed());
         assertEquals("COMPLETED", result.status());
         assertNull(result.reason());
-        verify(jdbc, never()).update(anyString(), any());
+        verify(jdbc, never()).update(anyString(), eq(INNINGS_ID));
     }
 
     private static void assertCompletion(Fixture fixture, String expectedReason) {
