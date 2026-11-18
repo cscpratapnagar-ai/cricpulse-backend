@@ -65,7 +65,7 @@ class InningsLifecycleTest {
         assertTrue(result.completed());
         assertEquals("COMPLETED", result.status());
         assertEquals(expectedReason, result.reason());
-        verify(jdbc).update(contains("status = 'COMPLETED'"), INNINGS_ID);
+        verify(jdbc).update(contains("status = 'COMPLETED'"), eq(INNINGS_ID));
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
