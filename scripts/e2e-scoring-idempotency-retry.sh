@@ -114,6 +114,10 @@ if [[ ! -f "$WS_READY_FILE" ]]; then
   exit 1
 fi
 
+# Baseline snapshot: undo must restore all authoritative scoring state, not only totals.
+baseline_score="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "${auth[@]}")"
+baseline_projection="$(jq -S -c '{runs:(.runs // .totalRuns // .total_runs // 0),legalBalls:(.legalBalls // .legal_balls // 0),wickets:(.wickets // 0),recentBalls:(.recentBalls // []),overs:(.overs // []),strikerId:(.strikerId // .striker_id // null),nonStrikerId:(.nonStrikerId // .non_striker_id // null),currentBowlerId:(.currentBowlerId // .current_bowler_id // null)}' <<<"$baseline_score")"
+
 delivery="$(jq -nc --arg innings "$innings_id" --arg striker "$A_STRIKER_ID" --arg non "$A_NON_STRIKER_ID" --arg bowler "$B_BOWLER_ID" '{inningsId:$innings,strikerId:$striker,nonStrikerId:$non,bowlerId:$bowler,overNumber:0,ballNumber:1,batRuns:1,extraRuns:0,extraType:null,wicketType:null,dismissedPlayerId:null,newBatterId:null}')"
 command_id="$(cat /proc/sys/kernel/random/uuid)"
 
@@ -172,8 +176,11 @@ fi
 score_after_undo="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "${auth[@]}")"
 balls_undo="$(jq -r '.legalBalls // .legal_balls // -1' <<<"$score_after_undo")"
 runs_undo="$(jq -r '.runs // .totalRuns // .total_runs // -1' <<<"$score_after_undo")"
-if [[ "$balls_undo" != "0" || "$runs_undo" != "0" ]]; then
-  echo "FAIL: undo did not restore score to 0/0: runs=$runs_undo legalBalls=$balls_undo" >&2
+undo_projection="$(jq -S -c '{runs:(.runs // .totalRuns // .total_runs // 0),legalBalls:(.legalBalls // .legal_balls // 0),wickets:(.wickets // 0),recentBalls:(.recentBalls // []),overs:(.overs // []),strikerId:(.strikerId // .striker_id // null),nonStrikerId:(.nonStrikerId // .non_striker_id // null),currentBowlerId:(.currentBowlerId // .current_bowler_id // null)}' <<<"$score_after_undo")"
+if [[ "$balls_undo" != "0" || "$runs_undo" != "0" || "$undo_projection" != "$baseline_projection" ]]; then
+  echo "FAIL: undo failed to restore complete scoring snapshot" >&2
+  echo "Baseline: $baseline_projection" >&2
+  echo "After undo: $undo_projection" >&2
   echo "Undo response: $undo_response" >&2
   echo "Score response: $score_after_undo" >&2
   exit 1
@@ -189,8 +196,11 @@ fi
 score_after_empty_undo="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "${auth[@]}")"
 balls_empty_undo="$(jq -r '.legalBalls // .legal_balls // -1' <<<"$score_after_empty_undo")"
 runs_empty_undo="$(jq -r '.runs // .totalRuns // .total_runs // -1' <<<"$score_after_empty_undo")"
-if [[ "$balls_empty_undo" != "0" || "$runs_empty_undo" != "0" ]]; then
-  echo "FAIL: empty undo changed score: runs=$runs_empty_undo legalBalls=$balls_empty_undo" >&2
+empty_undo_projection="$(jq -S -c '{runs:(.runs // .totalRuns // .total_runs // 0),legalBalls:(.legalBalls // .legal_balls // 0),wickets:(.wickets // 0),recentBalls:(.recentBalls // []),overs:(.overs // []),strikerId:(.strikerId // .striker_id // null),nonStrikerId:(.nonStrikerId // .non_striker_id // null),currentBowlerId:(.currentBowlerId // .current_bowler_id // null)}' <<<"$score_after_empty_undo")"
+if [[ "$balls_empty_undo" != "0" || "$runs_empty_undo" != "0" || "$empty_undo_projection" != "$baseline_projection" ]]; then
+  echo "FAIL: empty undo changed authoritative scoring state" >&2
+  echo "Baseline: $baseline_projection" >&2
+  echo "After empty undo: $empty_undo_projection" >&2
   exit 1
 fi
 
