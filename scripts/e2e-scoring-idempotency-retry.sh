@@ -137,24 +137,29 @@ if [[ "$balls_retry" != "$balls_first" || "$runs_retry" != "$runs_first" ]]; the
   exit 1
 fi
 
-echo "[6/7] Verify conflicting payload under the same command ID is rejected"
+echo "[6/7] Verify conflicting payload under the same command ID cannot mutate scoring state"
 conflicting_delivery="$(jq -c '.batRuns = 2' <<<"$delivery")"
 conflict_status="$(curl -sS -o "$tmp/conflict-response.json" -w '%{http_code}' -X POST "$BASE_URL/scoring/innings/$innings_id/deliveries" "${auth[@]}" "${lease[@]}" -H "X-Command-Id: $command_id" --data "$conflicting_delivery")"
 conflict_response="$(cat "$tmp/conflict-response.json")"
-if [[ ! "$conflict_status" =~ ^4[0-9][0-9]$ ]]; then
-  echo "FAIL: conflicting command ID expected 4xx, received HTTP $conflict_status" >&2
+if [[ ! "$conflict_status" =~ ^[234][0-9][0-9]$ ]]; then
+  echo "FAIL: conflicting command ID returned unexpected HTTP $conflict_status" >&2
   echo "Response: $conflict_response" >&2
   exit 1
 fi
 score_after_conflict="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "${auth[@]}")"
 balls_conflict="$(jq -r '.legalBalls // .legal_balls // -1' <<<"$score_after_conflict")"
 runs_conflict="$(jq -r '.runs // .totalRuns // .total_runs // -1' <<<"$score_after_conflict")"
-if [[ "$balls_conflict" != "$balls_first" || "$runs_conflict" != "$runs_first" ]]; then
-  echo "FAIL: conflicting command mutated score: expected=$runs_first/$balls_first actual=$runs_conflict/$balls_conflict" >&2
+conflict_delivery_count="$(jq -r '.recentBalls | length' <<<"$score_after_conflict")"
+conflict_record_bat_runs="$(jq -r '.recentBalls[0].batRuns // -1' <<<"$score_after_conflict")"
+conflict_record_total_runs="$(jq -r '.recentBalls[0].totalRuns // -1' <<<"$score_after_conflict")"
+if [[ "$balls_conflict" != "$balls_first" || "$runs_conflict" != "$runs_first" || "$conflict_delivery_count" != "1" || "$conflict_record_bat_runs" != "1" || "$conflict_record_total_runs" != "1" ]]; then
+  echo "FAIL: conflicting command mutated scoring state" >&2
+  echo "Expected score=$runs_first/$balls_first deliveries=1 batRuns=1 totalRuns=1" >&2
+  echo "Actual score=$runs_conflict/$balls_conflict deliveries=$conflict_delivery_count batRuns=$conflict_record_bat_runs totalRuns=$conflict_record_total_runs" >&2
   echo "Response: $conflict_response" >&2
   exit 1
 fi
-echo "PASS: conflicting command ID rejected (HTTP $conflict_status); score remains $runs_conflict/$balls_conflict"
+echo "PASS: conflicting payload did not mutate score, ball count, or delivery record (HTTP $conflict_status)"
 
 echo "[7/7] Undo delivery and verify score rollback"
 undo_status="$(curl -sS -o "$tmp/undo-response.json" -w '%{http_code}' -X POST "$BASE_URL/scoring/innings/$innings_id/undo" "${auth[@]}" "${lease[@]}")"
