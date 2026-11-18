@@ -89,7 +89,24 @@ echo "[5/10] Score innings 1: 24 legal dot deliveries across four cricket-correc
 CURRENT_STRIKER="$A_STRIKER_ID"; CURRENT_NON="$A_NON_STRIKER_ID"; CURRENT_BOWLER="$B_BOWLER_ID"
 for ((delivery=1; delivery<=24; delivery++)); do
   if (( delivery > 1 && delivery % 8 == 0 )); then renew_scorer_lease "$INNINGS1_ID"; fi
-  OVER_NUMBER=$(( (delivery - 1) / 6 )); BALL_NUMBER=$(( ((delivery - 1) % 6) + 1 )); DELIVERY_BODY="$(jq -nc --arg innings "$INNINGS1_ID" --arg striker "$CURRENT_STRIKER" --arg non "$CURRENT_NON" --arg bowler "$CURRENT_BOWLER" --argjson over "$OVER_NUMBER" --argjson ball "$BALL_NUMBER" '{inningsId:$innings,overNumber:$over,ballNumber:$ball,strikerId:$striker,nonStrikerId:$non,bowlerId:$bowler,batRuns:0,extraRuns:0,extraType:null,wicketType:null,dismissedPlayerId:null,newBatterId:null}')"; request POST "$BASE_URL/scoring/innings/$INNINGS1_ID/deliveries" "$DELIVERY_BODY" >/dev/null || fail_with_body "innings 1 delivery $delivery failed" POST "$BASE_URL/scoring/innings/$INNINGS1_ID/deliveries" "$DELIVERY_BODY"; if (( BALL_NUMBER == 6 )); then tmp="$CURRENT_STRIKER"; CURRENT_STRIKER="$CURRENT_NON"; CURRENT_NON="$tmp"; if [[ "$CURRENT_BOWLER" == "$B_BOWLER_ID" ]]; then CURRENT_BOWLER="$B_STRIKER_ID"; else CURRENT_BOWLER="$B_BOWLER_ID"; fi; fi; done
+  OVER_NUMBER=$(( (delivery - 1) / 6 )); BALL_NUMBER=$(( ((delivery - 1) % 6) + 1 )); DELIVERY_BODY="$(jq -nc --arg innings "$INNINGS1_ID" --arg striker "$CURRENT_STRIKER" --arg non "$CURRENT_NON" --arg bowler "$CURRENT_BOWLER" --argjson over "$OVER_NUMBER" --argjson ball "$BALL_NUMBER" '{inningsId:$innings,overNumber:$over,ballNumber:$ball,strikerId:$striker,nonStrikerId:$non,bowlerId:$bowler,batRuns:0,extraRuns:0,extraType:null,wicketType:null,dismissedPlayerId:null,newBatterId:null}')"; request POST "$BASE_URL/scoring/innings/$INNINGS1_ID/deliveries" "$DELIVERY_BODY" >/dev/null || fail_with_body "innings 1 delivery $delivery failed" POST "$BASE_URL/scoring/innings/$INNINGS1_ID/deliveries" "$DELIVERY_BODY"; if (( BALL_NUMBER == 6 )); then
+    # At over-end, swap ends and rotate to the alternate bowler.
+    tmp="$CURRENT_STRIKER"; CURRENT_STRIKER="$CURRENT_NON"; CURRENT_NON="$tmp"
+    if [[ "$CURRENT_BOWLER" == "$B_BOWLER_ID" ]]; then CURRENT_BOWLER="$B_STRIKER_ID"; else CURRENT_BOWLER="$B_BOWLER_ID"; fi
+    CHECKPOINT="$(request GET "$BASE_URL/scoring/innings/$INNINGS1_ID")" || fail_with_body "over checkpoint GET failed"
+    CHECKPOINT_BALLS="$(jq -r '.legalBalls // .legal_balls // -1' <<<"$CHECKPOINT")"
+    CHECKPOINT_RUNS="$(jq -r '.runs // .totalRuns // -1' <<<"$CHECKPOINT")"
+    CHECKPOINT_WICKETS="$(jq -r '.wickets // -1' <<<"$CHECKPOINT")"
+    COMPLETED_OVERS="$(jq '[.overs[]? | select(.completed == true)] | length' <<<"$CHECKPOINT")"
+    EXPECTED_BOWLER="$B_BOWLER_ID"; if (( OVER_NUMBER % 2 == 1 )); then EXPECTED_BOWLER="$B_STRIKER_ID"; fi
+    LAST_OVER_BOWLER="$(jq -r '.overs[-1].bowlerId // .overs[-1].bowler_id // empty' <<<"$CHECKPOINT")"
+    [[ "$CHECKPOINT_BALLS" == "$delivery" && "$CHECKPOINT_RUNS" == "0" && "$CHECKPOINT_WICKETS" == "0" && "$COMPLETED_OVERS" == "$((OVER_NUMBER + 1))" && "$LAST_OVER_BOWLER" == "$EXPECTED_BOWLER" ]] || {
+      echo "ERROR: over checkpoint failed: over=$OVER_NUMBER legalBalls=$CHECKPOINT_BALLS runs=$CHECKPOINT_RUNS wickets=$CHECKPOINT_WICKETS completedOvers=$COMPLETED_OVERS bowler=$LAST_OVER_BOWLER expected=$EXPECTED_BOWLER" >&2
+      exit 1
+    }
+    echo "    PASS: over $((OVER_NUMBER + 1)) completed; 6 legal balls; bowler=$LAST_OVER_BOWLER; score=0/0"
+  fi
+done
 SCORE1="$(request GET "$BASE_URL/scoring/innings/$INNINGS1_ID")"; STATUS1="$(jq -r '.status // empty' <<<"$SCORE1")"; BALLS1="$(jq -r '.legalBalls // .legal_balls // -1' <<<"$SCORE1")"; [[ "$STATUS1" == "COMPLETED" && "$BALLS1" == "24" ]] || { echo "ERROR: innings 1 status=$STATUS1 legalBalls=$BALLS1" >&2; exit 1; }
 expect_rejection "cannot restart completed innings 1" POST "$BASE_URL/scoring/innings" "$INNINGS1_BODY"
 WRONG_INNINGS2_BODY="$(jq -nc --arg match "$MATCH_ID" --arg team "$TEAM_A_ID" --arg striker "$A_STRIKER_ID" --arg non "$A_NON_STRIKER_ID" --arg bowler "$B_BOWLER_ID" '{matchId:$match,inningsNumber:2,battingTeamId:$team,strikerId:$striker,nonStrikerId:$non,currentBowlerId:$bowler}')"; expect_rejection "innings 2 rejects wrong batting team" POST "$BASE_URL/scoring/innings" "$WRONG_INNINGS2_BODY"
