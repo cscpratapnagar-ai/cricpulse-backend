@@ -79,6 +79,61 @@ class DeliveryOutcomeCalculatorTest {
     }
 
     @Test
+    void wideRunningExtrasOddTotalChangeStrikeButDoNotCountBall() {
+        DeliveryOutcomeCalculator.Outcome outcome = DeliveryOutcomeCalculator.calculate(
+                command(0, 3, "WIDE", null));
+
+        assertEquals(3, outcome.totalRuns());
+        assertEquals(0, outcome.batterRuns());
+        assertEquals(3, outcome.extraRuns());
+        assertEquals(3, outcome.bowlerRunsConceded());
+        assertFalse(outcome.legalDelivery());
+        assertFalse(outcome.batterFacedBall());
+        assertFalse(outcome.countsTowardOver());
+        assertTrue(outcome.oddRunChangesStrike());
+    }
+
+    @Test
+    void wideEvenTotalDoesNotChangeStrike() {
+        DeliveryOutcomeCalculator.Outcome outcome = DeliveryOutcomeCalculator.calculate(
+                command(0, 2, "WIDE", null));
+
+        assertEquals(2, outcome.totalRuns());
+        assertEquals(2, outcome.bowlerRunsConceded());
+        assertFalse(outcome.legalDelivery());
+        assertFalse(outcome.countsTowardOver());
+        assertFalse(outcome.oddRunChangesStrike());
+    }
+
+    @Test
+    void noBallBatRunsAreIncludedInTotalAndBowlerRunsAndOddTotalChangesStrike() {
+        DeliveryOutcomeCalculator.Outcome outcome = DeliveryOutcomeCalculator.calculate(
+                command(2, 1, "NO_BALL", null));
+
+        assertEquals(3, outcome.totalRuns());
+        assertEquals(2, outcome.batterRuns());
+        assertEquals(1, outcome.extraRuns());
+        assertEquals(3, outcome.bowlerRunsConceded());
+        assertFalse(outcome.legalDelivery());
+        assertFalse(outcome.batterFacedBall());
+        assertFalse(outcome.countsTowardOver());
+        assertTrue(outcome.oddRunChangesStrike());
+    }
+
+    @Test
+    void noBallEvenTotalDoesNotChangeStrike() {
+        DeliveryOutcomeCalculator.Outcome outcome = DeliveryOutcomeCalculator.calculate(
+                command(3, 1, "NO_BALL", null));
+
+        assertEquals(4, outcome.totalRuns());
+        assertEquals(3, outcome.batterRuns());
+        assertEquals(4, outcome.bowlerRunsConceded());
+        assertFalse(outcome.legalDelivery());
+        assertFalse(outcome.countsTowardOver());
+        assertFalse(outcome.oddRunChangesStrike());
+    }
+
+    @Test
     void bowlerWicketClassificationUsesCanonicalTypes() {
         DeliveryOutcomeCalculator.Outcome bowlerWicket = DeliveryOutcomeCalculator.calculate(
                 command(0, 0, null, WicketType.BOWLED.name()));
