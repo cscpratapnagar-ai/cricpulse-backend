@@ -121,13 +121,42 @@ baseline_projection="$(jq -S -c '{runs:(.runs // .totalRuns // .total_runs // 0)
 delivery="$(jq -nc --arg innings "$innings_id" --arg striker "$A_STRIKER_ID" --arg non "$A_NON_STRIKER_ID" --arg bowler "$B_BOWLER_ID" '{inningsId:$innings,strikerId:$striker,nonStrikerId:$non,bowlerId:$bowler,overNumber:0,ballNumber:1,batRuns:1,extraRuns:0,extraType:null,wicketType:null,dismissedPlayerId:null,newBatterId:null}')"
 command_id="$(cat /proc/sys/kernel/random/uuid)"
 
-echo "[4/7] Submit delivery once with command ID"
-first="$(curl -fsS -X POST "$BASE_URL/scoring/innings/$innings_id/deliveries" "${auth[@]}" "${lease[@]}" -H "X-Command-Id: $command_id" --data "$delivery")"
+echo "[4/7] Reject stale lease and concurrently replay the same command ID"
+stale_lease_token="$(cat /proc/sys/kernel/random/uuid)"
+stale_status="$(curl -sS -o "$tmp/stale-lease.json" -w '%{http_code}' -X POST "$BASE_URL/scoring/innings/$innings_id/deliveries" "${auth[@]}" -H "X-Scorer-Lease: $stale_lease_token" -H "X-Command-Id: $command_id" --data "$delivery")"
+if [[ "$stale_status" -lt 400 || "$stale_status" -ge 500 ]]; then
+  echo "FAIL: stale lease should be rejected with 4xx, received HTTP $stale_status" >&2
+  cat "$tmp/stale-lease.json" >&2
+  exit 1
+fi
+
+# Simulate two scorer clients retrying after a lost response at the same time.
+# Both carry the same idempotency key; only one event may be committed.
+curl -sS -o "$tmp/concurrent-a.json" -w '%{http_code}' -X POST "$BASE_URL/scoring/innings/$innings_id/deliveries" "${auth[@]}" "${lease[@]}" -H "X-Command-Id: $command_id" --data "$delivery" >"$tmp/concurrent-a.status" &
+request_a_pid=$!
+curl -sS -o "$tmp/concurrent-b.json" -w '%{http_code}' -X POST "$BASE_URL/scoring/innings/$innings_id/deliveries" "${auth[@]}" "${lease[@]}" -H "X-Command-Id: $command_id" --data "$delivery" >"$tmp/concurrent-b.status" &
+request_b_pid=$!
+
+wait "$request_a_pid"
+wait "$request_b_pid"
+status_a="$(cat "$tmp/concurrent-a.status")"
+status_b="$(cat "$tmp/concurrent-b.status")"
+if [[ ! "$status_a" =~ ^2[0-9][0-9]$ || ! "$status_b" =~ ^2[0-9][0-9]$ ]]; then
+  echo "FAIL: concurrent idempotent requests must both be acknowledged, received HTTP $status_a and $status_b" >&2
+  cat "$tmp/concurrent-a.json" "$tmp/concurrent-b.json" >&2
+  exit 1
+fi
+first="$(cat "$tmp/concurrent-a.json")"
 score_after_first="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "${auth[@]}")"
 balls_first="$(jq -r '.legalBalls // .legal_balls // -1' <<<"$score_after_first")"
 runs_first="$(jq -r '.runs // .totalRuns // .total_runs // -1' <<<"$score_after_first")"
-test "$balls_first" = "1"
-test "$runs_first" = "1"
+delivery_count_first="$(jq -r '.recentBalls | length' <<<"$score_after_first")"
+if [[ "$balls_first" != "1" || "$runs_first" != "1" || "$delivery_count_first" != "1" ]]; then
+  echo "FAIL: concurrent replay created duplicate score/events: score=$runs_first/$balls_first deliveries=$delivery_count_first" >&2
+  cat "$tmp/concurrent-a.json" "$tmp/concurrent-b.json" >&2
+  exit 1
+fi
+echo "PASS: concurrent duplicate requests acknowledged; one delivery persisted (HTTP $status_a/$status_b)"
 
 echo "[5/7] Replay exact same delivery with same command ID"
 retry="$(curl -fsS -X POST "$BASE_URL/scoring/innings/$innings_id/deliveries" "${auth[@]}" "${lease[@]}" -H "X-Command-Id: $command_id" --data "$delivery")"
