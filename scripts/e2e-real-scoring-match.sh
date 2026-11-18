@@ -133,10 +133,12 @@ for ((delivery=1; delivery<=24; delivery++)); do
     CHECKPOINT_RUNS="$(jq -r '.runs // .totalRuns // -1' <<<"$CHECKPOINT")"
     CHECKPOINT_WICKETS="$(jq -r '.wickets // -1' <<<"$CHECKPOINT")"
     COMPLETED_OVERS="$(jq '[.overs[]? | select(.completed == true)] | length' <<<"$CHECKPOINT")"
+    CHECKPOINT_STRIKER="$(jq -r '.strikerId // .striker_id // empty' <<<"$CHECKPOINT")"
+    CHECKPOINT_NON_STRIKER="$(jq -r '.nonStrikerId // .non_striker_id // empty' <<<"$CHECKPOINT")"
     EXPECTED_BOWLER="$B_BOWLER_ID"; if (( OVER_NUMBER % 2 == 1 )); then EXPECTED_BOWLER="$B_STRIKER_ID"; fi
     LAST_OVER_BOWLER="$(jq -r '.overs[-1].bowlerId // .overs[-1].bowler_id // empty' <<<"$CHECKPOINT")"
-    [[ "$CHECKPOINT_BALLS" == "$delivery" && "$CHECKPOINT_RUNS" == "0" && "$CHECKPOINT_WICKETS" == "0" && "$COMPLETED_OVERS" == "$((OVER_NUMBER + 1))" && "$LAST_OVER_BOWLER" == "$EXPECTED_BOWLER" ]] || {
-      echo "ERROR: over checkpoint failed: over=$OVER_NUMBER legalBalls=$CHECKPOINT_BALLS runs=$CHECKPOINT_RUNS wickets=$CHECKPOINT_WICKETS completedOvers=$COMPLETED_OVERS bowler=$LAST_OVER_BOWLER expected=$EXPECTED_BOWLER" >&2
+    [[ "$CHECKPOINT_BALLS" == "$delivery" && "$CHECKPOINT_RUNS" == "0" && "$CHECKPOINT_WICKETS" == "0" && "$COMPLETED_OVERS" == "$((OVER_NUMBER + 1))" && "$LAST_OVER_BOWLER" == "$EXPECTED_BOWLER" && "$CHECKPOINT_STRIKER" == "$CURRENT_STRIKER" && "$CHECKPOINT_NON_STRIKER" == "$CURRENT_NON" ]] || {
+      echo "ERROR: over checkpoint failed: over=$OVER_NUMBER legalBalls=$CHECKPOINT_BALLS runs=$CHECKPOINT_RUNS wickets=$CHECKPOINT_WICKETS completedOvers=$COMPLETED_OVERS bowler=$LAST_OVER_BOWLER expectedBowler=$EXPECTED_BOWLER striker=$CHECKPOINT_STRIKER expectedStriker=$CURRENT_STRIKER nonStriker=$CHECKPOINT_NON_STRIKER expectedNonStriker=$CURRENT_NON" >&2
       exit 1
     }
     echo "    PASS: over $((OVER_NUMBER + 1)) completed; 6 legal balls; bowler=$LAST_OVER_BOWLER; score=0/0"
