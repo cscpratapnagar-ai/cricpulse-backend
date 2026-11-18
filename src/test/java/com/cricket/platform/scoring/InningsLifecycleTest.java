@@ -15,32 +15,32 @@ class InningsLifecycleTest {
     private static final UUID INNINGS_ID = UUID.randomUUID();
 
     @Test
-    void targetReachedTakesPrecedenceWhenLastWicketFallsOnSameDelivery() {
+    void targetReachedTakesPrecedenceWhenLastWicketFallsOnSameDelivery() throws Exception {
         assertCompletion(state(101, 10, 120, 20, 101, "LIVE"), "TARGET_REACHED");
     }
 
     @Test
-    void targetReachedThroughExtrasCompletesInnings() {
+    void targetReachedThroughExtrasCompletesInnings() throws Exception {
         assertCompletion(state(151, 3, 87, 20, 151, "LIVE"), "TARGET_REACHED");
     }
 
     @Test
-    void allOutCompletesEvenBeforeOversAreFinished() {
+    void allOutCompletesEvenBeforeOversAreFinished() throws Exception {
         assertCompletion(state(42, 10, 23, 20, null, "LIVE"), "ALL_OUT");
     }
 
     @Test
-    void exactlyConfiguredOversCompletesInnings() {
+    void exactlyConfiguredOversCompletesInnings() throws Exception {
         assertCompletion(state(90, 4, 120, 20, null, "LIVE"), "OVERS_COMPLETED");
     }
 
     @Test
-    void oversLimitReachedOrExceededCompletesInnings() {
+    void oversLimitReachedOrExceededCompletesInnings() throws Exception {
         assertCompletion(state(90, 4, 121, 20, null, "LIVE"), "OVERS_COMPLETED");
     }
 
     @Test
-    void alreadyCompletedInningsIsNotMutatedAgain() {
+    void alreadyCompletedInningsIsNotMutatedAgain() throws Exception {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         InningsLifecycle lifecycle = new InningsLifecycle(jdbc);
         stubState(jdbc, state(100, 5, 100, 20, 101, "COMPLETED"));
@@ -53,7 +53,7 @@ class InningsLifecycleTest {
         verify(jdbc, never()).update(anyString(), eq(INNINGS_ID));
     }
 
-    private static void assertCompletion(Fixture fixture, String expectedReason) {
+    private static void assertCompletion(Fixture fixture, String expectedReason) throws Exception {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         InningsLifecycle lifecycle = new InningsLifecycle(jdbc);
         stubState(jdbc, fixture);
@@ -69,7 +69,7 @@ class InningsLifecycleTest {
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
-    private static void stubState(JdbcTemplate jdbc, Fixture fixture) {
+    private static void stubState(JdbcTemplate jdbc, Fixture fixture) throws Exception {
         ResultSet rs = mock(ResultSet.class);
         when(rs.getInt("total_runs")).thenReturn(fixture.runs());
         when(rs.getInt("wickets")).thenReturn(fixture.wickets());
