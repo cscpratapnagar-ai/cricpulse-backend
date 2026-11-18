@@ -204,7 +204,18 @@ public class MatchResultService {
     private Result toResult(MatchState match, InningsScore first, InningsScore second) {
         String detailedResultType = switch (match.resultType()) {
             case "TIE" -> "TIE";
-            case "WIN" -> second.runs() > first.runs() ? "WIN_BY_WICKETS" : "WIN_BY_RUNS";
+            case "WIN" -> {
+                if (match.winningTeamId() == null) {
+                    yield "WIN";
+                }
+                if (match.winningTeamId().equals(second.battingTeamId())) {
+                    yield "WIN_BY_WICKETS";
+                }
+                if (match.winningTeamId().equals(first.battingTeamId())) {
+                    yield "WIN_BY_RUNS";
+                }
+                yield "WIN";
+            }
             default -> match.resultType();
         };
         return new Result(
