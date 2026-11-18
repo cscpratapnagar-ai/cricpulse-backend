@@ -2,7 +2,7 @@
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://localhost:8080/api}"
-EMAIL="${EMAIL:-}"; PASSWORD="${PASSWORD:-}"; MATCH_ID="${MATCH_ID:-}"
+EMAIL="${EMAIL:-}"; OWNER_B_EMAIL="${OWNER_B_EMAIL:-}"; PASSWORD="${PASSWORD:-}"; MATCH_ID="${MATCH_ID:-}"
 TEAM_A_ID="${TEAM_A_ID:-}"; TEAM_B_ID="${TEAM_B_ID:-}"
 A_STRIKER_ID="${A_STRIKER_ID:-}"; A_NON_STRIKER_ID="${A_NON_STRIKER_ID:-}"
 B_BOWLER_ID="${B_BOWLER_ID:-}"; B_STRIKER_ID="${B_STRIKER_ID:-}"
@@ -10,7 +10,7 @@ B_NON_STRIKER_ID="${B_NON_STRIKER_ID:-}"; A_BOWLER_ID="${A_BOWLER_ID:-}"
 TOURNAMENT_ID="${TOURNAMENT_ID:-}"
 SCORER_LEASE_TOKEN=""
 MATCH_NAME="${MATCH_NAME:-CricPulse Lifecycle E2E $(date -u +%Y%m%d-%H%M%S)}"
-required=(EMAIL PASSWORD TEAM_A_ID TEAM_B_ID A_STRIKER_ID A_NON_STRIKER_ID B_BOWLER_ID B_STRIKER_ID B_NON_STRIKER_ID A_BOWLER_ID)
+required=(EMAIL OWNER_B_EMAIL PASSWORD TEAM_A_ID TEAM_B_ID A_STRIKER_ID A_NON_STRIKER_ID B_BOWLER_ID B_STRIKER_ID B_NON_STRIKER_ID A_BOWLER_ID)
 for name in "${required[@]}"; do [[ -n "${!name}" ]] || { echo "ERROR: $name is required" >&2; exit 1; }; done
 command -v curl >/dev/null || { echo "ERROR: curl is required" >&2; exit 1; }
 command -v jq >/dev/null || { echo "ERROR: jq is required" >&2; exit 1; }
