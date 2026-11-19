@@ -24,8 +24,8 @@ public class TournamentStaffController {
 
     @GetMapping
     List<ManagerView> list(@PathVariable UUID tournamentId, Authentication authentication) {
-        requireTournamentAccess(tournamentId, authentication);
-        return jdbc.query("""
+        boolean canManage = requireTournamentAccess(tournamentId, authentication);
+        List<ManagerView> managers = jdbc.query("""
                 SELECT ts.tournament_id, ts.user_id, u.full_name, u.email, ts.role, ts.assigned_at
                 FROM tournament_staff ts
                 JOIN users u ON u.id = ts.user_id
@@ -39,6 +39,7 @@ public class TournamentStaffController {
                         rs.getString("email"),
                         rs.getString("role"),
                         rs.getObject("assigned_at", OffsetDateTime.class)), tournamentId);
+        return new ManagerListResponse(managers, canManage);
     }
 
     @GetMapping("/candidates")
@@ -96,19 +97,20 @@ public class TournamentStaffController {
                 """, tournamentId, userId);
     }
 
-    void requireTournamentAccess(UUID tournamentId, Authentication authentication) {
+    boolean requireTournamentAccess(UUID tournamentId, Authentication authentication) {
         UUID userId = currentUserId(authentication);
-        Integer count = jdbc.queryForObject("""
-                SELECT COUNT(*) FROM tournaments t
-                WHERE t.id = ?
-                  AND (t.owner_id = ? OR EXISTS (
-                    SELECT 1 FROM tournament_staff ts
-                    WHERE ts.tournament_id = t.id AND ts.user_id = ? AND ts.role = 'MANAGER'
-                  ))
-                """, Integer.class, tournamentId, userId, userId);
-        if (count == null || count == 0) {
+        Integer ownerCount = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM tournaments WHERE id = ? AND owner_id = ?",
+                Integer.class, tournamentId, userId);
+        if (ownerCount != null && ownerCount > 0) return true;
+        Integer managerCount = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM tournament_staff
+                WHERE tournament_id = ? AND user_id = ? AND role = 'MANAGER'
+                """, Integer.class, tournamentId, userId);
+        if (managerCount == null || managerCount == 0) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tournament not found.");
         }
+        return false;
     }
 
     UUID requireTournamentOwner(UUID tournamentId, Authentication authentication) {
@@ -136,7 +138,7 @@ public class TournamentStaffController {
         }
     }
 
-    public record AssignManagerRequest(@NotNull UUID userId) {}
+    public record ManagerListResponse(List<ManagerView> managers, boolean canManage) {}\n    public record AssignManagerRequest(@NotNull UUID userId) {}
     public record ManagerCandidate(UUID userId, String fullName, String email) {}
     public record ManagerView(UUID tournamentId, UUID userId, String fullName, String email,
                               String role, OffsetDateTime assignedAt) {}
