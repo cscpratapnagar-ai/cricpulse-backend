@@ -57,6 +57,8 @@ class GetBowlerSpellAnalysisTest {
                 when(rs.getString("dismissed_batter")).thenReturn("B Batter");
                 when(rs.getBoolean("credited_to_bowler")).thenReturn(true);
             } else {
+                assertTrue(sql.contains("SELECT d.innings_id, i.innings_number"));
+                assertTrue(sql.contains("GROUP BY d.innings_id, i.innings_number, d.bowler_id, d.over_number"));
                 when(rs.getObject("innings_id", UUID.class)).thenReturn(inningsId);
                 when(rs.getObject("bowler_id", UUID.class)).thenReturn(bowlerId);
                 when(rs.getInt("over_number")).thenReturn(1, 2, 3, 4);
