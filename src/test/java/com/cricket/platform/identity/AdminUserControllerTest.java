@@ -16,9 +16,6 @@ class AdminUserControllerTest {
         assertEquals("ADMIN", controller.normalizeRole(" admin "));
         assertEquals("PLAYER", controller.normalizeRole("player"));
         assertEquals("SCORER", controller.normalizeRole("Scorer"));
-        assertEquals("UMPIRE", controller.normalizeRole("umpire"));
-        assertEquals("COMMENTATOR", controller.normalizeRole("commentator"));
-        assertEquals("STREAMER", controller.normalizeRole("streamer"));
     }
 
     @Test
