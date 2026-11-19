@@ -39,7 +39,7 @@ public class BroadcastSponsorController {
 
     @GetMapping("/api/matches/{matchId}/sponsors")
     public List<SponsorView> list(@PathVariable UUID matchId, Authentication authentication) {
-        access.requireMatchManager(matchId, authentication);
+        access.requireBroadcastAccess(matchId, authentication);
         return sponsors(matchId);
     }
 
@@ -47,7 +47,7 @@ public class BroadcastSponsorController {
     @Transactional
     public SponsorView create(@PathVariable UUID matchId, @Valid @RequestBody SponsorRequest request,
                               Authentication authentication) {
-        access.requireMatchManager(matchId, authentication);
+        access.requireBroadcastAccess(matchId, authentication);
         String type = normalize(request.sponsorType());
         validateType(type);
         validateLogo(request.logoUrl());
@@ -65,7 +65,7 @@ public class BroadcastSponsorController {
     @Transactional
     public SponsorView update(@PathVariable UUID matchId, @PathVariable UUID sponsorId,
                               @Valid @RequestBody SponsorRequest request, Authentication authentication) {
-        access.requireMatchManager(matchId, authentication);
+        access.requireBroadcastAccess(matchId, authentication);
         requireSponsor(matchId, sponsorId);
         String type = normalize(request.sponsorType());
         validateType(type);
@@ -83,7 +83,7 @@ public class BroadcastSponsorController {
     @DeleteMapping("/api/matches/{matchId}/sponsors/{sponsorId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable UUID matchId, @PathVariable UUID sponsorId, Authentication authentication) {
-        access.requireMatchManager(matchId, authentication);
+        access.requireBroadcastAccess(matchId, authentication);
         requireSponsor(matchId, sponsorId);
         jdbc.update("DELETE FROM broadcast_sponsors WHERE id = ? AND match_id = ?", sponsorId, matchId);
     }
@@ -93,7 +93,7 @@ public class BroadcastSponsorController {
     public List<PlacementView> replacePlacements(@PathVariable UUID matchId, @PathVariable UUID sponsorId,
                                                   @Valid @RequestBody List<@Valid PlacementRequest> requests,
                                                   Authentication authentication) {
-        access.requireMatchManager(matchId, authentication);
+        access.requireBroadcastAccess(matchId, authentication);
         requireSponsor(matchId, sponsorId);
         jdbc.update("DELETE FROM broadcast_sponsor_placements WHERE sponsor_id = ?", sponsorId);
         for (PlacementRequest request : requests) {
@@ -158,7 +158,7 @@ public class BroadcastSponsorController {
     public ImpressionView recordImpression(@PathVariable UUID matchId, @PathVariable UUID sponsorId,
                                             @Valid @RequestBody ImpressionRequest request,
                                             Authentication authentication) {
-        access.requireMatchManager(matchId, authentication);
+        access.requireBroadcastAccess(matchId, authentication);
         requireSponsor(matchId, sponsorId);
         String event = normalize(request.eventType());
         if (!EVENTS.contains(event)) {
@@ -175,7 +175,7 @@ public class BroadcastSponsorController {
 
     @GetMapping("/api/matches/{matchId}/sponsor-report")
     public List<SponsorReportRow> report(@PathVariable UUID matchId, Authentication authentication) {
-        access.requireMatchManager(matchId, authentication);
+        access.requireBroadcastAccess(matchId, authentication);
         return jdbc.query("""
                 SELECT s.id, s.name, s.sponsor_type, s.active,
                        COUNT(i.id) AS impressions,
