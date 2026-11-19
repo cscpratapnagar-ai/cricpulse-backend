@@ -170,6 +170,33 @@ class TournamentLifecycleCertificationTest {
         assertDoesNotThrow(() -> controller.ensureTeamCanBeRemoved(tournamentId, teamId));
     }
 
+
+    @Test
+    void duplicateFixturePairIsRejectedRegardlessOfHomeAwayOrder() {
+        UUID matchId = UUID.randomUUID();
+        when(jdbc.queryForObject(
+                contains("candidate.team_a_id=existing.team_a_id"),
+                eq(Integer.class), eq(matchId), eq(tournamentId))).thenReturn(1);
+
+        ResponseStatusException error = assertThrows(
+                ResponseStatusException.class,
+                () -> controller.ensureFixturePairNotPresent(tournamentId, matchId)
+        );
+
+        assertEquals(409, error.getStatusCode().value());
+        assertTrue(error.getReason().contains("team pair already exists"));
+    }
+
+    @Test
+    void newFixturePairIsAllowedWhenNoExistingPairMatches() {
+        UUID matchId = UUID.randomUUID();
+        when(jdbc.queryForObject(
+                contains("candidate.team_a_id=existing.team_a_id"),
+                eq(Integer.class), eq(matchId), eq(tournamentId))).thenReturn(0);
+
+        assertDoesNotThrow(() -> controller.ensureFixturePairNotPresent(tournamentId, matchId));
+    }
+
     private void validate(String current, String target) {
         try {
             Method method = TournamentController.class.getDeclaredMethod(
