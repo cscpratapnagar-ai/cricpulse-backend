@@ -89,7 +89,7 @@ echo "[4/8] Reject reverse-order duplicate team pair"
 FIRST_FIXTURE="$(jq -c '.fixtures[0]' <<<"$generate1")"
 TEAM_A="$(jq -r '.teamAId' <<<"$FIRST_FIXTURE")"
 TEAM_B="$(jq -r '.teamBId' <<<"$FIRST_FIXTURE")"
-REVERSE_MATCH="$(curl -fsS -X POST "$BASE_URL/matches" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \\
+REVERSE_MATCH="$(curl -fsS -X POST "$BASE_URL/matches" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   --data "$(jq -cn --arg a "$TEAM_B" --arg b "$TEAM_A" '{name:"CI reverse duplicate fixture",teamAId:$a,teamBId:$b,format:"T20",totalOvers:20,scheduledAt:null}')")"
 REVERSE_MATCH_ID="$(jq -r '.id // empty' <<<"$REVERSE_MATCH")"
 [[ -n "$REVERSE_MATCH_ID" ]] || { echo "ERROR: could not create reverse-order match for duplicate test" >&2; exit 1; }
