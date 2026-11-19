@@ -153,7 +153,7 @@ public class MatchStaffController {
                 """, Integer.class, matchId, principal, principal, principal, principal, principal, principal);
         if (allowed == null || allowed == 0) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Only a team owner, manager or captain can assign match staff.");
+                    "Only the tournament owner, a participating team owner, manager or captain can assign match staff.");
         }
     }
 
