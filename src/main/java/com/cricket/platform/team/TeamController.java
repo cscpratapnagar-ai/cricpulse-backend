@@ -39,7 +39,7 @@ public class TeamController {
         }
         String principal = authentication.getName();
         return jdbc.query("""
-                SELECT t.id, t.name, t.city, t.owner_id,
+                SELECT DISTINCT t.id, t.name, t.city, t.owner_id,
                        CASE
                          WHEN LOWER(TRIM(owner.email)) = LOWER(TRIM(?))
                            OR CAST(owner.id AS TEXT) = ? THEN 'OWNER'
