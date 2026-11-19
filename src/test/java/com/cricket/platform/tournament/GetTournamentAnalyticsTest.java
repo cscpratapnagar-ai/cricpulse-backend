@@ -35,8 +35,10 @@ class GetTournamentAnalyticsTest {
                         new GetTournamentAnalytics.TeamRow(teamA, "Falcons"),
                         new GetTournamentAnalytics.TeamRow(teamB, "Tigers")));
         when(jdbc.query(contains("FROM matches m"), any(RowMapper.class), any(Object[].class)))
-                .thenReturn(List.of(new GetTournamentAnalytics.CompletedMatch(
-                        matchId, teamA, teamB, teamA, 160, 120, teamB, 150, 118)));
+                .thenReturn(List.of(new TournamentStandingsCalculator.Match(
+                        teamA, teamB, "COMPLETED", "WIN", teamA, 20,
+                        new TournamentStandingsCalculator.Innings(teamA, 160, 4, 120, 20),
+                        new TournamentStandingsCalculator.Innings(teamB, 150, 6, 118, 20))));
         when(jdbc.query(contains("FROM tournament_matches tm"), any(RowMapper.class), eq(tournamentId), eq(5)))
                 .thenReturn(List.of(new GetTournamentAnalytics.PlayerLeader(UUID.randomUUID(), "A Batter", 160, 0)));
         UUID fielderId = UUID.randomUUID();
@@ -61,6 +63,7 @@ class GetTournamentAnalyticsTest {
         assertEquals(2, result.teams().size());
         assertEquals("Falcons", result.teams().getFirst().teamName());
         assertEquals(2, result.teams().getFirst().points());
+        assertEquals(0, result.teams().getFirst().noResults());
         assertEquals(List.of("W"), result.teams().getFirst().recentForm());
         assertEquals("Tigers", result.teams().get(1).teamName());
         assertEquals(0, result.teams().get(1).points());
