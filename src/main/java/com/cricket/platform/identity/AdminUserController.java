@@ -19,7 +19,7 @@ import java.util.UUID;
 @RequestMapping("/api/admin/users")
 public class AdminUserController {
     private static final Set<String> ASSIGNABLE_ROLES =
-            Set.of("ADMIN", "PLAYER", "SCORER", "UMPIRE", "COMMENTATOR", "STREAMER");
+            Set.of("ADMIN", "PLAYER", "SCORER");
 
     private final JdbcTemplate jdbc;
 
