@@ -12,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import org.springframework.http.HttpStatus;
@@ -29,10 +30,13 @@ class TournamentStaffControllerTest {
         when(authentication.getName()).thenReturn(principal);
         when(jdbc.queryForObject(anyString(), eq(UUID.class), eq(principal), eq(principal)))
                 .thenReturn(userId);
-        when(jdbc.queryForObject(anyString(), eq(Integer.class), eq(tournamentId), eq(userId), eq(userId)))
+        when(jdbc.queryForObject(contains("owner_id"), eq(Integer.class), eq(tournamentId), eq(userId)))
+                .thenReturn(0);
+        when(jdbc.queryForObject(contains("FROM tournament_staff"), eq(Integer.class), eq(tournamentId), eq(userId)))
                 .thenReturn(1);
 
-        assertDoesNotThrow(() -> controller.requireTournamentAccess(tournamentId, authentication));
+        org.junit.jupiter.api.Assertions.assertFalse(
+                controller.requireTournamentAccess(tournamentId, authentication));
     }
 
     @Test
@@ -47,7 +51,9 @@ class TournamentStaffControllerTest {
         when(authentication.getName()).thenReturn(principal);
         when(jdbc.queryForObject(anyString(), eq(UUID.class), eq(principal), eq(principal)))
                 .thenReturn(userId);
-        when(jdbc.queryForObject(anyString(), eq(Integer.class), eq(tournamentId), eq(userId), eq(userId)))
+        when(jdbc.queryForObject(contains("owner_id"), eq(Integer.class), eq(tournamentId), eq(userId)))
+                .thenReturn(0);
+        when(jdbc.queryForObject(contains("FROM tournament_staff"), eq(Integer.class), eq(tournamentId), eq(userId)))
                 .thenReturn(0);
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
