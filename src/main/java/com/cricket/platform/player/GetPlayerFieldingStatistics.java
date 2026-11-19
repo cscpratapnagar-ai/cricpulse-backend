@@ -17,15 +17,15 @@ public class GetPlayerFieldingStatistics {
         return jdbc.queryForObject("""
                 SELECT p.id AS player_id,
                        u.full_name AS player_name,
-                       COUNT(d.id) FILTER (WHERE d.wicket_type = 'CAUGHT') AS catches,
-                       COUNT(d.id) FILTER (WHERE d.wicket_type = 'RUN_OUT') AS run_outs,
-                       COUNT(d.id) FILTER (WHERE d.wicket_type = 'STUMPED') AS stumpings
+                       COUNT(*) FILTER (WHERE d.wicket_type = 'CAUGHT') AS catches,
+                       COUNT(*) FILTER (WHERE d.wicket_type = 'RUN_OUT') AS run_outs,
+                       COUNT(*) FILTER (WHERE d.wicket_type = 'STUMPED') AS stumpings
                 FROM players p
                 JOIN users u ON u.id = p.user_id
                 LEFT JOIN deliveries d ON d.wicket_fielder_id = p.id
                 LEFT JOIN innings i ON i.id = d.innings_id AND i.status = 'COMPLETED'
                 WHERE p.id = ?
-                  AND (d.id IS NULL OR i.id IS NOT NULL)
+                  AND (d.wicket_fielder_id IS NULL OR i.id IS NOT NULL)
                 GROUP BY p.id, u.full_name
                 """, (rs, row) -> {
             int catches = rs.getInt("catches");
