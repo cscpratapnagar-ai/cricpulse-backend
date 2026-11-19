@@ -14,8 +14,16 @@ public record DeliveryCommand(
         String wicketType,
         UUID dismissedPlayerId,
         UUID newBatterId,
+        UUID wicketFielderId,
         UUID recordedBy
 ) {
+    public DeliveryCommand(UUID commandId, UUID inningsId, UUID strikerId, UUID nonStrikerId,
+            UUID bowlerId, int batRuns, int extraRuns, String extraType, String wicketType,
+            UUID dismissedPlayerId, UUID newBatterId, UUID recordedBy) {
+        this(commandId, inningsId, strikerId, nonStrikerId, bowlerId, batRuns, extraRuns,
+                extraType, wicketType, dismissedPlayerId, newBatterId, null, recordedBy);
+    }
+
     public DeliveryCommand {
         if (commandId == null || inningsId == null || strikerId == null || nonStrikerId == null || bowlerId == null) {
             throw new IllegalArgumentException("Delivery command identity fields are required");
