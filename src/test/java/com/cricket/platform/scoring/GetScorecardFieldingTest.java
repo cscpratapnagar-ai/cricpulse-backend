@@ -11,6 +11,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -24,8 +25,7 @@ class GetScorecardFieldingTest {
         UUID batterId = UUID.randomUUID();
         UUID fielderId = UUID.randomUUID();
 
-        when(jdbc.query(anyString(), any(RowCallbackHandler.class), any(Object[].class)))
-                .thenAnswer(invocation -> {
+        doAnswer(invocation -> {
                     String sql = invocation.getArgument(0);
                     RowCallbackHandler callback = invocation.getArgument(1);
                     ResultSet rs = mock(ResultSet.class);
@@ -55,7 +55,7 @@ class GetScorecardFieldingTest {
                         callback.processRow(rs);
                     }
                     return null;
-                });
+                }).when(jdbc).query(anyString(), any(RowCallbackHandler.class), any(Object[].class));
 
         GetScorecard.Scorecard result = new GetScorecard(jdbc).executeAll(List.of(inningsId)).getFirst();
 
