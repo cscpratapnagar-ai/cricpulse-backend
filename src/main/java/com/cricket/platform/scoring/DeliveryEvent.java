@@ -19,12 +19,23 @@ public record DeliveryEvent(
         String extraType,
         String wicketType,
         UUID dismissedPlayerId,
+        UUID wicketFielderId,
         boolean legalDelivery,
         String eventPayload,
         UUID commandId,
         UUID recordedBy,
         OffsetDateTime createdAt
 ) {
+    public DeliveryEvent(UUID eventId, UUID inningsId, long sequenceNo, int eventVersion,
+            String eventType, int overNumber, int ballNumber, UUID strikerId, UUID nonStrikerId,
+            UUID bowlerId, int batRuns, int extraRuns, String extraType, String wicketType,
+            UUID dismissedPlayerId, boolean legalDelivery, String eventPayload, UUID commandId,
+            UUID recordedBy, OffsetDateTime createdAt) {
+        this(eventId, inningsId, sequenceNo, eventVersion, eventType, overNumber, ballNumber,
+                strikerId, nonStrikerId, bowlerId, batRuns, extraRuns, extraType, wicketType,
+                dismissedPlayerId, null, legalDelivery, eventPayload, commandId, recordedBy, createdAt);
+    }
+
     public DeliveryEvent {
         if (eventId == null || inningsId == null || strikerId == null || nonStrikerId == null || bowlerId == null) {
             throw new IllegalArgumentException("Delivery event identity fields are required");
