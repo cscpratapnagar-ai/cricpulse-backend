@@ -23,7 +23,7 @@ public class TournamentStaffController {
     }
 
     @GetMapping
-    List<ManagerView> list(@PathVariable UUID tournamentId, Authentication authentication) {
+    ManagerListResponse list(@PathVariable UUID tournamentId, Authentication authentication) {
         boolean canManage = requireTournamentAccess(tournamentId, authentication);
         List<ManagerView> managers = jdbc.query("""
                 SELECT ts.tournament_id, ts.user_id, u.full_name, u.email, ts.role, ts.assigned_at
@@ -138,7 +138,8 @@ public class TournamentStaffController {
         }
     }
 
-    public record ManagerListResponse(List<ManagerView> managers, boolean canManage) {}\n    public record AssignManagerRequest(@NotNull UUID userId) {}
+    public record ManagerListResponse(List<ManagerView> managers, boolean canManage) {}
+    public record AssignManagerRequest(@NotNull UUID userId) {}
     public record ManagerCandidate(UUID userId, String fullName, String email) {}
     public record ManagerView(UUID tournamentId, UUID userId, String fullName, String email,
                               String role, OffsetDateTime assignedAt) {}
