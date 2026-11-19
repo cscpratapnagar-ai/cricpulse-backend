@@ -11,6 +11,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -58,10 +59,13 @@ class GetTournamentAnalyticsTest {
         GetTournamentAnalytics.TournamentAnalytics result = new GetTournamentAnalytics(jdbc).get(tournamentId);
 
         ArgumentCaptor<String> standingsSql = ArgumentCaptor.forClass(String.class);
-        verify(jdbc).query(standingsSql.capture(), any(RowMapper.class), any(Object[].class));
-        assertTrue(standingsSql.getValue().contains("COALESCE(tm.stage,'LEAGUE')='LEAGUE'"));
-        assertTrue(standingsSql.getValue().contains("i1.is_super_over=FALSE"));
-        assertTrue(standingsSql.getValue().contains("COALESCE(m.winning_team_id,m.winner_team_id)"));
+        verify(jdbc, atLeastOnce()).query(standingsSql.capture(), any(RowMapper.class), any(Object[].class));
+        String standingsQuery = standingsSql.getAllValues().stream()
+                .filter(sql -> sql.contains("FROM matches m"))
+                .findFirst().orElseThrow();
+        assertTrue(standingsQuery.contains("COALESCE(tm.stage,'LEAGUE')='LEAGUE'"));
+        assertTrue(standingsQuery.contains("i1.is_super_over=FALSE"));
+        assertTrue(standingsQuery.contains("COALESCE(m.winning_team_id,m.winner_team_id)"));
 
         assertEquals(1, result.totalFixtures());
         assertEquals(1, result.completedFixtures());
