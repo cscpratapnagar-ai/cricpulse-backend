@@ -45,8 +45,14 @@ public class ScoringAccess {
                       WHERE tm.team_id IN (m.team_a_id, m.team_b_id)
                         AND (LOWER(TRIM(u.email)) = LOWER(TRIM(?)) OR CAST(u.id AS TEXT) = ?)
                     )
+                    OR EXISTS (
+                      SELECT 1 FROM match_staff ms
+                      JOIN users u ON u.id = ms.user_id
+                      WHERE ms.match_id = m.id AND ms.role = 'SCORER'
+                        AND (LOWER(TRIM(u.email)) = LOWER(TRIM(?)) OR CAST(u.id AS TEXT) = ?)
+                    )
                   )
-                """, Integer.class, matchId, principal, principal, principal, principal);
+                """, Integer.class, matchId, principal, principal, principal, principal, principal, principal);
 
         if (allowed == null || allowed == 0) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
@@ -83,8 +89,14 @@ public class ScoringAccess {
                         AND tm.role IN ('MANAGER', 'CAPTAIN')
                         AND (LOWER(TRIM(u.email)) = LOWER(TRIM(?)) OR CAST(u.id AS TEXT) = ?)
                     )
+                    OR EXISTS (
+                      SELECT 1 FROM match_staff ms
+                      JOIN users u ON u.id = ms.user_id
+                      WHERE ms.match_id = m.id AND ms.role = 'SCORER'
+                        AND (LOWER(TRIM(u.email)) = LOWER(TRIM(?)) OR CAST(u.id AS TEXT) = ?)
+                    )
                   )
-                """, Integer.class, matchId, principal, principal, principal, principal);
+                """, Integer.class, matchId, principal, principal, principal, principal, principal, principal);
 
         if (allowed == null || allowed == 0) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
