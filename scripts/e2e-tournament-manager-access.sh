@@ -52,7 +52,7 @@ request_status() {
     cat "$output" >&2
     exit 1
   fi
-  echo "PASS: $method $path -> HTTP $status"
+  echo "PASS: $method $path -> HTTP $status" >&2
   cat "$output"
 }
 
