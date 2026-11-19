@@ -57,6 +57,12 @@ class GetTournamentAnalyticsTest {
 
         GetTournamentAnalytics.TournamentAnalytics result = new GetTournamentAnalytics(jdbc).get(tournamentId);
 
+        ArgumentCaptor<String> standingsSql = ArgumentCaptor.forClass(String.class);
+        verify(jdbc).query(standingsSql.capture(), any(RowMapper.class), any(Object[].class));
+        assertTrue(standingsSql.getValue().contains("COALESCE(tm.stage,'LEAGUE')='LEAGUE'"));
+        assertTrue(standingsSql.getValue().contains("i1.is_super_over=FALSE"));
+        assertTrue(standingsSql.getValue().contains("COALESCE(m.winning_team_id,m.winner_team_id)"));
+
         assertEquals(1, result.totalFixtures());
         assertEquals(1, result.completedFixtures());
         assertEquals(100.0, result.completionPercentage().doubleValue(), 0.001);
