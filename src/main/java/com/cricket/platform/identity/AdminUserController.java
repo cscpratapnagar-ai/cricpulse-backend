@@ -62,10 +62,7 @@ public class AdminUserController {
         if (authentication == null || !authentication.isAuthenticated()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication is required.");
         }
-        String role = request.role().trim().toUpperCase(Locale.ROOT);
-        if (!ASSIGNABLE_ROLES.contains(role)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported platform role.");
-        }
+        String role = normalizeRole(request.role());
 
         String actor = authentication.getName();
         String targetEmail = jdbc.query(
@@ -102,6 +99,14 @@ public class AdminUserController {
                         rs.getString("phone"),
                         rs.getString("role"),
                         rs.getObject("created_at", OffsetDateTime.class)), userId);
+    }
+
+    String normalizeRole(String role) {
+        String normalized = role == null ? "" : role.trim().toUpperCase(Locale.ROOT);
+        if (!ASSIGNABLE_ROLES.contains(normalized)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported platform role.");
+        }
+        return normalized;
     }
 
     public record UpdateRoleRequest(@NotBlank String role) {}
