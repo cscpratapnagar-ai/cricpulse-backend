@@ -37,15 +37,21 @@ public class GetScorecard {
 
         Map<UUID, List<Batter>> batting = new HashMap<>();
         jdbc.query("SELECT b.innings_id, b.player_id, u.full_name, b.runs, b.balls_faced, " +
-                "b.fours, b.sixes, b.strike_rate, b.is_out, b.dismissal_type " +
+                "b.fours, b.sixes, b.strike_rate, b.is_out, b.dismissal_type, " +
+                "d.wicket_fielder_id AS fielder_id, fu.full_name AS fielder_name " +
                 "FROM innings_batters b JOIN players p ON p.id = b.player_id " +
-                "JOIN users u ON u.id = p.user_id WHERE b.innings_id IN (" + placeholders + ") " +
+                "JOIN users u ON u.id = p.user_id " +
+                "LEFT JOIN deliveries d ON d.id = b.dismissal_delivery_id " +
+                "LEFT JOIN players fp ON fp.id = d.wicket_fielder_id " +
+                "LEFT JOIN users fu ON fu.id = fp.user_id " +
+                "WHERE b.innings_id IN (" + placeholders + ") " +
                 "ORDER BY b.innings_id, b.batting_position NULLS LAST, b.created_at", (RowCallbackHandler) rs ->
                 batting.computeIfAbsent(rs.getObject("innings_id", UUID.class), k -> new ArrayList<>())
                         .add(new Batter(rs.getObject("player_id", UUID.class), rs.getString("full_name"),
                                 rs.getInt("runs"), rs.getInt("balls_faced"), rs.getInt("fours"),
                                 rs.getInt("sixes"), rs.getBigDecimal("strike_rate"), rs.getBoolean("is_out"),
-                                rs.getString("dismissal_type"))), args);
+                                rs.getString("dismissal_type"), rs.getObject("fielder_id", UUID.class),
+                                rs.getString("fielder_name"))), args);
 
         Map<UUID, List<Bowler>> bowling = new HashMap<>();
         jdbc.query("SELECT b.innings_id, b.player_id, u.full_name, b.legal_balls, " +
@@ -103,10 +109,14 @@ public class GetScorecard {
         List<Batter> batting = jdbc.query("""
                 SELECT b.player_id, u.full_name, b.runs, b.balls_faced,
                        b.fours, b.sixes, b.strike_rate, b.is_out,
-                       b.dismissal_type
+                       b.dismissal_type, d.wicket_fielder_id AS fielder_id,
+                       fu.full_name AS fielder_name
                 FROM innings_batters b
                 JOIN players p ON p.id = b.player_id
                 JOIN users u ON u.id = p.user_id
+                LEFT JOIN deliveries d ON d.id = b.dismissal_delivery_id
+                LEFT JOIN players fp ON fp.id = d.wicket_fielder_id
+                LEFT JOIN users fu ON fu.id = fp.user_id
                 WHERE b.innings_id = ?
                 ORDER BY b.batting_position NULLS LAST, b.created_at
                 """, (rs, row) -> new Batter(
@@ -118,7 +128,9 @@ public class GetScorecard {
                 rs.getInt("sixes"),
                 rs.getBigDecimal("strike_rate"),
                 rs.getBoolean("is_out"),
-                rs.getString("dismissal_type")
+                rs.getString("dismissal_type"),
+                rs.getObject("fielder_id", UUID.class),
+                rs.getString("fielder_name")
         ), inningsId);
 
         List<Bowler> bowling = jdbc.query("""
@@ -172,7 +184,7 @@ public class GetScorecard {
 
     public record Batter(UUID playerId, String playerName, int runs, int balls,
                          int fours, int sixes, BigDecimal strikeRate,
-                         boolean out, String dismissal) {}
+                         boolean out, String dismissal, UUID fielderId, String fielderName) {}
 
     public record Bowler(UUID playerId, String playerName, int legalBalls,
                          int runs, int wickets, BigDecimal economy) {}
