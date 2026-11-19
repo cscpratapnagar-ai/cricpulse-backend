@@ -32,6 +32,48 @@ public class TeamController {
         return createTeam.execute(request, authentication.getName());
     }
 
+    @GetMapping("/workspaces")
+    List<WorkspaceView> workspaces(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication is required.");
+        }
+        String principal = authentication.getName();
+        return jdbc.query("""
+                SELECT DISTINCT t.id, t.name, t.city, t.owner_id,
+                       CASE
+                         WHEN LOWER(TRIM(owner.email)) = LOWER(TRIM(?))
+                           OR CAST(owner.id AS TEXT) = ? THEN 'OWNER'
+                         ELSE tm.role
+                       END AS workspace_role,
+                       CASE
+                         WHEN LOWER(TRIM(owner.email)) = LOWER(TRIM(?))
+                           OR CAST(owner.id AS TEXT) = ? THEN TRUE
+                         WHEN tm.role IN ('OWNER', 'MANAGER', 'CAPTAIN') THEN TRUE
+                         ELSE FALSE
+                       END AS can_manage
+                FROM teams t
+                JOIN users owner ON owner.id = t.owner_id
+                LEFT JOIN team_members tm ON tm.team_id = t.id
+                LEFT JOIN players p ON p.id = tm.player_id
+                LEFT JOIN users member_user ON member_user.id = p.user_id
+                WHERE (
+                    LOWER(TRIM(owner.email)) = LOWER(TRIM(?))
+                    OR CAST(owner.id AS TEXT) = ?
+                    OR LOWER(TRIM(member_user.email)) = LOWER(TRIM(?))
+                    OR CAST(member_user.id AS TEXT) = ?
+                )
+                ORDER BY t.name
+                """,
+                (rs, row) -> new WorkspaceView(
+                        rs.getObject("id", UUID.class),
+                        rs.getString("name"),
+                        rs.getString("city"),
+                        rs.getObject("owner_id", UUID.class),
+                        rs.getString("workspace_role"),
+                        rs.getBoolean("can_manage")),
+                principal, principal, principal, principal, principal, principal, principal, principal);
+    }
+
     @GetMapping("/mine")
     List<GetTeam.TeamView> mine(Authentication authentication) {
         return jdbc.query(
@@ -156,6 +198,9 @@ public class TeamController {
     List<GetTeam.TeamView> list(Authentication authentication) {
         return mine(authentication);
     }
+
+    public record WorkspaceView(UUID id, String name, String city, UUID ownerId,
+                                String role, boolean canManage) {}
 
     private UUID resolvePlayerId(AddMemberRequest request) {
         if (request.playerId() != null) {
