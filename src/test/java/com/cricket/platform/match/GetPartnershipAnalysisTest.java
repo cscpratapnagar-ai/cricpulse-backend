@@ -26,7 +26,7 @@ class GetPartnershipAnalysisTest {
         ResultSet rs = mock(ResultSet.class);
         when(rs.getInt("innings_number")).thenReturn(1);
         when(rs.getString("batting_team")).thenReturn("Falcons");
-        when(rs.getInt("wicket_number")).thenReturn(2);
+        when(rs.getInt("partnership_number")).thenReturn(2);
         when(rs.getObject("batter_one_id", UUID.class)).thenReturn(batterOne);
         when(rs.getString("batter_one_name")).thenReturn("A Batter");
         when(rs.getObject("batter_two_id", UUID.class)).thenReturn(batterTwo);
