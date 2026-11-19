@@ -9,10 +9,13 @@ import java.util.UUID;
 public class ComparePlayers {
     private final GetPlayerProfile profiles;
     private final GetPlayerStatistics statistics;
+    private final GetPlayerFieldingStatistics fieldingStatistics;
 
-    public ComparePlayers(GetPlayerProfile profiles, GetPlayerStatistics statistics) {
+    public ComparePlayers(GetPlayerProfile profiles, GetPlayerStatistics statistics,
+                          GetPlayerFieldingStatistics fieldingStatistics) {
         this.profiles = profiles;
         this.statistics = statistics;
+        this.fieldingStatistics = fieldingStatistics;
     }
 
     public Comparison compare(UUID leftId, UUID rightId) {
@@ -23,6 +26,7 @@ public class ComparePlayers {
     private PlayerSnapshot snapshot(UUID id) {
         var profile = profiles.get(id);
         var stats = statistics.one(id);
+        var fielding = fieldingStatistics.get(id);
 
         String bestBowling = stats.bestWickets() > 0 ? stats.bestWickets() + " wkts" : "—";
 
@@ -44,6 +48,10 @@ public class ComparePlayers {
                 stats.bowlingBalls(),
                 stats.runsConceded(),
                 stats.economy(),
+                fielding.catches(),
+                fielding.runOuts(),
+                fielding.stumpings(),
+                fielding.totalContributions(),
                 String.valueOf(stats.highestScore()),
                 bestBowling
         );
@@ -69,6 +77,10 @@ public class ComparePlayers {
             int bowlingBalls,
             int runsConceded,
             BigDecimal economy,
+            int catches,
+            int runOuts,
+            int stumpings,
+            int totalFieldingContributions,
             String bestScore,
             String bestBowling
     ) {}
