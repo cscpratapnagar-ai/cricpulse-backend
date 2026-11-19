@@ -39,7 +39,7 @@ public class DeliveryEventRepository {
         return jdbc.query(
                 "SELECT event_id, innings_id, sequence_no, event_version, event_type, over_number, ball_number, "
                         + "striker_id, non_striker_id, bowler_id, bat_runs, extra_runs, extra_type, wicket_type, "
-                        + "dismissed_player_id, legal_delivery, event_payload, command_id, recorded_by, created_at "
+                        + "dismissed_player_id, wicket_fielder_id, legal_delivery, event_payload, command_id, recorded_by, created_at "
                         + "FROM delivery_events WHERE command_id = ?",
                 rs -> rs.next() ? map(rs) : null,
                 commandId
@@ -61,14 +61,14 @@ public class DeliveryEventRepository {
                 INSERT INTO delivery_events (
                     event_id, innings_id, sequence_no, event_version, event_type,
                     over_number, ball_number, striker_id, non_striker_id, bowler_id,
-                    bat_runs, extra_runs, extra_type, wicket_type, dismissed_player_id,
+                    bat_runs, extra_runs, extra_type, wicket_type, dismissed_player_id, wicket_fielder_id,
                     legal_delivery, event_payload, command_id, recorded_by, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?)
                 ON CONFLICT DO NOTHING
                 """,
                 event.eventId(), event.inningsId(), event.sequenceNo(), event.eventVersion(), event.eventType(),
                 event.overNumber(), event.ballNumber(), event.strikerId(), event.nonStrikerId(), event.bowlerId(),
-                event.batRuns(), event.extraRuns(), event.extraType(), event.wicketType(), event.dismissedPlayerId(),
+                event.batRuns(), event.extraRuns(), event.extraType(), event.wicketType(), event.dismissedPlayerId(), event.wicketFielderId(),
                 event.legalDelivery(), event.eventPayload(), event.commandId(), event.recordedBy(), event.createdAt()
         );
         return updated == 1;
@@ -91,6 +91,7 @@ public class DeliveryEventRepository {
                 rs.getString("extra_type"),
                 rs.getString("wicket_type"),
                 rs.getObject("dismissed_player_id", UUID.class),
+                rs.getObject("wicket_fielder_id", UUID.class),
                 rs.getBoolean("legal_delivery"),
                 rs.getString("event_payload"),
                 rs.getObject("command_id", UUID.class),
