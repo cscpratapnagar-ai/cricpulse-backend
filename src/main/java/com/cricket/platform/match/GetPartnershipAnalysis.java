@@ -64,7 +64,7 @@ public class GetPartnershipAnalysis {
                        t.batter_two_id, u2.full_name AS batter_two_name,
                        t.runs, t.balls, t.batter_one_runs, t.batter_two_runs,
                        t.start_over, t.start_ball, t.end_over, t.end_ball,
-                       t.is_current
+                       (t.is_current AND UPPER(i.status) = 'LIVE') AS is_current
                 FROM totals t
                 JOIN innings i ON i.id = t.innings_id
                 JOIN teams bt ON bt.id = i.batting_team_id
