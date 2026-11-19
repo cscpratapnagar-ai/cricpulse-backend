@@ -38,8 +38,15 @@ public class TournamentAnalyticsController {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found");
         }
         Integer count = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM tournaments WHERE id=? AND owner_id=?",
-                Integer.class, tournamentId, ownerId);
+                """
+                SELECT COUNT(*) FROM tournaments t
+                WHERE t.id = ?
+                  AND (t.owner_id = ? OR EXISTS (
+                    SELECT 1 FROM tournament_staff ts
+                    WHERE ts.tournament_id = t.id AND ts.user_id = ? AND ts.role = 'MANAGER'
+                  ))
+                """,
+                Integer.class, tournamentId, ownerId, ownerId);
         if (count == null || count == 0) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tournament not found");
         }
