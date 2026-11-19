@@ -17,13 +17,15 @@ public class PlayerController {
     private final GetPlayerProfile getPlayerProfile;
     private final GetPlayerPerformanceHistory getPlayerPerformanceHistory;
     private final GetPlayerIntelligence getPlayerIntelligence;
+    private final GetPlayerFieldingStatistics getPlayerFieldingStatistics;
     private final JdbcTemplate jdbc;
     private final ComparePlayers comparePlayers;
 
     public PlayerController(CreatePlayer createPlayer, AddPlayerToTeam addPlayerToTeam,
                             GetPlayerStatistics getPlayerStatistics, GetPlayerProfile getPlayerProfile,
                             GetPlayerPerformanceHistory getPlayerPerformanceHistory,
-                            GetPlayerIntelligence getPlayerIntelligence, JdbcTemplate jdbc,
+                            GetPlayerIntelligence getPlayerIntelligence,
+                            GetPlayerFieldingStatistics getPlayerFieldingStatistics, JdbcTemplate jdbc,
                             ComparePlayers comparePlayers) {
         this.createPlayer = createPlayer;
         this.addPlayerToTeam = addPlayerToTeam;
@@ -31,6 +33,7 @@ public class PlayerController {
         this.getPlayerProfile = getPlayerProfile;
         this.getPlayerPerformanceHistory = getPlayerPerformanceHistory;
         this.getPlayerIntelligence = getPlayerIntelligence;
+        this.getPlayerFieldingStatistics = getPlayerFieldingStatistics;
         this.jdbc = jdbc;
         this.comparePlayers = comparePlayers;
     }
@@ -65,6 +68,12 @@ public class PlayerController {
 
     @GetMapping("/{playerId}/statistics")
     GetPlayerStatistics.PlayerStatistics playerStatistics(@PathVariable UUID playerId, Authentication authentication) { requirePlayerAccess(playerId, authentication); return getPlayerStatistics.one(playerId); }
+
+    @GetMapping("/{playerId}/fielding-statistics")
+    GetPlayerFieldingStatistics.FieldingStatistics fieldingStatistics(@PathVariable UUID playerId, Authentication authentication) {
+        requirePlayerAccess(playerId, authentication);
+        return getPlayerFieldingStatistics.get(playerId);
+    }
 
     @GetMapping("/{playerId}/recent-matches")
     List<GetPlayerPerformanceHistory.MatchPerformance> recentMatches(@PathVariable UUID playerId, @RequestParam(defaultValue = "10") int limit, Authentication authentication) { requirePlayerAccess(playerId, authentication); return getPlayerPerformanceHistory.recent(playerId, limit); }
