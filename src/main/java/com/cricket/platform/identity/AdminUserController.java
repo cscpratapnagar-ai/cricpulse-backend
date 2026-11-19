@@ -75,12 +75,11 @@ public class AdminUserController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User account was not found.");
         }
 
-        if ("ADMIN".equalsIgnoreCase(targetEmail) && !actor.equalsIgnoreCase(targetEmail)) {
-            // No special-cased admin account; continue with normal role checks.
-        }
         if ("ADMIN".equals(role)) {
             jdbc.update("UPDATE users SET role = ? WHERE id = ?", role, userId);
         } else {
+            // Serialize admin demotions so two concurrent requests cannot remove the final admin.
+            jdbc.execute("LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE");
             Integer adminCount = jdbc.queryForObject(
                     "SELECT COUNT(*) FROM users WHERE role = 'ADMIN'", Integer.class);
             String currentRole = jdbc.queryForObject(
