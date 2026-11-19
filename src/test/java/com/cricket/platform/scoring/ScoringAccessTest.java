@@ -19,6 +19,20 @@ import static org.mockito.Mockito.when;
 
 class ScoringAccessTest {
     @Test
+    void assignedBroadcastOperatorCanControlBroadcastWithoutScoringRole() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        ScoringAccess access = new ScoringAccess(jdbc);
+        Authentication operator = new UsernamePasswordAuthenticationToken(
+                "operator@example.com", "n/a", List.of(new SimpleGrantedAuthority("ROLE_USER")));
+        when(jdbc.queryForObject(anyString(), eq(Integer.class), any(Object[].class))).thenReturn(1);
+
+        access.requireBroadcastAccess(UUID.randomUUID(), operator);
+
+        verify(jdbc).queryForObject(
+                contains("ms.role = 'STREAMER'"), eq(Integer.class), any(Object[].class));
+    }
+
+    @Test
     void assignedScorerCanAccessMatchAndControlScoring() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         ScoringAccess access = new ScoringAccess(jdbc);
