@@ -114,7 +114,7 @@ public class MatchStaffController {
         return normalized;
     }
 
-    private void requireMatchManager(UUID matchId, Authentication authentication) {
+    void requireMatchManager(UUID matchId, Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication is required.");
         }
@@ -142,8 +142,15 @@ public class MatchStaffController {
                         AND tm.role IN ('MANAGER', 'CAPTAIN')
                         AND (LOWER(TRIM(u.email)) = LOWER(TRIM(?)) OR CAST(u.id AS TEXT) = ?)
                     )
+                    OR EXISTS (
+                      SELECT 1 FROM tournament_matches tm
+                      JOIN tournaments t ON t.id = tm.tournament_id
+                      JOIN users u ON u.id = t.owner_id
+                      WHERE tm.match_id = m.id
+                        AND (LOWER(TRIM(u.email)) = LOWER(TRIM(?)) OR CAST(u.id AS TEXT) = ?)
+                    )
                   )
-                """, Integer.class, matchId, principal, principal, principal, principal);
+                """, Integer.class, matchId, principal, principal, principal, principal, principal, principal);
         if (allowed == null || allowed == 0) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Only a team owner, manager or captain can assign match staff.");
