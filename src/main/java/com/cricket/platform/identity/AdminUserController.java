@@ -72,6 +72,11 @@ public class AdminUserController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User account was not found.");
         }
 
+        if (!"ADMIN".equals(role) && actor.equalsIgnoreCase(targetEmail)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "You cannot remove your own administrator access. Assign another administrator first.");
+        }
+
         if ("ADMIN".equals(role)) {
             jdbc.update("UPDATE users SET role = ? WHERE id = ?", role, userId);
         } else {
