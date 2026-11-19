@@ -51,7 +51,7 @@ public class GetBowlerSpellAnalysis {
         ), matchId);
 
         List<OverRow> overRows = jdbc.query("""
-                SELECT d.innings_id, d.bowler_id, d.over_number,
+                SELECT d.innings_id, i.innings_number, d.bowler_id, d.over_number,
                        SUM(CASE WHEN d.legal_delivery THEN 1 ELSE 0 END) AS legal_balls,
                        SUM(CASE WHEN d.extra_type IN ('BYE', 'LEG_BYE')
                                 THEN d.bat_runs
@@ -62,7 +62,7 @@ public class GetBowlerSpellAnalysis {
                 FROM deliveries d
                 JOIN innings i ON i.id = d.innings_id
                 WHERE i.match_id = ?
-                GROUP BY d.innings_id, d.bowler_id, d.over_number
+                GROUP BY d.innings_id, i.innings_number, d.bowler_id, d.over_number
                 ORDER BY i.innings_number, d.over_number
                 """, (rs, row) -> new OverRow(
                 rs.getObject("innings_id", UUID.class),
