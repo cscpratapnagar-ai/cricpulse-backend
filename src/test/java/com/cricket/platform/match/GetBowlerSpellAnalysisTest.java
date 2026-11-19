@@ -38,6 +38,7 @@ class GetBowlerSpellAnalysisTest {
             RowMapper<Object> mapper = invocation.getArgument(1);
             ResultSet rs = mock(ResultSet.class);
             if (sql.contains("FROM innings_bowlers")) {
+                when(rs.getObject("innings_id", UUID.class)).thenReturn(inningsId);
                 when(rs.getInt("innings_number")).thenReturn(1);
                 when(rs.getString("batting_team")).thenReturn("Falcons");
                 when(rs.getObject("bowler_id", UUID.class)).thenReturn(bowlerId);
