@@ -55,7 +55,9 @@ class GetPartnershipAnalysisTest {
         assertEquals(28, result.batterOneRuns());
         assertEquals(16, result.batterTwoRuns());
         assertEquals(3, result.startOver());
-        assertEquals(5, result.startBall());
+        assertEquals(3, result.startBall());
+        assertEquals(8, result.endOver());
+        assertEquals(5, result.endBall());
         assertEquals("ESTABLISHED SAMPLE", result.sampleLabel());
         assertTrue(result.current());
     }
