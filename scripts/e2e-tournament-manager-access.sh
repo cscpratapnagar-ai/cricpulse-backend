@@ -19,7 +19,8 @@ TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 login_token() {
-  local email="$1" jar="$TMP_DIR/$(printf '%s' "$email" | tr '@.' '__').cookies" csrf token status
+  local email="$1" jar csrf token status
+  jar="$TMP_DIR/$(printf '%s' "$email" | tr '@.' '__').cookies"
   curl -fsS -b "$jar" -c "$jar" "$BASE_URL/auth/csrf" >/dev/null
   csrf="$(awk '$6 == "XSRF-TOKEN" { value=$7 } END { print value }' "$jar")"
   [[ -n "$csrf" ]] || { echo "ERROR: CSRF token missing for $email" >&2; return 1; }
