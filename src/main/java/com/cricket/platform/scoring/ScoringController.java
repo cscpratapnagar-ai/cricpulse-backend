@@ -82,6 +82,7 @@ public class ScoringController {
                 request.wicketType(),
                 request.dismissedPlayerId(),
                 request.newBatterId(),
+                request.wicketFielderId(),
                 null
         );
 

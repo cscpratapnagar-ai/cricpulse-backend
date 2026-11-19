@@ -82,6 +82,7 @@ public class EventFirstProjectionService {
                       AND extra_type IS NOT DISTINCT FROM ?
                       AND wicket_type IS NOT DISTINCT FROM ?
                       AND dismissed_player_id IS NOT DISTINCT FROM ?
+                      AND wicket_fielder_id IS NOT DISTINCT FROM ?
                       AND legal_delivery = ?
                 )
                 """,
@@ -97,6 +98,7 @@ public class EventFirstProjectionService {
                 command.extraType(),
                 command.wicketType(),
                 command.dismissedPlayerId(),
+                command.wicketFielderId(),
                 legalDelivery
         );
 
@@ -127,7 +129,8 @@ public class EventFirstProjectionService {
                 command.extraType(),
                 command.wicketType(),
                 command.dismissedPlayerId(),
-                command.newBatterId()
+                command.newBatterId(),
+                command.wicketFielderId()
         ));
 
         jdbc.update("UPDATE innings SET state_version = state_version + 1 WHERE id = ?", command.inningsId());
