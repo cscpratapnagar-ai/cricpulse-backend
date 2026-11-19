@@ -106,7 +106,7 @@ public class MatchStaffController {
                 matchId, userId, normalizeRole(role));
     }
 
-    private String normalizeRole(String role) {
+    String normalizeRole(String role) {
         String normalized = role == null ? "" : role.trim().toUpperCase(Locale.ROOT);
         if (!STAFF_ROLES.contains(normalized)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported match staff role.");
