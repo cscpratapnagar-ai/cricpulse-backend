@@ -15,6 +15,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import org.mockito.ArgumentCaptor;
+
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -48,9 +50,12 @@ class MatchStaffControllerTest {
 
         assertDoesNotThrow(() -> controller.requireMatchManager(matchId, authentication));
 
-        verify(jdbc).queryForObject(anyString(), eq(Integer.class), eq(matchId),
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(jdbc).queryForObject(sql.capture(), eq(Integer.class), eq(matchId),
                 eq(principal), eq(principal), eq(principal), eq(principal),
                 eq(principal), eq(principal));
+        assertTrue(sql.getValue().contains("JOIN tournaments t ON t.id = tm.tournament_id"));
+        assertTrue(sql.getValue().contains("WHERE tm.match_id = m.id"));
     }
 
     @Test
