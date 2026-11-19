@@ -19,7 +19,7 @@ public class GetBowlerSpellAnalysis {
 
     public List<BowlerSpell> get(UUID matchId) {
         List<BowlerRow> bowlers = jdbc.query("""
-                SELECT i.innings_number, bt.name AS batting_team,
+                SELECT i.id AS innings_id, i.innings_number, bt.name AS batting_team,
                        ib.player_id AS bowler_id, u.full_name AS bowler_name,
                        ib.legal_balls, ib.runs_conceded, ib.wickets,
                        ib.wides, ib.no_balls
@@ -31,6 +31,7 @@ public class GetBowlerSpellAnalysis {
                 WHERE i.match_id = ?
                 ORDER BY i.innings_number, ib.legal_balls DESC, u.full_name
                 """, (rs, row) -> new BowlerRow(
+                rs.getObject("innings_id", UUID.class),
                 rs.getInt("innings_number"),
                 rs.getString("batting_team"),
                 rs.getObject("bowler_id", UUID.class),
@@ -123,13 +124,8 @@ public class GetBowlerSpellAnalysis {
     }
 
     private record Key(UUID inningsId, UUID bowlerId) {}
-    private record BowlerRow(int inningsNumber, String battingTeam, UUID bowlerId, String bowlerName,
-                             int legalBalls, int runsConceded, int wickets, int wides, int noBalls) {
-        private UUID inningsId() {
-            return inningsIdentity.get();
-        }
-        private static final ThreadLocal<UUID> inningsIdentity = new ThreadLocal<>();
-    }
+    private record BowlerRow(UUID inningsId, int inningsNumber, String battingTeam, UUID bowlerId, String bowlerName,
+                             int legalBalls, int runsConceded, int wickets, int wides, int noBalls) {}
     private record OverRow(UUID inningsId, UUID bowlerId, int overNumber, int legalBalls,
                            int runsConceded, int bowlerWickets) {}
     private record WicketRow(UUID inningsId, UUID bowlerId, int overNumber, int ballNumber,
