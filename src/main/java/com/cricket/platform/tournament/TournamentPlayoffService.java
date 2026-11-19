@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 final class TournamentPlayoffService {
     private final JdbcTemplate jdbc;
@@ -16,13 +17,14 @@ final class TournamentPlayoffService {
         this.jdbc = jdbc;
     }
 
-    PlayoffProgressResponse advance(UUID tournamentId, List<TournamentController.PointRow> standings) {
+    PlayoffProgressResponse advance(UUID tournamentId, Supplier<List<TournamentController.PointRow>> standingsSupplier) {
         Map<String, Object> tournament = jdbc.queryForMap(
                 "SELECT status, format, overs FROM tournaments WHERE id=? FOR UPDATE", tournamentId);
         if (!"ACTIVE".equalsIgnoreCase(Objects.toString(tournament.get("status"), ""))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Playoffs can only progress while the tournament is ACTIVE");
         }
+        List<TournamentController.PointRow> standings = standingsSupplier.get();
         if (standings.size() < 4) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "At least 4 registered teams are required for the top-four playoff bracket");
