@@ -73,8 +73,6 @@ assert_mine_contains "$MANAGER_TOKEN" false
 echo "PASS: unassigned user cannot view or discover the tournament"
 
 echo "[2/7] Owner grants tournament-scoped manager access"
-request_status 200 "$OWNER_TOKEN" PUT "/tournaments/$TOURNAMENT_ID/staff/manager" \
-  "$(jq -nc --argjson id "$(curl -fsS "$BASE_URL/players/me" -H "Authorization: Bearer $MANAGER_TOKEN" | jq -r '.userId // empty')" '{userId:$id}')" >/dev/null
 # The manager candidate's account UUID is obtained from the owner's candidate endpoint,
 # not inferred from a player profile. Re-search and grant using the returned account ID.
 CANDIDATES="$(curl -fsS --get "$BASE_URL/tournaments/$TOURNAMENT_ID/staff/candidates" \
