@@ -3,6 +3,7 @@ package com.cricket.platform.match;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -85,7 +86,7 @@ class MatchStaffControllerTest {
         Authentication authentication = mock(Authentication.class);
         when(authentication.isAuthenticated()).thenReturn(true);
         when(authentication.getAuthorities()).thenReturn(
-                List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
+                List.<GrantedAuthority>of(new SimpleGrantedAuthority("ROLE_ADMIN")));
 
         assertDoesNotThrow(() -> controller.requireMatchManager(UUID.randomUUID(), authentication));
 
