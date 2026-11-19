@@ -35,6 +35,10 @@ login_token() {
 
 OWNER_TOKEN="$(login_token "$OWNER_EMAIL")"
 MANAGER_TOKEN="$(login_token "$MANAGER_EMAIL")"
+OTHER_TOURNAMENT="$(curl -fsS -X POST "$BASE_URL/tournaments" -H "Authorization: Bearer $OWNER_TOKEN" \
+  -H 'Content-Type: application/json' --data "$(jq -nc '{name:"CricPulse CI Private Tournament",format:"T20",overs:20,location:"CI",startDate:null}')")"
+OTHER_TOURNAMENT_ID="$(jq -r '.id // empty' <<<"$OTHER_TOURNAMENT")"
+[[ -n "$OTHER_TOURNAMENT_ID" ]] || { echo "ERROR: failed to create second owner-only tournament" >&2; exit 1; }
 
 request_status() {
   local expected="$1" token="$2" method="$3" path="$4" body="${5:-}" status
@@ -97,6 +101,7 @@ request_status 200 "$MANAGER_TOKEN" GET "/tournaments/$TOURNAMENT_ID/teams" >/de
 request_status 200 "$MANAGER_TOKEN" GET "/tournaments/$TOURNAMENT_ID/fixtures" >/dev/null
 request_status 200 "$MANAGER_TOKEN" GET "/tournaments/$TOURNAMENT_ID/points-table" >/dev/null
 request_status 200 "$MANAGER_TOKEN" GET "/tournaments/$TOURNAMENT_ID/analytics" >/dev/null
+request_status 404 "$MANAGER_TOKEN" GET "/tournaments/$OTHER_TOURNAMENT_ID" >/dev/null
 assert_mine_contains "$MANAGER_TOKEN" true
 OWNER_STAFF="$(request_status 200 "$OWNER_TOKEN" GET "/tournaments/$TOURNAMENT_ID/staff")"
 jq -e '.canManage == true and ([.managers[] | select(.role == "MANAGER")] | length == 1)' \
