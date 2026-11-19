@@ -84,7 +84,20 @@ if [[ -n "${GITHUB_ENV:-}" ]]; then
 fi
 echo "    generated=$generated1 skipped=$skipped1 total=$total1 fixtures=$fixture_count_after_first"
 
-echo "[4/7] Generate fixtures a second time and require idempotency"
+
+echo "[4/8] Reject reverse-order duplicate team pair"
+FIRST_FIXTURE="$(jq -c '.fixtures[0]' <<<"$generate1")"
+TEAM_A="$(jq -r '.teamAId' <<<"$FIRST_FIXTURE")"
+TEAM_B="$(jq -r '.teamBId' <<<"$FIRST_FIXTURE")"
+REVERSE_MATCH="$(curl -fsS -X POST "$BASE_URL/matches" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  --data "$(jq -cn --arg a "$TEAM_B" --arg b "$TEAM_A" '{name:"CI reverse duplicate fixture",teamAId:$a,teamBId:$b,format:"T20",totalOvers:20,scheduledAt:null}')")"
+REVERSE_MATCH_ID="$(jq -r '.id // empty' <<<"$REVERSE_MATCH")"
+[[ -n "$REVERSE_MATCH_ID" ]] || { echo "ERROR: could not create reverse-order match for duplicate test" >&2; exit 1; }
+expect_status 409 POST "$BASE_URL/tournaments/$TOURNAMENT_ID/matches/$REVERSE_MATCH_ID?stage=LEAGUE"
+fixture_count_after_reverse="$(jq 'length' <<<"$(curl -fsS "$BASE_URL/tournaments/$TOURNAMENT_ID/fixtures" -H "Authorization: Bearer $TOKEN")")"
+[[ "$fixture_count_after_reverse" -eq "$expected_total" ]] || { echo "ERROR: reverse duplicate changed fixture count to $fixture_count_after_reverse" >&2; exit 1; }
+
+echo "[5/8] Generate fixtures a second time and require idempotency"
 generate2="$(curl -fsS -X POST "$BASE_URL/tournaments/$TOURNAMENT_ID/fixtures/generate" -H "Authorization: Bearer $TOKEN" -H 'Accept: application/json')"
 generated2="$(jq -r '.generated // -1' <<<"$generate2")"
 skipped2="$(jq -r '.skipped // -1' <<<"$generate2")"
@@ -96,17 +109,17 @@ fixture_count_after_second="$(jq 'length' <<<"$(curl -fsS "$BASE_URL/tournaments
 [[ "$fixture_count_after_second" -eq "$fixture_count_after_first" ]] || { echo "ERROR: fixture count changed from $fixture_count_after_first to $fixture_count_after_second" >&2; exit 1; }
 echo "    generated=$generated2 skipped=$skipped2 total=$total2 fixtures=$fixture_count_after_second"
 
-echo "[5/7] Reject unsupported fixture stage"
+echo "[6/8] Reject unsupported fixture stage"
 TEAM_ID="$(jq -r '.[0].id // empty' <<<"$teams")"
 [[ -n "$TEAM_ID" ]] || { echo "ERROR: team identifier missing" >&2; exit 1; }
 expect_status 400 POST "$BASE_URL/tournaments/$TOURNAMENT_ID/matches/$FIXTURE_ID?stage=INVALID_STAGE"
 
-echo "[6/7] Reject duplicate team registration and past scheduling"
+echo "[7/8] Reject duplicate team registration and past scheduling"
 expect_status 409 POST "$BASE_URL/tournaments/$TOURNAMENT_ID/teams/$TEAM_ID"
 PAST_TIME="$(date -u -d '10 minutes ago' '+%Y-%m-%dT%H:%M:%SZ')"
 expect_status 400 POST "$BASE_URL/tournaments/$TOURNAMENT_ID/fixtures/$FIXTURE_ID/schedule" "$(jq -cn --arg t "$PAST_TIME" '{scheduledAt:$t}')"
 
-echo "[7/7] Verify points table remains readable"
+echo "[8/8] Verify points table remains readable"
 points="$(curl -fsS "$BASE_URL/tournaments/$TOURNAMENT_ID/points-table" -H "Authorization: Bearer $TOKEN")"
 point_rows="$(jq 'length' <<<"$points")"
 (( point_rows >= 1 )) || { echo "ERROR: points table returned no teams" >&2; exit 1; }
