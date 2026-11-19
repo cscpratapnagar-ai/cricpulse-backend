@@ -3,13 +3,17 @@ package com.cricket.platform.tournament;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
+import org.mockito.ArgumentCaptor;
 
 import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class GetTournamentAnalyticsTest {
@@ -76,5 +80,14 @@ class GetTournamentAnalyticsTest {
         assertEquals(4, performance.wickets());
         assertEquals(new java.math.BigDecimal("7.50"), performance.economy());
         assertEquals(4, performance.totalFieldingContributions());
+
+        ArgumentCaptor<String> playerLeaderSql = ArgumentCaptor.forClass(String.class);
+        verify(jdbc, times(4)).query(playerLeaderSql.capture(), any(RowMapper.class),
+                eq(tournamentId), eq(5));
+        assertEquals(4, playerLeaderSql.getAllValues().size());
+        assertTrue(playerLeaderSql.getAllValues().stream()
+                .allMatch(sql -> sql.contains("JOIN users u ON u.id = p.user_id")
+                        && sql.contains("u.full_name AS player_name")
+                        && !sql.contains("p.name")));
     }
 }
