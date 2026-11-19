@@ -22,12 +22,19 @@ public class GetBowlerSpellAnalysis {
                 SELECT i.id AS innings_id, i.innings_number, bt.name AS batting_team,
                        ib.player_id AS bowler_id, u.full_name AS bowler_name,
                        ib.legal_balls, ib.runs_conceded, ib.wickets,
-                       ib.wides, ib.no_balls
+                       COALESCE(extra_counts.wides, 0) AS wides,
+                       COALESCE(extra_counts.no_balls, 0) AS no_balls
                 FROM innings_bowlers ib
                 JOIN innings i ON i.id = ib.innings_id
                 JOIN teams bt ON bt.id = i.batting_team_id
                 JOIN players p ON p.id = ib.player_id
                 LEFT JOIN users u ON u.id = p.user_id
+                LEFT JOIN LATERAL (
+                    SELECT COUNT(*) FILTER (WHERE d.extra_type = 'WIDE') AS wides,
+                           COUNT(*) FILTER (WHERE d.extra_type = 'NO_BALL') AS no_balls
+                    FROM deliveries d
+                    WHERE d.innings_id = ib.innings_id AND d.bowler_id = ib.player_id
+                ) extra_counts ON TRUE
                 WHERE i.match_id = ?
                 ORDER BY i.innings_number, ib.legal_balls DESC, u.full_name
                 """, (rs, row) -> new BowlerRow(
