@@ -46,9 +46,10 @@ public class MatchController {
     BroadcastAccessResponse broadcastAccess(@PathVariable UUID id, Authentication authentication) {
         requireAuthenticated(authentication);
         MatchTeams teams = teamsFor(id);
-        if (!canManageEitherTeam(teams.teamAId(), teams.teamBId(), authentication)) {
+        if (!canManageEitherTeam(teams.teamAId(), teams.teamBId(), authentication)
+                && !isAssignedMatchStaff(id, authentication, "STREAMER")) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Only a team owner, manager or captain can open broadcast control.");
+                    "Only a team manager or assigned broadcast operator can open broadcast control.");
         }
         return new BroadcastAccessResponse(id, true);
     }
@@ -176,13 +177,26 @@ public class MatchController {
     }
 
     private boolean isAssignedMatchStaff(UUID matchId, Authentication authentication) {
+        return isAssignedMatchStaff(matchId, authentication, null);
+    }
+
+    private boolean isAssignedMatchStaff(UUID matchId, Authentication authentication, String role) {
         String principal = authentication.getName();
+        if (role == null) {
+            Integer count = jdbc.queryForObject("""
+                    SELECT COUNT(*) FROM match_staff ms
+                    JOIN users u ON u.id = ms.user_id
+                    WHERE ms.match_id = ?
+                      AND (LOWER(TRIM(u.email)) = LOWER(TRIM(?)) OR CAST(u.id AS TEXT) = ?)
+                    """, Integer.class, matchId, principal, principal);
+            return count != null && count > 0;
+        }
         Integer count = jdbc.queryForObject("""
                 SELECT COUNT(*) FROM match_staff ms
                 JOIN users u ON u.id = ms.user_id
-                WHERE ms.match_id = ?
+                WHERE ms.match_id = ? AND ms.role = ?
                   AND (LOWER(TRIM(u.email)) = LOWER(TRIM(?)) OR CAST(u.id AS TEXT) = ?)
-                """, Integer.class, matchId, principal, principal);
+                """, Integer.class, matchId, role, principal, principal);
         return count != null && count > 0;
     }
 
