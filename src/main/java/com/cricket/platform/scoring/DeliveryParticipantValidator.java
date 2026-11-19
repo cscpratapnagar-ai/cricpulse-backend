@@ -50,7 +50,14 @@ final class DeliveryParticipantValidator {
             }
         }
 
-        if (wicketFielderId != null) {\n            if (wicketType == null) {\n                throw new IllegalArgumentException("Fielder can only be supplied for a wicket delivery");\n            }\n            requirePlayingXi(inningsId, bowlingTeamId, wicketFielderId, "Wicket fielder");\n        }\n\n        if (dismissedPlayerId != null) {
+        if (wicketFielderId != null) {
+            if (wicketType == null) {
+                throw new IllegalArgumentException("Fielder can only be supplied for a wicket delivery");
+            }
+            requirePlayingXi(inningsId, bowlingTeamId, wicketFielderId, "Wicket fielder");
+        }
+
+        if (dismissedPlayerId != null) {
             requirePlayingXi(inningsId, teams.battingTeamId(), dismissedPlayerId, "Dismissed player");
         }
     }
