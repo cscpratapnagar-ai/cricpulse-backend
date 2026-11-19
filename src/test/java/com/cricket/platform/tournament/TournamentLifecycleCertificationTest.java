@@ -142,6 +142,34 @@ class TournamentLifecycleCertificationTest {
         assertEquals(2.0, nrr);
     }
 
+    @Test
+    void teamCannotBeRemovedAfterFixturesReferenceIt() {
+        UUID teamId = UUID.randomUUID();
+        when(jdbc.queryForObject(
+                contains("FROM tournament_matches tm JOIN matches m"),
+                eq(Integer.class),
+                eq(tournamentId), eq(teamId), eq(teamId))).thenReturn(1);
+
+        ResponseStatusException error = assertThrows(
+                ResponseStatusException.class,
+                () -> controller.ensureTeamCanBeRemoved(tournamentId, teamId)
+        );
+
+        assertEquals(409, error.getStatusCode().value());
+        assertTrue(error.getReason().contains("cannot be removed"));
+    }
+
+    @Test
+    void teamCanBeRemovedWhenNoFixtureReferencesIt() {
+        UUID teamId = UUID.randomUUID();
+        when(jdbc.queryForObject(
+                contains("FROM tournament_matches tm JOIN matches m"),
+                eq(Integer.class),
+                eq(tournamentId), eq(teamId), eq(teamId))).thenReturn(0);
+
+        assertDoesNotThrow(() -> controller.ensureTeamCanBeRemoved(tournamentId, teamId));
+    }
+
     private void validate(String current, String target) {
         try {
             Method method = TournamentController.class.getDeclaredMethod(
