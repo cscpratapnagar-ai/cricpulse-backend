@@ -119,11 +119,24 @@ expect_status 409 POST "$BASE_URL/tournaments/$TOURNAMENT_ID/teams/$TEAM_ID"
 PAST_TIME="$(date -u -d '10 minutes ago' '+%Y-%m-%dT%H:%M:%SZ')"
 expect_status 400 POST "$BASE_URL/tournaments/$TOURNAMENT_ID/fixtures/$FIXTURE_ID/schedule" "$(jq -cn --arg t "$PAST_TIME" '{scheduledAt:$t}')"
 
-echo "[8/8] Verify points table remains readable"
+echo "[8/8] Verify points table and qualification response contracts"
 points="$(curl -fsS "$BASE_URL/tournaments/$TOURNAMENT_ID/points-table" -H "Authorization: Bearer $TOKEN")"
 point_rows="$(jq 'length' <<<"$points")"
 (( point_rows >= 1 )) || { echo "ERROR: points table returned no teams" >&2; exit 1; }
-echo "    point_rows=$point_rows"
+jq -e 'all(.[]; (.noResults | type) == "number")' <<<"$points" >/dev/null || {
+  echo "ERROR: standings rows must expose a numeric noResults count" >&2; exit 1;
+}
+qualification="$(curl -fsS "$BASE_URL/tournaments/$TOURNAMENT_ID/qualification" -H "Authorization: Bearer $TOKEN")"
+if (( team_count < 4 )); then
+  jq -e '.eligible == false and (.qualifiers | length) == 0' <<<"$qualification" >/dev/null || {
+    echo "ERROR: qualification should be unavailable with fewer than four teams" >&2; exit 1;
+  }
+else
+  jq -e '.eligible == true and (.qualifiers | length) == 2' <<<"$qualification" >/dev/null || {
+    echo "ERROR: top-four qualification preview must expose two playoff pairings" >&2; exit 1;
+  }
+fi
+echo "    point_rows=$point_rows qualification_eligible=$(jq -r '.eligible' <<<"$qualification")"
 
 echo
 echo "=== TOURNAMENT FIXTURE IDEMPOTENCY E2E PASSED ==="

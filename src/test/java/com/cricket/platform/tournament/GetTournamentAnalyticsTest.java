@@ -11,6 +11,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -35,8 +36,10 @@ class GetTournamentAnalyticsTest {
                         new GetTournamentAnalytics.TeamRow(teamA, "Falcons"),
                         new GetTournamentAnalytics.TeamRow(teamB, "Tigers")));
         when(jdbc.query(contains("FROM matches m"), any(RowMapper.class), any(Object[].class)))
-                .thenReturn(List.of(new GetTournamentAnalytics.CompletedMatch(
-                        matchId, teamA, teamB, teamA, 160, 120, teamB, 150, 118)));
+                .thenReturn(List.of(new TournamentStandingsCalculator.Match(
+                        teamA, teamB, "COMPLETED", "WIN", teamA, 20,
+                        new TournamentStandingsCalculator.Innings(teamA, 160, 4, 120, 20),
+                        new TournamentStandingsCalculator.Innings(teamB, 150, 6, 118, 20))));
         when(jdbc.query(contains("FROM tournament_matches tm"), any(RowMapper.class), eq(tournamentId), eq(5)))
                 .thenReturn(List.of(new GetTournamentAnalytics.PlayerLeader(UUID.randomUUID(), "A Batter", 160, 0)));
         UUID fielderId = UUID.randomUUID();
@@ -55,12 +58,22 @@ class GetTournamentAnalyticsTest {
 
         GetTournamentAnalytics.TournamentAnalytics result = new GetTournamentAnalytics(jdbc).get(tournamentId);
 
+        ArgumentCaptor<String> standingsSql = ArgumentCaptor.forClass(String.class);
+        verify(jdbc, atLeastOnce()).query(standingsSql.capture(), any(RowMapper.class), any(Object[].class));
+        String standingsQuery = standingsSql.getAllValues().stream()
+                .filter(sql -> sql.contains("FROM matches m"))
+                .findFirst().orElseThrow();
+        assertTrue(standingsQuery.contains("COALESCE(tm.stage,'LEAGUE')='LEAGUE'"));
+        assertTrue(standingsQuery.contains("i1.is_super_over=FALSE"));
+        assertTrue(standingsQuery.contains("COALESCE(m.winning_team_id,m.winner_team_id)"));
+
         assertEquals(1, result.totalFixtures());
         assertEquals(1, result.completedFixtures());
         assertEquals(100.0, result.completionPercentage().doubleValue(), 0.001);
         assertEquals(2, result.teams().size());
         assertEquals("Falcons", result.teams().getFirst().teamName());
         assertEquals(2, result.teams().getFirst().points());
+        assertEquals(0, result.teams().getFirst().noResults());
         assertEquals(List.of("W"), result.teams().getFirst().recentForm());
         assertEquals("Tigers", result.teams().get(1).teamName());
         assertEquals(0, result.teams().get(1).points());

@@ -15,13 +15,41 @@ public class GetTournamentAnalytics {
         TournamentRow tournament = jdbc.queryForObject("SELECT id,name,format,overs,status FROM tournaments WHERE id=?",(rs,row)->new TournamentRow(rs.getObject("id",UUID.class),rs.getString("name"),rs.getString("format"),rs.getInt("overs"),rs.getString("status")),tournamentId);
         List<FixtureRow> fixtures=jdbc.query("SELECT tm.match_id,tm.fixture_number,tm.stage,m.status,m.team_a_id,a.name team_a_name,m.team_b_id,b.name team_b_name FROM tournament_matches tm JOIN matches m ON m.id=tm.match_id JOIN teams a ON a.id=m.team_a_id JOIN teams b ON b.id=m.team_b_id WHERE tm.tournament_id=? ORDER BY COALESCE(tm.fixture_number,999999)",(rs,row)->new FixtureRow(rs.getObject("match_id",UUID.class),rs.getObject("fixture_number",Integer.class),rs.getString("stage"),rs.getString("status"),rs.getObject("team_a_id",UUID.class),rs.getString("team_a_name"),rs.getObject("team_b_id",UUID.class),rs.getString("team_b_name")),tournamentId);
         List<TeamRow> teams=jdbc.query("SELECT t.id,t.name FROM tournament_teams tt JOIN teams t ON t.id=tt.team_id WHERE tt.tournament_id=? ORDER BY COALESCE(tt.seed,999),t.name",(rs,row)->new TeamRow(rs.getObject("id",UUID.class),rs.getString("name")),tournamentId);
-        List<CompletedMatch> completed=completedMatches(fixtures);
-        List<TeamAnalytics> teamAnalytics=teams.stream().map(t->teamAnalytics(t,completed)).sorted(Comparator.comparingInt(TeamAnalytics::points).reversed().thenComparing(Comparator.comparingDouble(TeamAnalytics::nrr).reversed()).thenComparing(Comparator.comparingInt(TeamAnalytics::runsFor).reversed()).thenComparing(TeamAnalytics::teamName)).toList();
+        List<TournamentStandingsCalculator.Match> completed=completedMatches(fixtures);
+        List<TournamentStandingsCalculator.Team> standingsTeams=teams.stream().map(t->new TournamentStandingsCalculator.Team(t.id(),t.name())).toList();
+        List<TeamAnalytics> teamAnalytics=TournamentStandingsCalculator.calculate(standingsTeams,completed).stream()
+                .map(s->new TeamAnalytics(s.teamId(),s.teamName(),s.played(),s.wins(),s.losses(),s.ties(),s.noResults(),s.points(),s.runsFor(),s.runsAgainst(),s.nrr(),s.recentForm())).toList();
         int total=fixtures.size(),completedCount=(int)fixtures.stream().filter(f->"COMPLETED".equalsIgnoreCase(f.status())).count(),scheduled=(int)fixtures.stream().filter(f->"SCHEDULED".equalsIgnoreCase(f.status())).count(),live=(int)fixtures.stream().filter(f->"LIVE".equalsIgnoreCase(f.status())).count();
         return new TournamentAnalytics(tournamentId,tournament.name(),tournament.format(),tournament.overs(),tournament.status(),total,completedCount,scheduled,live,percentage(completedCount,total),teamAnalytics,playerLeaders(tournamentId,true,5),playerLeaders(tournamentId,false,5),fixtureProgress(fixtures),fieldingLeaders(tournamentId,10),phaseLeaders(tournamentId,true,5),phaseLeaders(tournamentId,false,5),playerPerformances(tournamentId));
     }
-    private List<CompletedMatch> completedMatches(List<FixtureRow> fixtures){List<UUID> ids=fixtures.stream().filter(f->"COMPLETED".equalsIgnoreCase(f.status())).map(FixtureRow::matchId).toList();if(ids.isEmpty())return List.of();String p=String.join(",",Collections.nCopies(ids.size(),"?"));return jdbc.query("SELECT m.id match_id,m.team_a_id,m.team_b_id,i1.batting_team_id i1_team,i1.total_runs i1_runs,i1.legal_balls i1_balls,i2.batting_team_id i2_team,i2.total_runs i2_runs,i2.legal_balls i2_balls FROM matches m LEFT JOIN innings i1 ON i1.match_id=m.id AND i1.innings_number=1 LEFT JOIN innings i2 ON i2.match_id=m.id AND i2.innings_number=2 WHERE m.id IN ("+p+")",(rs,row)->new CompletedMatch(rs.getObject("match_id",UUID.class),rs.getObject("team_a_id",UUID.class),rs.getObject("team_b_id",UUID.class),rs.getObject("i1_team",UUID.class),rs.getInt("i1_runs"),rs.getInt("i1_balls"),rs.getObject("i2_team",UUID.class),rs.getInt("i2_runs"),rs.getInt("i2_balls")),ids.toArray());}
-    private TeamAnalytics teamAnalytics(TeamRow t,List<CompletedMatch> ms){int p=0,w=0,l=0,ti=0,rf=0,ra=0;double bf=0,ba=0;List<String> o=new ArrayList<>();for(CompletedMatch m:ms){if(!t.id().equals(m.teamA())&&!t.id().equals(m.teamB()))continue;p++;boolean first=t.id().equals(m.i1Team());int own=first?m.i1Runs():m.i2Runs(),opp=first?m.i2Runs():m.i1Runs(),ob=first?m.i1Balls():m.i2Balls(),xb=first?m.i2Balls():m.i1Balls();rf+=own;ra+=opp;bf+=ob;ba+=xb;if(own>opp){w++;o.add("W");}else if(own<opp){l++;o.add("L");}else{ti++;o.add("T");}}return new TeamAnalytics(t.id(),t.name(),p,w,l,ti,w*2+ti,rf,ra,nrr(rf,ra,bf,ba),o.stream().skip(Math.max(0,o.size()-5L)).toList());}
+    private List<TournamentStandingsCalculator.Match> completedMatches(List<FixtureRow> fixtures) {
+        List<UUID> ids=fixtures.stream()
+                .filter(f->"LEAGUE".equalsIgnoreCase(f.stage()) && "COMPLETED".equalsIgnoreCase(f.status()))
+                .map(FixtureRow::matchId).toList();
+        if(ids.isEmpty()) return List.of();
+        String placeholders=String.join(",",Collections.nCopies(ids.size(),"?"));
+        return jdbc.query("""
+                SELECT m.team_a_id,m.team_b_id,m.status,m.result_type,
+                       COALESCE(m.winning_team_id,m.winner_team_id) AS winner_team_id,m.total_overs,
+                       i1.batting_team_id AS i1_team,i1.total_runs AS i1_runs,i1.wickets AS i1_wickets,
+                       i1.legal_balls AS i1_balls,i1.total_overs AS i1_overs,
+                       i2.batting_team_id AS i2_team,i2.total_runs AS i2_runs,i2.wickets AS i2_wickets,
+                       i2.legal_balls AS i2_balls,i2.total_overs AS i2_overs
+                FROM matches m
+                JOIN tournament_matches tm ON tm.match_id=m.id
+                LEFT JOIN innings i1 ON i1.match_id=m.id AND i1.innings_number=1 AND i1.is_super_over=FALSE
+                LEFT JOIN innings i2 ON i2.match_id=m.id AND i2.innings_number=2 AND i2.is_super_over=FALSE
+                WHERE m.id IN (""" + placeholders + ") AND COALESCE(tm.stage,'LEAGUE')='LEAGUE'",
+                (rs,row)->new TournamentStandingsCalculator.Match(
+                        rs.getObject("team_a_id",UUID.class),rs.getObject("team_b_id",UUID.class),
+                        rs.getString("status"),rs.getString("result_type"),rs.getObject("winner_team_id",UUID.class),
+                        rs.getObject("total_overs",Integer.class),
+                        new TournamentStandingsCalculator.Innings(rs.getObject("i1_team",UUID.class),rs.getInt("i1_runs"),
+                                rs.getInt("i1_wickets"),rs.getInt("i1_balls"),rs.getObject("i1_overs",Integer.class)),
+                        new TournamentStandingsCalculator.Innings(rs.getObject("i2_team",UUID.class),rs.getInt("i2_runs"),
+                                rs.getInt("i2_wickets"),rs.getInt("i2_balls"),rs.getObject("i2_overs",Integer.class))
+                ),ids.toArray());
+    }
     private List<PlayerLeader> playerLeaders(UUID id, boolean runs, int limit) {
         String sql = runs
                 ? """
@@ -273,10 +301,10 @@ public class GetTournamentAnalytics {
     private List<FixtureProgress> fixtureProgress(List<FixtureRow> fs){return fs.stream().map(f->new FixtureProgress(f.fixtureNumber(),f.stage(),f.status(),f.teamAName(),f.teamBName())).toList();}
     private static BigDecimal percentage(int v,int t){return t<=0?BigDecimal.ZERO.setScale(1):BigDecimal.valueOf(v*100.0/t).setScale(1,RoundingMode.HALF_UP);}
     private static double nrr(int rf,int ra,double bf,double ba){if(bf<=0||ba<=0)return 0;return BigDecimal.valueOf(rf/(bf/6.0)-ra/(ba/6.0)).setScale(3,RoundingMode.HALF_UP).doubleValue();}
-    record TournamentRow(UUID id,String name,String format,int overs,String status){} record TeamRow(UUID id,String name){} record FixtureRow(UUID matchId,Integer fixtureNumber,String stage,String status,UUID teamA,String teamAName,UUID teamB,String teamBName){} record CompletedMatch(UUID matchId,UUID teamA,UUID teamB,UUID i1Team,int i1Runs,int i1Balls,UUID i2Team,int i2Runs,int i2Balls){}
+    record TournamentRow(UUID id,String name,String format,int overs,String status){} record TeamRow(UUID id,String name){} record FixtureRow(UUID matchId,Integer fixtureNumber,String stage,String status,UUID teamA,String teamAName,UUID teamB,String teamBName){} 
     public record TournamentAnalytics(UUID tournamentId,String tournamentName,String format,int overs,String status,int totalFixtures,int completedFixtures,int scheduledFixtures,int liveFixtures,BigDecimal completionPercentage,List<TeamAnalytics> teams,List<PlayerLeader> topRunScorers,List<PlayerLeader> topWicketTakers,List<FixtureProgress> fixtures,List<FieldingLeader> topFielders,List<PhaseLeader> topBattingPhaseLeaders,List<PhaseLeader> topBowlingPhaseLeaders,List<TournamentPlayerPerformance> playerPerformances){}
     public record TournamentPlayerPerformance(UUID playerId,String playerName,int matches,int battingInnings,int runs,int highestScore,int dismissals,int battingBalls,BigDecimal battingAverage,BigDecimal strikeRate,int bowlingInnings,int bowlingBalls,int runsConceded,int wickets,BigDecimal bowlingAverage,BigDecimal economy,BigDecimal bowlingStrikeRate,int catches,int runOuts,int stumpings,int totalFieldingContributions){}
-    public record TeamAnalytics(UUID teamId,String teamName,int played,int wins,int losses,int ties,int points,int runsFor,int runsAgainst,double nrr,List<String> recentForm){}
+    public record TeamAnalytics(UUID teamId,String teamName,int played,int wins,int losses,int ties,int noResults,int points,int runsFor,int runsAgainst,double nrr,List<String> recentForm){}
     public record PlayerLeader(UUID playerId,String playerName,int runs,int wickets){}
     public record FieldingLeader(UUID playerId,String playerName,int catches,int runOuts,int stumpings,int totalContributions){}
     public record PhaseLeader(UUID playerId,String playerName,String phase,int runs,int wickets){}
