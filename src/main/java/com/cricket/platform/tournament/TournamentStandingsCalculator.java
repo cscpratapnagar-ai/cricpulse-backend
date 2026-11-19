@@ -40,7 +40,10 @@ final class TournamentStandingsCalculator {
                 continue;
             }
 
-            if ("TIE".equals(result)) {
+            boolean scorecardTie = (result.isEmpty() || "TIE".equals(result))
+                    && match.firstInnings() != null && match.secondInnings() != null
+                    && match.firstInnings().runs() == match.secondInnings().runs();
+            if ("TIE".equals(result) || scorecardTie) {
                 a.ties++; b.ties++;
                 a.points++; b.points++;
                 a.form.add("T"); b.form.add("T");
