@@ -18,7 +18,7 @@ final class DeliveryParticipantValidator {
     }
 
     void validate(UUID inningsId, UUID strikerId, UUID nonStrikerId, UUID bowlerId,
-            UUID newBatterId, UUID dismissedPlayerId, String wicketType) {
+            UUID newBatterId, UUID dismissedPlayerId, String wicketType, UUID wicketFielderId) {
         MatchTeams teams = jdbc.queryForObject(
                 "SELECT i.batting_team_id, m.team_a_id, m.team_b_id "
                         + "FROM innings i JOIN matches m ON m.id=i.match_id WHERE i.id=?",
@@ -50,7 +50,7 @@ final class DeliveryParticipantValidator {
             }
         }
 
-        if (dismissedPlayerId != null) {
+        if (wicketFielderId != null) {\n            if (wicketType == null) {\n                throw new IllegalArgumentException("Fielder can only be supplied for a wicket delivery");\n            }\n            requirePlayingXi(inningsId, bowlingTeamId, wicketFielderId, "Wicket fielder");\n        }\n\n        if (dismissedPlayerId != null) {
             requirePlayingXi(inningsId, teams.battingTeamId(), dismissedPlayerId, "Dismissed player");
         }
     }
