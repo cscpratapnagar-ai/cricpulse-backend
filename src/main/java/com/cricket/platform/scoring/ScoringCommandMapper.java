@@ -18,6 +18,7 @@ public final class ScoringCommandMapper {
                 request.wicketType(),
                 request.dismissedPlayerId(),
                 request.newBatterId(),
+                request.wicketFielderId(),
                 recordedBy
         );
     }
