@@ -175,7 +175,7 @@ class TournamentLifecycleCertificationTest {
     void duplicateFixturePairIsRejectedRegardlessOfHomeAwayOrder() {
         UUID matchId = UUID.randomUUID();
         when(jdbc.queryForObject(
-                contains("candidate.team_a_id=existing.team_a_id"),
+                contains("existing.team_a_id=candidate.team_a_id"),
                 eq(Integer.class), eq(matchId), eq(tournamentId))).thenReturn(1);
 
         ResponseStatusException error = assertThrows(
@@ -191,7 +191,7 @@ class TournamentLifecycleCertificationTest {
     void newFixturePairIsAllowedWhenNoExistingPairMatches() {
         UUID matchId = UUID.randomUUID();
         when(jdbc.queryForObject(
-                contains("candidate.team_a_id=existing.team_a_id"),
+                contains("existing.team_a_id=candidate.team_a_id"),
                 eq(Integer.class), eq(matchId), eq(tournamentId))).thenReturn(0);
 
         assertDoesNotThrow(() -> controller.ensureFixturePairNotPresent(tournamentId, matchId));
