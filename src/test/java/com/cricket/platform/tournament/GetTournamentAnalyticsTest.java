@@ -36,6 +36,15 @@ class GetTournamentAnalyticsTest {
         when(jdbc.query(contains("FROM tournament_matches tm"), any(RowMapper.class), eq(tournamentId), eq(5)))
                 .thenReturn(List.of(new GetTournamentAnalytics.PlayerLeader(UUID.randomUUID(), "A Batter", 160, 0)));
         UUID fielderId = UUID.randomUUID();
+        UUID allRounderId = UUID.randomUUID();
+        when(jdbc.query(contains("player_match_activity"), any(RowMapper.class),
+                eq(tournamentId), eq(tournamentId), eq(tournamentId), eq(tournamentId)))
+                .thenReturn(List.of(new GetTournamentAnalytics.TournamentPlayerPerformance(
+                        allRounderId, "A All-rounder", 3, 2, 84, 60, 1, 55,
+                        new java.math.BigDecimal("84.00"), new java.math.BigDecimal("152.73"),
+                        2, 24, 30, 4, new java.math.BigDecimal("7.50"),
+                        new java.math.BigDecimal("7.50"), new java.math.BigDecimal("6.00"),
+                        2, 1, 1, 4)));
         when(jdbc.query(contains("d.wicket_fielder_id"), any(RowMapper.class), eq(tournamentId), eq(10)))
                 .thenReturn(List.of(new GetTournamentAnalytics.FieldingLeader(
                         fielderId, "A Fielder", 3, 2, 1, 6)));
@@ -58,5 +67,14 @@ class GetTournamentAnalyticsTest {
         assertEquals(2, result.topFielders().getFirst().runOuts());
         assertEquals(1, result.topFielders().getFirst().stumpings());
         assertEquals(6, result.topFielders().getFirst().totalContributions());
+        assertEquals(1, result.playerPerformances().size());
+        var performance = result.playerPerformances().getFirst();
+        assertEquals(allRounderId, performance.playerId());
+        assertEquals(3, performance.matches());
+        assertEquals(84, performance.runs());
+        assertEquals(new java.math.BigDecimal("152.73"), performance.strikeRate());
+        assertEquals(4, performance.wickets());
+        assertEquals(new java.math.BigDecimal("7.50"), performance.economy());
+        assertEquals(4, performance.totalFieldingContributions());
     }
 }
