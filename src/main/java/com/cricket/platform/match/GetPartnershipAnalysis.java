@@ -59,7 +59,7 @@ public class GetPartnershipAnalysis {
                              p.batter_one_id, p.batter_two_id
                 )
                 SELECT i.innings_number, bt.name AS batting_team,
-                       t.partnership_number + 1 AS wicket_number,
+                       t.partnership_number + 1 AS partnership_number,
                        t.batter_one_id, u1.full_name AS batter_one_name,
                        t.batter_two_id, u2.full_name AS batter_two_name,
                        t.runs, t.balls, t.batter_one_runs, t.batter_two_runs,
@@ -76,7 +76,7 @@ public class GetPartnershipAnalysis {
                 """, (rs, row) -> new Partnership(
                 rs.getInt("innings_number"),
                 rs.getString("batting_team"),
-                rs.getInt("wicket_number"),
+                rs.getInt("partnership_number"),
                 rs.getObject("batter_one_id", UUID.class),
                 rs.getString("batter_one_name"),
                 rs.getObject("batter_two_id", UUID.class),
@@ -97,7 +97,7 @@ public class GetPartnershipAnalysis {
     public record Partnership(
             int inningsNumber,
             String battingTeam,
-            int wicketNumber,
+            int partnershipNumber,
             UUID batterOneId,
             String batterOneName,
             UUID batterTwoId,
