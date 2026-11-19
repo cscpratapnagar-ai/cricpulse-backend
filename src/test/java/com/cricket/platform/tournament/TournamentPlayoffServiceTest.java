@@ -42,7 +42,7 @@ class TournamentPlayoffServiceTest {
                 eq(Integer.class), eq(tournamentId))).thenReturn(5);
 
         ResponseStatusException error = assertThrows(ResponseStatusException.class,
-                () -> service.advance(tournamentId, List.of(
+                () -> service.advance(tournamentId, () -> List.of(
                         standing(), standing(), standing(), standing())));
 
         assertEquals(409, error.getStatusCode().value());
@@ -56,7 +56,7 @@ class TournamentPlayoffServiceTest {
                 .thenReturn(Map.of("status", "DRAFT", "format", "T20", "overs", 20));
 
         ResponseStatusException error = assertThrows(ResponseStatusException.class,
-                () -> service.advance(tournamentId, List.of(
+                () -> service.advance(tournamentId, () -> List.of(
                         standing(), standing(), standing(), standing())));
 
         assertEquals(409, error.getStatusCode().value());
