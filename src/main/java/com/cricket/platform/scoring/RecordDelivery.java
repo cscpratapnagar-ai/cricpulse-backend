@@ -24,7 +24,7 @@ public class RecordDelivery {
         if(s==null)throw new IllegalArgumentException("Innings was not found");
         if(!"LIVE".equals(s.status()))throw new IllegalArgumentException("Innings is not live");
         UUID dismissed=request.wicketType()==null?null:(request.dismissedPlayerId()!=null?request.dismissedPlayerId():request.strikerId());
-        Request r=new Request(request.inningsId(),request.overNumber(),request.ballNumber(),request.strikerId(),request.nonStrikerId(),request.bowlerId(),request.batRuns(),request.extraRuns(),request.extraType(),request.wicketType(),dismissed,request.newBatterId());
+        Request r=new Request(request.inningsId(),request.overNumber(),request.ballNumber(),request.strikerId(),request.nonStrikerId(),request.bowlerId(),request.batRuns(),request.extraRuns(),request.extraType(),request.wicketType(),dismissed,request.newBatterId(),request.wicketFielderId());
         validateState(r,s);
         participantValidator.validate(r.inningsId(),r.strikerId(),r.nonStrikerId(),r.bowlerId(),r.newBatterId(),r.dismissedPlayerId(),r.wicketType(),r.wicketFielderId());
         boolean legal=!"WIDE".equals(r.extraType())&&!"NO_BALL".equals(r.extraType());
