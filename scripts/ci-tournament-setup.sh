@@ -29,18 +29,19 @@ create_team() {
 TEAM_A_ID="$(create_team "CricPulse CI Tournament A ${RUN_KEY}")"
 TEAM_B_ID="$(create_team "CricPulse CI Tournament B ${RUN_KEY}")"
 TEAM_C_ID="$(create_team "CricPulse CI Tournament C ${RUN_KEY}")"
-[[ -n "$TEAM_A_ID" && -n "$TEAM_B_ID" && -n "$TEAM_C_ID" ]] || { echo "ERROR: failed to create tournament teams" >&2; exit 1; }
+TEAM_D_ID="$(create_team "CricPulse CI Tournament D ${RUN_KEY}")"
+[[ -n "$TEAM_A_ID" && -n "$TEAM_B_ID" && -n "$TEAM_C_ID" && -n "$TEAM_D_ID" ]] || { echo "ERROR: failed to create tournament teams" >&2; exit 1; }
 
 TOURNAMENT="$(curl -fsS -X POST "$BASE_URL/tournaments" "${AUTH[@]}" -H 'Content-Type: application/json' \
   --data "$(jq -nc --arg n "CricPulse CI Tournament ${RUN_KEY}" '{name:$n,format:"T20",overs:20,location:"CI",startDate:null}')")"
 TOURNAMENT_ID="$(jq -r '.id' <<<"$TOURNAMENT")"
 [[ -n "$TOURNAMENT_ID" && "$TOURNAMENT_ID" != null ]] || { echo "ERROR: tournament creation failed" >&2; exit 1; }
 
-for team_id in "$TEAM_A_ID" "$TEAM_B_ID" "$TEAM_C_ID"; do
+for team_id in "$TEAM_A_ID" "$TEAM_B_ID" "$TEAM_C_ID" "$TEAM_D_ID"; do
   curl -fsS -X POST "$BASE_URL/tournaments/$TOURNAMENT_ID/teams/$team_id" "${AUTH[@]}" >/dev/null
 done
 
-echo "Tournament fixture setup complete: tournament=$TOURNAMENT_ID teams=$TEAM_A_ID,$TEAM_B_ID,$TEAM_C_ID"
+echo "Tournament fixture setup complete: tournament=$TOURNAMENT_ID teams=$TEAM_A_ID,$TEAM_B_ID,$TEAM_C_ID,$TEAM_D_ID"
 
 echo "Fixture generation is intentionally left to the hardening E2E so its first generation call can verify creation counters."
 
