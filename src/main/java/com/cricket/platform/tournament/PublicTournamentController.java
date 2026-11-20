@@ -1,13 +1,16 @@
 package com.cricket.platform.tournament;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -27,6 +30,20 @@ public class PublicTournamentController {
 
     @GetMapping("/{tournamentId}")
     public PublicTournamentView get(@PathVariable UUID tournamentId) {
+        String status;
+        try {
+            status = jdbc.queryForObject(
+                    "SELECT status FROM tournaments WHERE id = ?",
+                    String.class,
+                    tournamentId);
+        } catch (org.springframework.dao.EmptyResultDataAccessException ex) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tournament not found");
+        }
+        String normalizedStatus = status == null ? "" : status.trim().toUpperCase(Locale.ROOT);
+        if (!"ACTIVE".equals(normalizedStatus) && !"COMPLETED".equals(normalizedStatus)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tournament is not publicly available");
+        }
+
         GetTournamentAnalytics.TournamentAnalytics summary = analytics.get(tournamentId);
         List<PublicFixture> fixtures = jdbc.query("""
                 SELECT tm.match_id, tm.fixture_number, tm.stage, m.status,

@@ -1,9 +1,11 @@
 package com.cricket.platform.tournament;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
-import org.mockito.ArgumentCaptor;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -11,12 +13,14 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 class PublicTournamentControllerTest {
@@ -38,6 +42,8 @@ class PublicTournamentControllerTest {
                 8, 6, 1, 1, new BigDecimal("75.0"),
                 List.of(standingA, standingB), List.of(), List.of(), List.of(),
                 List.of(), List.of(), List.of(), List.of());
+        when(jdbc.queryForObject("SELECT status FROM tournaments WHERE id = ?", String.class, tournamentId))
+                .thenReturn("ACTIVE");
         when(analytics.get(tournamentId)).thenReturn(summary);
         when(jdbc.query(contains("FROM tournament_matches tm"), any(RowMapper.class), eq(tournamentId)))
                 .thenReturn(List.of(new PublicTournamentController.PublicFixture(
@@ -73,6 +79,8 @@ class PublicTournamentControllerTest {
                 tournamentId, "Public Cup", "T20", 20, "ACTIVE",
                 1, 1, 0, 0, new BigDecimal("100.0"),
                 List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+        when(jdbc.queryForObject("SELECT status FROM tournaments WHERE id = ?", String.class, tournamentId))
+                .thenReturn("ACTIVE");
         when(analytics.get(tournamentId)).thenReturn(summary);
         when(jdbc.query(contains("FROM tournament_matches tm"), any(RowMapper.class), eq(tournamentId)))
                 .thenReturn(List.of(new PublicTournamentController.PublicFixture(
@@ -81,5 +89,38 @@ class PublicTournamentControllerTest {
         var result = new PublicTournamentController(jdbc, analytics).get(tournamentId);
 
         assertNull(result.fixtures().getFirst().winnerName());
+    }
+
+    @Test
+    void hidesDraftAndUnknownTournamentStatusesFromPublicView() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        GetTournamentAnalytics analytics = mock(GetTournamentAnalytics.class);
+        UUID tournamentId = UUID.randomUUID();
+        when(jdbc.queryForObject("SELECT status FROM tournaments WHERE id = ?", String.class, tournamentId))
+                .thenReturn("DRAFT");
+
+        ResponseStatusException error = assertThrows(
+                ResponseStatusException.class,
+                () -> new PublicTournamentController(jdbc, analytics).get(tournamentId));
+
+        assertEquals(404, error.getStatusCode().value());
+        verify(analytics, never()).get(tournamentId);
+        verify(jdbc, never()).query(contains("FROM tournament_matches tm"), any(RowMapper.class), eq(tournamentId));
+    }
+
+    @Test
+    void returnsNotFoundWhenTournamentDoesNotExist() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        GetTournamentAnalytics analytics = mock(GetTournamentAnalytics.class);
+        UUID tournamentId = UUID.randomUUID();
+        when(jdbc.queryForObject("SELECT status FROM tournaments WHERE id = ?", String.class, tournamentId))
+                .thenThrow(new EmptyResultDataAccessException(1));
+
+        ResponseStatusException error = assertThrows(
+                ResponseStatusException.class,
+                () -> new PublicTournamentController(jdbc, analytics).get(tournamentId));
+
+        assertEquals(404, error.getStatusCode().value());
+        verify(analytics, never()).get(tournamentId);
     }
 }
