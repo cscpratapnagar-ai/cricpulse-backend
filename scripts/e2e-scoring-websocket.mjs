@@ -141,11 +141,13 @@ if (!failure) {
     failure = new Error("Both delivery and undo updates must include a non-empty eventId");
   } else if (delivery.eventId === undo.eventId) {
     failure = new Error("Delivery and undo updates unexpectedly reused the same eventId");
-  } else if (!Number.isFinite(Number(delivery.eventVersion)) || !Number.isFinite(Number(undo.eventVersion))) {
+  } else if (delivery.eventVersion == null || undo.eventVersion == null
+      || !Number.isFinite(Number(delivery.eventVersion)) || !Number.isFinite(Number(undo.eventVersion))) {
     failure = new Error("Both WebSocket snapshots must include a numeric eventVersion");
   } else if (Number(undo.eventVersion) <= Number(delivery.eventVersion)) {
     failure = new Error(`Undo eventVersion must be newer than delivery (delivery=${delivery.eventVersion}, undo=${undo.eventVersion})`);
-  } else if (Number.isFinite(Number(delivery.sequenceNo)) && Number.isFinite(Number(undo.sequenceNo))
+  } else if (delivery.sequenceNo != null && undo.sequenceNo != null
+      && Number.isFinite(Number(delivery.sequenceNo)) && Number.isFinite(Number(undo.sequenceNo))
       && Number(undo.sequenceNo) <= Number(delivery.sequenceNo)) {
     failure = new Error(`Undo sequenceNo must be newer than delivery (delivery=${delivery.sequenceNo}, undo=${undo.sequenceNo})`);
   }
