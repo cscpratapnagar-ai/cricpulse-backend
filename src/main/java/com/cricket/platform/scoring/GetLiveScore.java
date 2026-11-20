@@ -18,7 +18,7 @@ public class GetLiveScore {
     public Score execute(UUID inningsId) {
         Score base = jdbc.queryForObject(
                 """
-                SELECT i.id, i.match_id, i.innings_number, i.total_runs, i.wickets,
+                SELECT i.id, i.match_id, i.innings_number, i.total_runs, i.wickets, i.state_version,
                        legal_balls, total_overs, status, target_runs,
                        current_over, current_ball, striker_id, su.full_name AS striker_name,
                        non_striker_id, nsu.full_name AS non_striker_name,
@@ -50,7 +50,7 @@ public class GetLiveScore {
                         rs.getString("non_striker_name"),
                         rs.getObject("current_bowler_id", UUID.class),
                         rs.getString("current_bowler_name")
-                ),
+                ).withEventVersion(rs.getLong("state_version")),
                 inningsId
         );
 
@@ -226,7 +226,8 @@ public class GetLiveScore {
             List<OverSummary> overs,
             List<RecentBall> recentBalls,
             Partnership partnership,
-            List<FallOfWicket> fallOfWickets
+            List<FallOfWicket> fallOfWickets,
+            long eventVersion
     ) {
         public Score(UUID inningsId, UUID matchId, int inningsNumber, int runs,
                      int wickets, int legalBalls, Integer totalOvers, String status,
@@ -238,7 +239,7 @@ public class GetLiveScore {
             this(inningsId, matchId, inningsNumber, runs, wickets, legalBalls,
                     totalOvers, status, targetRuns, currentOver, currentBall,
                     strikerId, null, nonStrikerId, null, currentBowlerId, null,
-                    batters, bowlers, overs, recentBalls, partnership, fallOfWickets);
+                    batters, bowlers, overs, recentBalls, partnership, fallOfWickets, 0L);
         }
 
         public Score(UUID inningsId, UUID matchId, int inningsNumber, int runs,
@@ -249,7 +250,7 @@ public class GetLiveScore {
             this(inningsId, matchId, inningsNumber, runs, wickets, legalBalls,
                     totalOvers, status, targetRuns, currentOver, currentBall,
                     strikerId, strikerName, nonStrikerId, nonStrikerName, currentBowlerId, currentBowlerName,
-                    List.of(), List.of(), List.of(), List.of(), null, List.of());
+                    List.of(), List.of(), List.of(), List.of(), null, List.of(), 0L);
         }
 
         public Score withDetails(List<Batter> batters, List<Bowler> bowlers,
@@ -258,7 +259,14 @@ public class GetLiveScore {
             return new Score(inningsId, matchId, inningsNumber, runs, wickets,
                     legalBalls, totalOvers, status, targetRuns, currentOver,
                     currentBall, strikerId, strikerName, nonStrikerId, nonStrikerName, currentBowlerId, currentBowlerName,
-                    batters, bowlers, overs, recentBalls, partnership, fallOfWickets);
+                    batters, bowlers, overs, recentBalls, partnership, fallOfWickets, eventVersion);
+        }
+
+        public Score withEventVersion(long version) {
+            return new Score(inningsId, matchId, inningsNumber, runs, wickets,
+                    legalBalls, totalOvers, status, targetRuns, currentOver,
+                    currentBall, strikerId, strikerName, nonStrikerId, nonStrikerName, currentBowlerId, currentBowlerName,
+                    batters, bowlers, overs, recentBalls, partnership, fallOfWickets, version);
         }
     }
 
