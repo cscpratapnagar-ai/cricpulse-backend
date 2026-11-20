@@ -56,7 +56,7 @@ done
 
 echo "[3/7] Generate DOUBLE_ROUND_ROBIN fixtures"
 DOUBLE_RESPONSE="$(curl -fsS -X POST "$BASE_URL/tournaments/$DOUBLE_ID/fixtures/generate?mode=DOUBLE_ROUND_ROBIN" "${AUTH[@]}" -H 'Accept: application/json')"
-jq -e '.generated == 12 and .skipped == 0 and .total == 12 and (.fixtures | length) == 12' <<<"$DOUBLE_RESPONSE" >/dev/null || {
+jq -e '.generated == 12 and .skipped == 0 and .totalPairs == 12 and (.fixtures | length) == 12' <<<"$DOUBLE_RESPONSE" >/dev/null || {
   echo "ERROR: expected 12 generated double-round-robin fixtures; response=$DOUBLE_RESPONSE" >&2; exit 1;
 }
 DOUBLE_FIXTURES="$(curl -fsS "$BASE_URL/tournaments/$DOUBLE_ID/fixtures" "${AUTH[@]}")"
@@ -78,7 +78,7 @@ jq -e '
 
 echo "[5/7] Verify second generation is idempotent"
 SECOND="$(curl -fsS -X POST "$BASE_URL/tournaments/$DOUBLE_ID/fixtures/generate?mode=DOUBLE_ROUND_ROBIN" "${AUTH[@]}")"
-jq -e '.generated == 0 and .skipped == 12 and .total == 12 and (.fixtures | length) == 12' <<<"$SECOND" >/dev/null || {
+jq -e '.generated == 0 and .skipped == 12 and .totalPairs == 12 and (.fixtures | length) == 12' <<<"$SECOND" >/dev/null || {
   echo "ERROR: repeated double generation was not idempotent: $SECOND" >&2; exit 1;
 }
 [[ "$(curl -fsS "$BASE_URL/tournaments/$DOUBLE_ID/fixtures" "${AUTH[@]}" | jq 'length')" -eq 12 ]] || {
@@ -91,7 +91,7 @@ for id in "${TEAM_IDS[@]}"; do
   curl -fsS -X POST "$BASE_URL/tournaments/$SINGLE_ID/teams/$id" "${AUTH[@]}" >/dev/null
 done
 SINGLE_RESPONSE="$(curl -fsS -X POST "$BASE_URL/tournaments/$SINGLE_ID/fixtures/generate" "${AUTH[@]}")"
-jq -e '.generated == 6 and .skipped == 0 and .total == 6 and (.fixtures | length) == 6' <<<"$SINGLE_RESPONSE" >/dev/null || {
+jq -e '.generated == 6 and .skipped == 0 and .totalPairs == 6 and (.fixtures | length) == 6' <<<"$SINGLE_RESPONSE" >/dev/null || {
   echo "ERROR: default mode no longer generates six single-round-robin fixtures: $SINGLE_RESPONSE" >&2; exit 1;
 }
 SINGLE_FIXTURES="$(curl -fsS "$BASE_URL/tournaments/$SINGLE_ID/fixtures" "${AUTH[@]}")"
