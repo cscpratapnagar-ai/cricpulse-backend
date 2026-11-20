@@ -16,7 +16,6 @@ if (typeof WebSocket === "undefined") {
 const socket = new WebSocket(wsUrl);
 const frames = [];
 let buffer = "";
-let connected = false;
 let subscribed = false;
 let finished = false;
 let failure = null;
@@ -49,33 +48,35 @@ function parseFrames() {
     }
     const body = buffer.slice(separator + 2, bodyEnd);
     buffer = buffer.slice(bodyEnd + 1);
-    handleFrame(command, headers, body);
+    handleFrame(command, body);
   }
 }
 
-function handleFrame(command, headers, body) {
+function handleFrame(command, body) {
   if (command === "CONNECTED") {
-    connected = true;
     console.log("WebSocket STOMP CONNECTED frame received");
     sendFrame("SUBSCRIBE", {
       id: "live-score-e2e",
       destination: `/topic/public/innings/${inningsId}`,
       ack: "auto"
     });
-    // Spring SimpleBroker does not provide STOMP RECEIPT acknowledgements.
-    // Allow its inbound channel to process SUBSCRIBE; the delivery/undo
-    // MESSAGE assertions below are the actual proof of subscription readiness.
+    // Spring SimpleBroker has no SUBSCRIBE receipt. The subsequent score
+    // assertions prove that the subscription is active.
     setTimeout(() => {
       if (failure || subscribed) return;
       subscribed = true;
       fs.writeFileSync(readyFile, "ready");
-      console.log("WebSocket SUBSCRIBE sent; monitor ready for live score messages");
+      console.log("WebSocket subscription sent; monitor ready for live score messages");
     }, Number(process.env.WS_SUBSCRIBE_SETTLE_MS || 500));
   } else if (command === "MESSAGE") {
     let payload;
-    try { payload = JSON.parse(body); } catch { throw new Error(`WebSocket MESSAGE was not JSON: ${body}`); }
+    try {
+      payload = JSON.parse(body);
+    } catch {
+      throw new Error(`WebSocket MESSAGE was not JSON: ${body}`);
+    }
     frames.push(payload);
-    console.log(`WebSocket update #${frames.length}: runs=${payload.runs} legalBalls=${payload.legalBalls} eventType=${payload.eventType ?? "n/a"}`);
+    console.log(`WebSocket update #${frames.length}: runs=${payload.runs} legalBalls=${payload.legalBalls} eventType=${payload.eventType ?? "n/a"} version=${payload.eventVersion ?? "n/a"}`);
   } else if (command === "ERROR") {
     throw new Error(`STOMP broker ERROR: ${body}`);
   }
@@ -84,8 +85,8 @@ function handleFrame(command, headers, body) {
 socket.addEventListener("open", () => {
   console.log(`WebSocket transport opened: ${wsUrl}`);
   sendFrame("CONNECT", {
-  "accept-version": "1.2",
-  "heart-beat": "0,0"
+    "accept-version": "1.2",
+    "heart-beat": "0,0"
   });
 });
 socket.addEventListener("message", async event => {
@@ -98,9 +99,14 @@ socket.addEventListener("message", async event => {
     socket.close();
   }
 });
-socket.addEventListener("error", event => { failure = new Error(`WebSocket transport error${event?.message ? `: ${event.message}` : ""}`); console.error(failure.message); });
+socket.addEventListener("error", event => {
+  failure = new Error(`WebSocket transport error${event?.message ? `: ${event.message}` : ""}`);
+  console.error(failure.message);
+});
 socket.addEventListener("close", event => {
-  if (!finished && !failure) failure = new Error(`WebSocket closed before verification completed (code=${event.code}, reason=${event.reason || "none"})`);
+  if (!finished && !failure) {
+    failure = new Error(`WebSocket closed before verification completed (code=${event.code}, reason=${event.reason || "none"})`);
+  }
   if (failure) console.error(failure.message);
 });
 
@@ -129,8 +135,20 @@ if (!failure) {
     }
   }
 }
-if (!failure && frames[0].eventId && frames[1].eventId && frames[0].eventId === frames[1].eventId) {
-  failure = new Error("Delivery and undo updates unexpectedly reused the same eventId");
+if (!failure) {
+  const [delivery, undo] = frames;
+  if (typeof delivery.eventId !== "string" || !delivery.eventId || typeof undo.eventId !== "string" || !undo.eventId) {
+    failure = new Error("Both delivery and undo updates must include a non-empty eventId");
+  } else if (delivery.eventId === undo.eventId) {
+    failure = new Error("Delivery and undo updates unexpectedly reused the same eventId");
+  } else if (!Number.isFinite(Number(delivery.eventVersion)) || !Number.isFinite(Number(undo.eventVersion))) {
+    failure = new Error("Both WebSocket snapshots must include a numeric eventVersion");
+  } else if (Number(undo.eventVersion) <= Number(delivery.eventVersion)) {
+    failure = new Error(`Undo eventVersion must be newer than delivery (delivery=${delivery.eventVersion}, undo=${undo.eventVersion})`);
+  } else if (Number.isFinite(Number(delivery.sequenceNo)) && Number.isFinite(Number(undo.sequenceNo))
+      && Number(undo.sequenceNo) <= Number(delivery.sequenceNo)) {
+    failure = new Error(`Undo sequenceNo must be newer than delivery (delivery=${delivery.sequenceNo}, undo=${undo.sequenceNo})`);
+  }
 }
 
 finished = true;
@@ -142,5 +160,5 @@ if (failure) {
 } else {
   fs.writeFileSync(outputFile, JSON.stringify({ ok: true, updates: frames }, null, 2));
   console.log("PASS: delivery and undo were broadcast once each; retry emitted no duplicate update");
-  console.log("PASS: WebSocket score snapshots match expected REST states (1/1 then 0/0)");
+  console.log("PASS: WebSocket snapshots match expected REST states and event versions increase monotonically");
 }
