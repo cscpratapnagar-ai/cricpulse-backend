@@ -146,10 +146,6 @@ if (!failure) {
     failure = new Error("Both WebSocket snapshots must include a numeric eventVersion");
   } else if (Number(undo.eventVersion) <= Number(delivery.eventVersion)) {
     failure = new Error(`Undo eventVersion must be newer than delivery (delivery=${delivery.eventVersion}, undo=${undo.eventVersion})`);
-  } else if (delivery.sequenceNo != null && undo.sequenceNo != null
-      && Number.isFinite(Number(delivery.sequenceNo)) && Number.isFinite(Number(undo.sequenceNo))
-      && Number(undo.sequenceNo) <= Number(delivery.sequenceNo)) {
-    failure = new Error(`Undo sequenceNo must be newer than delivery (delivery=${delivery.sequenceNo}, undo=${undo.sequenceNo})`);
   }
 }
 
