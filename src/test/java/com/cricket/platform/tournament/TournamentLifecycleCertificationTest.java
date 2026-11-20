@@ -224,6 +224,35 @@ class TournamentLifecycleCertificationTest {
         assertDoesNotThrow(() -> controller.ensureFixturePairNotPresent(tournamentId, matchId));
     }
 
+    @Test
+    void completedTournamentCannotBeRescheduled() throws Exception {
+        when(jdbc.queryForObject(
+                contains("SELECT status FROM tournaments"),
+                eq(String.class), eq(tournamentId))).thenReturn("COMPLETED");
+
+        Method method = TournamentController.class.getDeclaredMethod(
+                "ensureTournamentNotCompleted", UUID.class);
+        method.setAccessible(true);
+        InvocationTargetException thrown = assertThrows(
+                InvocationTargetException.class, () -> method.invoke(controller, tournamentId));
+
+        assertInstanceOf(ResponseStatusException.class, thrown.getCause());
+        assertEquals(409, ((ResponseStatusException) thrown.getCause()).getStatusCode().value());
+        assertTrue(((ResponseStatusException) thrown.getCause()).getReason().contains("cannot be rescheduled"));
+    }
+
+    @Test
+    void activeTournamentCanBeRescheduled() throws Exception {
+        when(jdbc.queryForObject(
+                contains("SELECT status FROM tournaments"),
+                eq(String.class), eq(tournamentId))).thenReturn("ACTIVE");
+
+        Method method = TournamentController.class.getDeclaredMethod(
+                "ensureTournamentNotCompleted", UUID.class);
+        method.setAccessible(true);
+        assertDoesNotThrow(() -> method.invoke(controller, tournamentId));
+    }
+
     private void validate(String current, String target) {
         try {
             Method method = TournamentController.class.getDeclaredMethod(
