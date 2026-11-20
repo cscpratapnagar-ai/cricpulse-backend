@@ -116,6 +116,14 @@ fi
 
 # Baseline snapshot: undo must restore all authoritative scoring state, not only totals.
 baseline_score="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "${auth[@]}")"
+public_baseline_score="$(curl -fsS "$BASE_URL/public/innings/$innings_id")"
+baseline_version="$(jq -r '.eventVersion // -1' <<<"$baseline_score")"
+public_baseline_version="$(jq -r '.eventVersion // -1' <<<"$public_baseline_score")"
+if [[ "$baseline_version" -lt 0 || "$public_baseline_version" != "$baseline_version" ]]; then
+  echo "FAIL: public recovery snapshot must expose the same authoritative eventVersion as the scorer snapshot" >&2
+  echo "Scorer version=$baseline_version public version=$public_baseline_version" >&2
+  exit 1
+fi
 baseline_projection="$(jq -S -c '{runs:(.runs // .totalRuns // .total_runs // 0),legalBalls:(.legalBalls // .legal_balls // 0),wickets:(.wickets // 0),recentBalls:(.recentBalls // []),overs:(.overs // []),strikerId:(.strikerId // .striker_id // null),nonStrikerId:(.nonStrikerId // .non_striker_id // null),currentBowlerId:(.currentBowlerId // .current_bowler_id // null)}' <<<"$baseline_score")"
 
 delivery="$(jq -nc --arg innings "$innings_id" --arg striker "$A_STRIKER_ID" --arg non "$A_NON_STRIKER_ID" --arg bowler "$B_BOWLER_ID" '{inningsId:$innings,strikerId:$striker,nonStrikerId:$non,bowlerId:$bowler,overNumber:0,ballNumber:1,batRuns:1,extraRuns:0,extraType:null,wicketType:null,dismissedPlayerId:null,newBatterId:null}')"
@@ -151,6 +159,14 @@ score_after_first="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "${auth[@
 balls_first="$(jq -r '.legalBalls // .legal_balls // -1' <<<"$score_after_first")"
 runs_first="$(jq -r '.runs // .totalRuns // .total_runs // -1' <<<"$score_after_first")"
 delivery_count_first="$(jq -r '.recentBalls | length' <<<"$score_after_first")"
+delivery_version="$(jq -r '.eventVersion // -1' <<<"$score_after_first")"
+public_delivery_score="$(curl -fsS "$BASE_URL/public/innings/$innings_id")"
+public_delivery_version="$(jq -r '.eventVersion // -1' <<<"$public_delivery_score")"
+if [[ "$delivery_version" -le "$baseline_version" || "$public_delivery_version" != "$delivery_version" ]]; then
+  echo "FAIL: public REST recovery did not expose the committed delivery version" >&2
+  echo "Baseline=$baseline_version scorer=$delivery_version public=$public_delivery_version" >&2
+  exit 1
+fi
 if [[ "$balls_first" != "1" || "$runs_first" != "1" || "$delivery_count_first" != "1" ]]; then
   echo "FAIL: concurrent replay created duplicate score/events: score=$runs_first/$balls_first deliveries=$delivery_count_first" >&2
   cat "$tmp/concurrent-a.json" "$tmp/concurrent-b.json" >&2
@@ -206,6 +222,14 @@ score_after_undo="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "${auth[@]
 balls_undo="$(jq -r '.legalBalls // .legal_balls // -1' <<<"$score_after_undo")"
 runs_undo="$(jq -r '.runs // .totalRuns // .total_runs // -1' <<<"$score_after_undo")"
 undo_projection="$(jq -S -c '{runs:(.runs // .totalRuns // .total_runs // 0),legalBalls:(.legalBalls // .legal_balls // 0),wickets:(.wickets // 0),recentBalls:(.recentBalls // []),overs:(.overs // []),strikerId:(.strikerId // .striker_id // null),nonStrikerId:(.nonStrikerId // .non_striker_id // null),currentBowlerId:(.currentBowlerId // .current_bowler_id // null)}' <<<"$score_after_undo")"
+undo_version="$(jq -r '.eventVersion // -1' <<<"$score_after_undo")"
+public_undo_score="$(curl -fsS "$BASE_URL/public/innings/$innings_id")"
+public_undo_version="$(jq -r '.eventVersion // -1' <<<"$public_undo_score")"
+if [[ "$undo_version" -le "$delivery_version" || "$public_undo_version" != "$undo_version" ]]; then
+  echo "FAIL: public REST recovery did not expose the newer undo version" >&2
+  echo "Delivery=$delivery_version scorerUndo=$undo_version publicUndo=$public_undo_version" >&2
+  exit 1
+fi
 if [[ "$balls_undo" != "0" || "$runs_undo" != "0" || "$undo_projection" != "$baseline_projection" ]]; then
   echo "FAIL: undo failed to restore complete scoring snapshot" >&2
   echo "Baseline: $baseline_projection" >&2
@@ -226,6 +250,12 @@ score_after_empty_undo="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "${a
 balls_empty_undo="$(jq -r '.legalBalls // .legal_balls // -1' <<<"$score_after_empty_undo")"
 runs_empty_undo="$(jq -r '.runs // .totalRuns // .total_runs // -1' <<<"$score_after_empty_undo")"
 empty_undo_projection="$(jq -S -c '{runs:(.runs // .totalRuns // .total_runs // 0),legalBalls:(.legalBalls // .legal_balls // 0),wickets:(.wickets // 0),recentBalls:(.recentBalls // []),overs:(.overs // []),strikerId:(.strikerId // .striker_id // null),nonStrikerId:(.nonStrikerId // .non_striker_id // null),currentBowlerId:(.currentBowlerId // .current_bowler_id // null)}' <<<"$score_after_empty_undo")"
+empty_undo_version="$(jq -r '.eventVersion // -1' <<<"$score_after_empty_undo")"
+if [[ "$empty_undo_version" != "$undo_version" ]]; then
+  echo "FAIL: no-op undo must not advance the authoritative eventVersion" >&2
+  echo "Undo version=$undo_version empty-undo version=$empty_undo_version" >&2
+  exit 1
+fi
 if [[ "$balls_empty_undo" != "0" || "$runs_empty_undo" != "0" || "$empty_undo_projection" != "$baseline_projection" ]]; then
   echo "FAIL: empty undo changed authoritative scoring state" >&2
   echo "Baseline: $baseline_projection" >&2
