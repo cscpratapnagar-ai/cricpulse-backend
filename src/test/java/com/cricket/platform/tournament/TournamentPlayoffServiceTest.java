@@ -114,6 +114,35 @@ class TournamentPlayoffServiceTest {
         verify(jdbc, never()).queryForObject(anyString(), eq(Integer.class), eq(tournamentId));
     }
 
+    @Test
+    void duplicateQualifierFixturesAreRejectedWithoutCreatingMoreFixtures() {
+        when(jdbc.queryForMap(anyString(), eq(tournamentId)))
+                .thenReturn(Map.of("status", "ACTIVE", "format", "T20", "overs", 20));
+        when(jdbc.queryForObject(contains("COALESCE(stage,'LEAGUE')='LEAGUE'"),
+                eq(Integer.class), eq(tournamentId))).thenReturn(6);
+        when(jdbc.queryForObject(contains("m.status='COMPLETED'"),
+                eq(Integer.class), eq(tournamentId))).thenReturn(6);
+
+        UUID teamA = UUID.randomUUID();
+        UUID teamB = UUID.randomUUID();
+        List<TournamentPlayoffService.Fixture> duplicates = List.of(
+                new TournamentPlayoffService.Fixture(UUID.randomUUID(), 7, "QUALIFIER_1",
+                        "Qualifier 1 A", teamA, "A", teamB, "B", "SCHEDULED"),
+                new TournamentPlayoffService.Fixture(UUID.randomUUID(), 8, "QUALIFIER_1",
+                        "Qualifier 1 B", teamA, "A", teamB, "B", "SCHEDULED"));
+        doReturn(duplicates).when(jdbc).query(
+                contains("WHERE tm.tournament_id=? AND tm.stage=?"),
+                any(RowMapper.class), eq(tournamentId), eq("QUALIFIER_1"));
+
+        ResponseStatusException error = assertThrows(ResponseStatusException.class,
+                () -> service.advance(tournamentId, () -> List.of(
+                        standing(), standing(), standing(), standing())));
+
+        assertEquals(409, error.getStatusCode().value());
+        assertTrue(error.getReason().contains("Multiple QUALIFIER_1 fixtures"));
+        verify(jdbc, never()).update(anyString(), any(Object[].class));
+    }
+
     private TournamentController.PointRow standing() {
         return new TournamentController.PointRow(UUID.randomUUID(), "Team", 3, 2, 1,
                 0, 0, 4, 100, 90, 1.0);
