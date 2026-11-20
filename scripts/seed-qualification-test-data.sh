@@ -29,14 +29,19 @@ echo "API: $BASE_URL"
 echo "Suffix: $SUFFIX"
 echo "Safety: local/disposable environment only"
 
+# Bootstrap CSRF before the anonymous registration request.
+api "$BASE_URL/auth/csrf" >/dev/null
+CSRF_TOKEN="$(awk '$6 == "XSRF-TOKEN" { value=$7 } END { print value }' "$COOKIE_JAR")"
+[[ -n "$CSRF_TOKEN" ]] || { echo "ERROR: CSRF token missing" >&2; exit 1; }
+
 owner_register="$(jq -nc --arg n "$OWNER_NAME" --arg e "$OWNER_EMAIL" --arg p "$OWNER_PHONE" --arg pw "$OWNER_PASSWORD" \
   '{fullName:$n,email:$e,phone:$p,password:$pw}')"
-if ! api -X POST "$BASE_URL/users" -H "Content-Type: application/json" -d "$owner_register" \
+if ! api -X POST "$BASE_URL/users" -H "Content-Type: application/json" -H "X-XSRF-TOKEN: $CSRF_TOKEN" -d "$owner_register" \
   >"$TMP_DIR/register.json" 2>"$TMP_DIR/register.err"; then
   echo "Owner registration skipped (account may already exist)."
 fi
 
-# Current browser authentication contract: bootstrap CSRF, login, then read the
+# Current browser authentication contract: refresh CSRF, login, then read the
 # HttpOnly access cookie. The login JSON intentionally does not return a bearer token.
 api "$BASE_URL/auth/csrf" >/dev/null
 CSRF_TOKEN="$(awk '$6 == "XSRF-TOKEN" { value=$7 } END { print value }' "$COOKIE_JAR")"
@@ -84,7 +89,7 @@ for team_index in 0 1 2 3; do
     full_name="${team_name} Player ${code}"
     register_payload="$(jq -nc --arg n "$full_name" --arg e "$email" --arg p "$phone" --arg pw "$TEST_PASSWORD" \
       '{fullName:$n,email:$e,phone:$p,password:$pw}')"
-    if ! api -X POST "$BASE_URL/users" -H "Content-Type: application/json" -d "$register_payload" \
+    if ! curl -sS --fail-with-body -H "Content-Type: application/json" "${AUTH[@]}" -X POST "$BASE_URL/users" -d "$register_payload" \
       >"$TMP_DIR/player-register.json" 2>"$TMP_DIR/player-register.err"; then
       echo "Player registration skipped: $email"
     fi
