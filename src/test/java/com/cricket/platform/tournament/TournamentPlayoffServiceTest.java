@@ -261,4 +261,108 @@ class TournamentPlayoffServiceTest {
         verify(jdbc, never()).update(anyString(), any(Object[].class));
     }
 
+
+
+    @Test
+    void playoffProgressionRejectsQualifier2WinnerOutsideFixtureParticipants() {
+        when(jdbc.queryForMap(anyString(), eq(tournamentId)))
+                .thenReturn(Map.of("status", "ACTIVE", "format", "T20", "overs", 20));
+        when(jdbc.queryForObject(contains("COALESCE(stage,'LEAGUE')='LEAGUE'"),
+                eq(Integer.class), eq(tournamentId))).thenReturn(6);
+        when(jdbc.queryForObject(contains("m.status='COMPLETED'"),
+                eq(Integer.class), eq(tournamentId))).thenReturn(6);
+
+        UUID q1A = UUID.randomUUID();
+        UUID q1B = UUID.randomUUID();
+        UUID elimA = UUID.randomUUID();
+        UUID elimB = UUID.randomUUID();
+        UUID q1Match = UUID.randomUUID();
+        UUID elimMatch = UUID.randomUUID();
+        UUID q2Match = UUID.randomUUID();
+        UUID q1Winner = q1A;
+        UUID elimWinner = elimA;
+        UUID outsider = UUID.randomUUID();
+        TournamentPlayoffService.Fixture q1 = new TournamentPlayoffService.Fixture(
+                q1Match, 7, "QUALIFIER_1", "Qualifier 1", q1A, "A", q1B, "B", "COMPLETED");
+        TournamentPlayoffService.Fixture eliminator = new TournamentPlayoffService.Fixture(
+                elimMatch, 8, "ELIMINATOR", "Eliminator", elimA, "C", elimB, "D", "COMPLETED");
+        TournamentPlayoffService.Fixture q2 = new TournamentPlayoffService.Fixture(
+                q2Match, 9, "QUALIFIER_2", "Qualifier 2", q1B, "B", elimWinner, "C", "COMPLETED");
+        doReturn(List.of(q1)).when(jdbc).query(contains("WHERE tm.tournament_id=? AND tm.stage=?"),
+                any(RowMapper.class), eq(tournamentId), eq("QUALIFIER_1"));
+        doReturn(List.of(eliminator)).when(jdbc).query(contains("WHERE tm.tournament_id=? AND tm.stage=?"),
+                any(RowMapper.class), eq(tournamentId), eq("ELIMINATOR"));
+        doReturn(List.of(q2)).when(jdbc).query(contains("WHERE tm.tournament_id=? AND tm.stage=?"),
+                any(RowMapper.class), eq(tournamentId), eq("QUALIFIER_2"));
+        when(jdbc.queryForObject(contains("COALESCE(winning_team_id,winner_team_id)"),
+                eq(UUID.class), eq(q1Match))).thenReturn(q1Winner);
+        when(jdbc.queryForObject(contains("COALESCE(winning_team_id,winner_team_id)"),
+                eq(UUID.class), eq(elimMatch))).thenReturn(elimWinner);
+        when(jdbc.queryForObject(contains("COALESCE(winning_team_id,winner_team_id)"),
+                eq(UUID.class), eq(q2Match))).thenReturn(outsider);
+
+        ResponseStatusException error = assertThrows(ResponseStatusException.class,
+                () -> service.advance(tournamentId, () -> List.of(
+                        standing(), standing(), standing(), standing())));
+
+        assertEquals(409, error.getStatusCode().value());
+        assertTrue(error.getReason().contains("Qualifier 2 has an invalid winner"));
+        verify(jdbc, never()).update(anyString(), any(Object[].class));
+    }
+
+    @Test
+    void playoffProgressionRejectsFinalWinnerOutsideFixtureParticipants() {
+        when(jdbc.queryForMap(anyString(), eq(tournamentId)))
+                .thenReturn(Map.of("status", "ACTIVE", "format", "T20", "overs", 20));
+        when(jdbc.queryForObject(contains("COALESCE(stage,'LEAGUE')='LEAGUE'"),
+                eq(Integer.class), eq(tournamentId))).thenReturn(6);
+        when(jdbc.queryForObject(contains("m.status='COMPLETED'"),
+                eq(Integer.class), eq(tournamentId))).thenReturn(6);
+
+        UUID q1A = UUID.randomUUID();
+        UUID q1B = UUID.randomUUID();
+        UUID elimA = UUID.randomUUID();
+        UUID elimB = UUID.randomUUID();
+        UUID q1Match = UUID.randomUUID();
+        UUID elimMatch = UUID.randomUUID();
+        UUID q2Match = UUID.randomUUID();
+        UUID finalMatch = UUID.randomUUID();
+        UUID q1Winner = q1A;
+        UUID elimWinner = elimA;
+        UUID q2Winner = q1B;
+        UUID outsider = UUID.randomUUID();
+        TournamentPlayoffService.Fixture q1 = new TournamentPlayoffService.Fixture(
+                q1Match, 7, "QUALIFIER_1", "Qualifier 1", q1A, "A", q1B, "B", "COMPLETED");
+        TournamentPlayoffService.Fixture eliminator = new TournamentPlayoffService.Fixture(
+                elimMatch, 8, "ELIMINATOR", "Eliminator", elimA, "C", elimB, "D", "COMPLETED");
+        TournamentPlayoffService.Fixture q2 = new TournamentPlayoffService.Fixture(
+                q2Match, 9, "QUALIFIER_2", "Qualifier 2", q1B, "B", elimWinner, "C", "COMPLETED");
+        TournamentPlayoffService.Fixture finalFixture = new TournamentPlayoffService.Fixture(
+                finalMatch, 10, "FINAL", "Final", q1Winner, "A", q2Winner, "B", "COMPLETED");
+        doReturn(List.of(q1)).when(jdbc).query(contains("WHERE tm.tournament_id=? AND tm.stage=?"),
+                any(RowMapper.class), eq(tournamentId), eq("QUALIFIER_1"));
+        doReturn(List.of(eliminator)).when(jdbc).query(contains("WHERE tm.tournament_id=? AND tm.stage=?"),
+                any(RowMapper.class), eq(tournamentId), eq("ELIMINATOR"));
+        doReturn(List.of(q2)).when(jdbc).query(contains("WHERE tm.tournament_id=? AND tm.stage=?"),
+                any(RowMapper.class), eq(tournamentId), eq("QUALIFIER_2"));
+        doReturn(List.of(finalFixture)).when(jdbc).query(contains("WHERE tm.tournament_id=? AND tm.stage=?"),
+                any(RowMapper.class), eq(tournamentId), eq("FINAL"));
+        when(jdbc.queryForObject(contains("COALESCE(winning_team_id,winner_team_id)"),
+                eq(UUID.class), eq(q1Match))).thenReturn(q1Winner);
+        when(jdbc.queryForObject(contains("COALESCE(winning_team_id,winner_team_id)"),
+                eq(UUID.class), eq(elimMatch))).thenReturn(elimWinner);
+        when(jdbc.queryForObject(contains("COALESCE(winning_team_id,winner_team_id)"),
+                eq(UUID.class), eq(q2Match))).thenReturn(q2Winner);
+        when(jdbc.queryForObject(contains("COALESCE(winning_team_id,winner_team_id)"),
+                eq(UUID.class), eq(finalMatch))).thenReturn(outsider);
+
+        ResponseStatusException error = assertThrows(ResponseStatusException.class,
+                () -> service.advance(tournamentId, () -> List.of(
+                        standing(), standing(), standing(), standing())));
+
+        assertEquals(409, error.getStatusCode().value());
+        assertTrue(error.getReason().contains("Final has an invalid winner"));
+        verify(jdbc, never()).update(anyString(), any(Object[].class));
+    }
+
 }
