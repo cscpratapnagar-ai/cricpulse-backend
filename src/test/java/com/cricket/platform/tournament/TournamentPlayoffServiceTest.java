@@ -51,6 +51,26 @@ class TournamentPlayoffServiceTest {
     }
 
     @Test
+    void playoffGenerationRejectsTournamentWithNoLeagueFixtures() {
+        when(jdbc.queryForMap(anyString(), eq(tournamentId)))
+                .thenReturn(Map.of("status", "ACTIVE", "format", "T20", "overs", 20));
+        when(jdbc.queryForObject(contains("COALESCE(stage,'LEAGUE')='LEAGUE'"),
+                eq(Integer.class), eq(tournamentId))).thenReturn(0);
+        when(jdbc.queryForObject(contains("m.status='COMPLETED'"),
+                eq(Integer.class), eq(tournamentId))).thenReturn(0);
+
+        ResponseStatusException error = assertThrows(ResponseStatusException.class,
+                () -> service.advance(tournamentId, () -> List.of(
+                        standing(), standing(), standing(), standing())));
+
+        assertEquals(409, error.getStatusCode().value());
+        assertTrue(error.getReason().contains("Every league fixture"));
+        verify(jdbc, never()).update(anyString(), any(Object[].class));
+        verify(jdbc, never()).query(contains("FROM tournament_matches tm"),
+                any(RowMapper.class), any(), any());
+    }
+
+    @Test
     void playoffGenerationRequiresActiveTournament() {
         when(jdbc.queryForMap(anyString(), eq(tournamentId)))
                 .thenReturn(Map.of("status", "DRAFT", "format", "T20", "overs", 20));
