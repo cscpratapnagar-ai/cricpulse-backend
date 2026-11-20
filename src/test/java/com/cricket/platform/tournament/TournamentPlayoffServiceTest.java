@@ -183,4 +183,42 @@ class TournamentPlayoffServiceTest {
         return new TournamentController.PointRow(UUID.randomUUID(), "Team", 3, 2, 1,
                 0, 0, 4, 100, 90, 1.0);
     }
+
+    @Test
+    void playoffProgressionRejectsWinnerOutsideFixtureParticipants() {
+        when(jdbc.queryForMap(anyString(), eq(tournamentId)))
+                .thenReturn(Map.of("status", "ACTIVE", "format", "T20", "overs", 20));
+        when(jdbc.queryForObject(contains("COALESCE(stage,'LEAGUE')='LEAGUE'"),
+                eq(Integer.class), eq(tournamentId))).thenReturn(6);
+        when(jdbc.queryForObject(contains("m.status='COMPLETED'"),
+                eq(Integer.class), eq(tournamentId))).thenReturn(6);
+
+        UUID teamA = UUID.randomUUID();
+        UUID teamB = UUID.randomUUID();
+        UUID outsider = UUID.randomUUID();
+        UUID qualifierMatchId = UUID.randomUUID();
+        TournamentPlayoffService.Fixture qualifier = new TournamentPlayoffService.Fixture(
+                qualifierMatchId, 7, "QUALIFIER_1", "Qualifier 1", teamA, "A",
+                teamB, "B", "COMPLETED");
+        TournamentPlayoffService.Fixture eliminator = new TournamentPlayoffService.Fixture(
+                UUID.randomUUID(), 8, "ELIMINATOR", "Eliminator", UUID.randomUUID(), "C",
+                UUID.randomUUID(), "D", "SCHEDULED");
+        doReturn(List.of(qualifier)).when(jdbc).query(
+                contains("WHERE tm.tournament_id=? AND tm.stage=?"),
+                any(RowMapper.class), eq(tournamentId), eq("QUALIFIER_1"));
+        doReturn(List.of(eliminator)).when(jdbc).query(
+                contains("WHERE tm.tournament_id=? AND tm.stage=?"),
+                any(RowMapper.class), eq(tournamentId), eq("ELIMINATOR"));
+        when(jdbc.queryForObject(contains("COALESCE(winning_team_id,winner_team_id)"),
+                eq(UUID.class), eq(qualifierMatchId))).thenReturn(outsider);
+
+        ResponseStatusException error = assertThrows(ResponseStatusException.class,
+                () -> service.advance(tournamentId, () -> List.of(
+                        standing(), standing(), standing(), standing())));
+
+        assertEquals(409, error.getStatusCode().value());
+        assertTrue(error.getReason().contains("invalid winner outside its participating teams"));
+        verify(jdbc, never()).update(anyString(), any(Object[].class));
+    }
+
 }
