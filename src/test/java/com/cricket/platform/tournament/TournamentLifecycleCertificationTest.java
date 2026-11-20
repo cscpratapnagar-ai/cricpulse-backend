@@ -19,6 +19,33 @@ class TournamentLifecycleCertificationTest {
     private final UUID tournamentId = UUID.randomUUID();
 
     @Test
+    void onlyDraftTournamentsCanBeEdited() throws Exception {
+        when(jdbc.queryForObject(
+                contains("SELECT status FROM tournaments"),
+                eq(String.class), eq(tournamentId))).thenReturn("DRAFT");
+
+        Method method = TournamentController.class.getDeclaredMethod("ensureTournamentEditable", UUID.class);
+        method.setAccessible(true);
+        assertDoesNotThrow(() -> method.invoke(controller, tournamentId));
+    }
+
+    @Test
+    void activeTournamentEditsAreRejected() throws Exception {
+        when(jdbc.queryForObject(
+                contains("SELECT status FROM tournaments"),
+                eq(String.class), eq(tournamentId))).thenReturn("ACTIVE");
+
+        Method method = TournamentController.class.getDeclaredMethod("ensureTournamentEditable", UUID.class);
+        method.setAccessible(true);
+        InvocationTargetException thrown = assertThrows(
+                InvocationTargetException.class, () -> method.invoke(controller, tournamentId));
+
+        assertInstanceOf(ResponseStatusException.class, thrown.getCause());
+        assertEquals(409, ((ResponseStatusException) thrown.getCause()).getStatusCode().value());
+        assertTrue(((ResponseStatusException) thrown.getCause()).getReason().contains("DRAFT"));
+    }
+
+    @Test
     void draftToActiveRequiresTeamsAndFixture() {
         when(jdbc.queryForObject(
                 contains("SELECT COUNT(*) FROM tournament_teams"),
