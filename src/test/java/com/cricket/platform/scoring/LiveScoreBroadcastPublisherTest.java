@@ -49,6 +49,10 @@ class LiveScoreBroadcastPublisherTest {
 
         org.mockito.ArgumentCaptor<Object> captor = org.mockito.ArgumentCaptor.forClass(Object.class);
         verify(messaging).convertAndSend(eq("/topic/public/innings/" + inningsId), captor.capture());
+        org.mockito.ArgumentCaptor<Object> privateCaptor = org.mockito.ArgumentCaptor.forClass(Object.class);
+        verify(messaging).convertAndSend(eq("/topic/innings/" + inningsId), privateCaptor.capture());
+        org.junit.jupiter.api.Assertions.assertEquals(captor.getValue(), privateCaptor.getValue(),
+                "Scorer and public broadcast consumers must receive the same committed snapshot");
 
         @SuppressWarnings("unchecked")
         Map<String, Object> payload = (Map<String, Object>) captor.getValue();
