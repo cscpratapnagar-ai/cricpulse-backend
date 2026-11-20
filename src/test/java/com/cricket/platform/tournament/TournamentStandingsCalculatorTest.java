@@ -68,6 +68,46 @@ class TournamentStandingsCalculatorTest {
     }
 
     @Test
+    void secondInningsAllOutUsesFullOversQuotaForNrr() {
+        var match = match(a, b, "WIN", b,
+                innings(a, 100, 10, 60, 20), innings(b, 101, 10, 60, 20));
+        var table = calculate(match);
+
+        assertEquals(-0.05, row(table, a).nrr(), 0.001);
+        assertEquals(0.05, row(table, b).nrr(), 0.001);
+    }
+
+    @Test
+    void completedResultWithoutValidParticipantWinnerDoesNotAwardPointsOrAppearPlayed() {
+        var match = match(a, b, "WIN", c,
+                innings(a, 140, 4, 120, 20), innings(b, 130, 6, 120, 20));
+        var table = calculate(match);
+
+        assertEquals(0, row(table, a).played());
+        assertEquals(0, row(table, b).played());
+        assertEquals(0, row(table, a).points());
+        assertEquals(0, row(table, b).points());
+        assertEquals(0, row(table, a).runsFor());
+        assertEquals(0, row(table, b).runsFor());
+        assertTrue(row(table, a).recentForm().isEmpty());
+        assertTrue(row(table, b).recentForm().isEmpty());
+    }
+
+    @Test
+    void missingOrZeroLegalBallInningsDoNotCreateArtificialNrr() {
+        var match = match(a, b, "WIN", a,
+                innings(a, 80, 2, 0, 20), innings(b, 70, 3, 0, 20));
+        var table = calculate(match);
+
+        assertEquals(2, row(table, a).points());
+        assertEquals(1, row(table, a).played());
+        assertEquals(0, row(table, a).runsFor());
+        assertEquals(0, row(table, b).runsFor());
+        assertEquals(0.0, row(table, a).nrr());
+        assertEquals(0.0, row(table, b).nrr());
+    }
+
+    @Test
     void standingsSortByPointsThenNrrThenRunsForThenTeamName() {
         var winsA = match(a, b, "WIN", a,
                 innings(a, 160, 3, 120, 20), innings(b, 140, 5, 120, 20));
