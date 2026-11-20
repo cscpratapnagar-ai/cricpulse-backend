@@ -63,6 +63,8 @@ champion_response="$(api -X POST "$BASE_URL/tournaments/$TOURNAMENT_ID/playoffs/
 [[ "$(jq -r '.status' <<<"$champion_response")" == "CHAMPION_CROWNED" ]] || { echo "ERROR: champion was not confirmed: $champion_response" >&2; exit 1; }
 CHAMPION_ID="$(jq -r '.championTeamId' <<<"$champion_response")"
 [[ -n "$CHAMPION_ID" && "$CHAMPION_ID" != null ]] || { echo "ERROR: champion team id missing" >&2; exit 1; }
+FINAL_WINNER="$(db -Atc "SELECT COALESCE(winning_team_id,winner_team_id)::text FROM matches WHERE id='$FINAL_ID'::uuid")"
+[[ "$CHAMPION_ID" == "$FINAL_WINNER" ]] || { echo "ERROR: crowned champion does not match the authoritative Final winner: champion=$CHAMPION_ID final_winner=$FINAL_WINNER" >&2; exit 1; }
 echo "[7/7] Final progression is idempotent"
 champion_repeat="$(api -X POST "$BASE_URL/tournaments/$TOURNAMENT_ID/playoffs/progress")"
 [[ "$(jq -r '.status' <<<"$champion_repeat")" == "CHAMPION_CROWNED" && "$(jq -r '.championTeamId' <<<"$champion_repeat")" == "$CHAMPION_ID" ]] || { echo "ERROR: repeated progression changed champion state" >&2; exit 1; }
