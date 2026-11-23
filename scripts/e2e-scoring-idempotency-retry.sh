@@ -178,8 +178,10 @@ echo "PASS: concurrent duplicate requests acknowledged; one delivery persisted (
 echo "[5/8] Race two different scorer commands for the same next ball position"
 race_a_command_id="$(cat /proc/sys/kernel/random/uuid)"
 race_b_command_id="$(cat /proc/sys/kernel/random/uuid)"
-race_a_delivery="$(jq -c '.overNumber = 0 | .ballNumber = 2 | .batRuns = 2' <<<"$delivery")"
-race_b_delivery="$(jq -c '.overNumber = 0 | .ballNumber = 2 | .batRuns = 4' <<<"$delivery")"
+race_striker_id="$(jq -r '.strikerId // .striker_id' <<<"$score_after_first")"
+race_non_striker_id="$(jq -r '.nonStrikerId // .non_striker_id' <<<"$score_after_first")"
+race_a_delivery="$(jq -nc --argjson base "$delivery" --arg striker "$race_striker_id" --arg non "$race_non_striker_id" '$base | .strikerId = $striker | .nonStrikerId = $non | .overNumber = 0 | .ballNumber = 2 | .batRuns = 2')"
+race_b_delivery="$(jq -nc --argjson base "$delivery" --arg striker "$race_striker_id" --arg non "$race_non_striker_id" '$base | .strikerId = $striker | .nonStrikerId = $non | .overNumber = 0 | .ballNumber = 2 | .batRuns = 4')"
 curl -sS -o "$tmp/race-a.json" -w '%{http_code}' -X POST "$BASE_URL/scoring/innings/$innings_id/deliveries" "${auth[@]}" "${lease[@]}" -H "X-Command-Id: $race_a_command_id" --data "$race_a_delivery" >"$tmp/race-a.status" &
 race_a_pid=$!
 curl -sS -o "$tmp/race-b.json" -w '%{http_code}' -X POST "$BASE_URL/scoring/innings/$innings_id/deliveries" "${auth[@]}" "${lease[@]}" -H "X-Command-Id: $race_b_command_id" --data "$race_b_delivery" >"$tmp/race-b.status" &
