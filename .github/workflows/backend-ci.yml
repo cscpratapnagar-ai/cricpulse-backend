@@ -47,6 +47,8 @@ jobs:
           bash -n scripts/e2e-double-round-robin-regression.sh
           bash -n scripts/e2e-scoring-idempotency-retry.sh
           bash -n scripts/e2e-broadcast-performance-recovery.sh
+          bash -n scripts/production-release-preflight.sh
+          bash -n scripts/production-deployment-smoke.sh
           node --check scripts/e2e-scoring-websocket.mjs
 
       - name: Set up Node.js for WebSocket runtime E2E
@@ -87,9 +89,30 @@ jobs:
         run: docker build --tag cricpulse-backend:ci .
       - name: Validate production compose
         env:
-          POSTGRES_PASSWORD: ci-postgres-password
+          POSTGRES_PASSWORD: Preflight-Only-Secret-7c29a4b6
           JWT_SECRET: ci-jwt-secret-at-least-32-bytes-long
         run: docker compose -f docker-compose.production.yml config --quiet
+
+      - name: Run production release preflight guard
+        env:
+          POSTGRES_PASSWORD: Preflight-Only-Secret-7c29a4b6
+          JWT_SECRET: ci-jwt-secret-at-least-32-bytes-long
+          BACKEND_TAG: sha-abcdef1
+          FRONTEND_TAG: sha-1234567
+        run: bash scripts/production-release-preflight.sh
+
+      - name: Verify mutable image tags are rejected
+        env:
+          POSTGRES_PASSWORD: Preflight-Only-Secret-7c29a4b6
+          JWT_SECRET: ci-jwt-secret-at-least-32-bytes-long
+          BACKEND_TAG: main
+          FRONTEND_TAG: sha-1234567
+        run: |
+          if bash scripts/production-release-preflight.sh; then
+            echo "Release preflight unexpectedly accepted the mutable main tag" >&2
+            exit 1
+          fi
+          echo "PASS: mutable production image tags are rejected"
 
       - name: Start application
         run: |
@@ -154,6 +177,14 @@ jobs:
           B_NON_STRIKER_ID: ${{ env.E2E_B_PLAYER_ID }}
           A_BOWLER_ID: ${{ env.E2E_OWNER_PLAYER_ID }}
         run: bash scripts/e2e-real-scoring-match.sh
+
+      - name: Run deployment smoke checks against the live CI API
+        env:
+          API_BASE_URL: http://localhost:8080
+          ACTUATOR_URL: http://localhost:8080/actuator/health/readiness
+          REQUIRE_HTTPS: 'false'
+          MATCH_ID: ${{ env.E2E_MATCH_ID }}
+        run: bash scripts/production-deployment-smoke.sh
 
       - name: Seed disposable tournament fixtures
         env:
