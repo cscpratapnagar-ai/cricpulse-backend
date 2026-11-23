@@ -41,10 +41,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate local tournament seeder and round-robin regression syntax
+      - name: Validate E2E script syntax
         run: |
           bash -n scripts/seed-qualification-test-data.sh
           bash -n scripts/e2e-double-round-robin-regression.sh
+          bash -n scripts/e2e-scoring-idempotency-retry.sh
+          node --check scripts/e2e-scoring-websocket.mjs
 
       - name: Set up Node.js for WebSocket runtime E2E
         uses: actions/setup-node@v4
