@@ -91,7 +91,7 @@ if [[ "$lease_conflict_status" != "409" ]]; then
   exit 1
 fi
 
-echo "[3/7] Connect public live-score WebSocket subscription"
+echo "[3/8] Connect two independent public live-score WebSocket viewers"
 export WS_URL="${WS_URL:-${BASE_URL%/api}/ws}"
 export WS_URL="${WS_URL/http:\/\//ws:\/\/}"
 export WS_URL="${WS_URL/https:\/\//wss:\/\/}"
@@ -130,7 +130,7 @@ baseline_projection="$(jq -S -c '{runs:(.runs // .totalRuns // .total_runs // 0)
 delivery="$(jq -nc --arg innings "$innings_id" --arg striker "$A_STRIKER_ID" --arg non "$A_NON_STRIKER_ID" --arg bowler "$B_BOWLER_ID" '{inningsId:$innings,strikerId:$striker,nonStrikerId:$non,bowlerId:$bowler,overNumber:0,ballNumber:1,batRuns:1,extraRuns:0,extraType:null,wicketType:null,dismissedPlayerId:null,newBatterId:null}')"
 command_id="$(cat /proc/sys/kernel/random/uuid)"
 
-echo "[4/7] Reject stale lease and concurrently replay the same command ID"
+echo "[4/8] Reject stale lease and concurrently replay the same command ID"
 stale_lease_token="$(cat /proc/sys/kernel/random/uuid)"
 stale_status="$(curl -sS -o "$tmp/stale-lease.json" -w '%{http_code}' -X POST "$BASE_URL/scoring/innings/$innings_id/deliveries" "${auth[@]}" -H "X-Scorer-Lease: $stale_lease_token" -H "X-Command-Id: $command_id" --data "$delivery")"
 if [[ "$stale_status" -lt 400 || "$stale_status" -ge 500 ]]; then
@@ -227,7 +227,7 @@ echo "[7/8] Verify conflicting payload under the same command ID cannot mutate s
 conflicting_delivery="$(jq -c '.batRuns = 2' <<<"$delivery")"
 conflict_status="$(curl -sS -o "$tmp/conflict-response.json" -w '%{http_code}' -X POST "$BASE_URL/scoring/innings/$innings_id/deliveries" "${auth[@]}" "${lease[@]}" -H "X-Command-Id: $command_id" --data "$conflicting_delivery")"
 conflict_response="$(cat "$tmp/conflict-response.json")"
-if [[ ! "$conflict_status" =~ ^[234][0-9][0-9]$ ]]; then
+if [[ ! "$conflict_status" =~ ^4[0-9][0-9]$ ]]; then
   echo "FAIL: conflicting command ID returned unexpected HTTP $conflict_status" >&2
   echo "Response: $conflict_response" >&2
   exit 1
@@ -238,9 +238,9 @@ runs_conflict="$(jq -r '.runs // .totalRuns // .total_runs // -1' <<<"$score_aft
 conflict_delivery_count="$(jq -r '.recentBalls | length' <<<"$score_after_conflict")"
 conflict_record_bat_runs="$(jq -r '.recentBalls[0].batRuns // -1' <<<"$score_after_conflict")"
 conflict_record_total_runs="$(jq -r '.recentBalls[0].totalRuns // -1' <<<"$score_after_conflict")"
-if [[ "$balls_conflict" != "$balls_first" || "$runs_conflict" != "$runs_first" || "$conflict_delivery_count" != "1" || "$conflict_record_bat_runs" != "1" || "$conflict_record_total_runs" != "1" ]]; then
+if [[ "$balls_conflict" != "$race_balls" || "$runs_conflict" != "$race_runs" || "$conflict_delivery_count" != "2" || "$conflict_record_bat_runs" != "1" || "$conflict_record_total_runs" != "1" ]]; then
   echo "FAIL: conflicting command mutated scoring state" >&2
-  echo "Expected score=$runs_first/$balls_first deliveries=1 batRuns=1 totalRuns=1" >&2
+  echo "Expected score=$race_runs/$race_balls deliveries=2 firstBallBatRuns=1 firstBallTotalRuns=1" >&2
   echo "Actual score=$runs_conflict/$balls_conflict deliveries=$conflict_delivery_count batRuns=$conflict_record_bat_runs totalRuns=$conflict_record_total_runs" >&2
   echo "Response: $conflict_response" >&2
   exit 1
