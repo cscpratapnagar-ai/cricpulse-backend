@@ -73,6 +73,12 @@ jobs:
           BACKEND_TAG: ${{ inputs.backend_tag }}
         run: bash scripts/verify-production-image-attestation.sh "$BACKEND_TAG"
 
+      - name: Verify frontend image signed provenance before any deployment action
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FRONTEND_TAG: ${{ inputs.frontend_tag }}
+        run: bash scripts/verify-frontend-image-attestation.sh "$FRONTEND_TAG"
+
       - name: Configure pinned SSH access
         env:
           DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
