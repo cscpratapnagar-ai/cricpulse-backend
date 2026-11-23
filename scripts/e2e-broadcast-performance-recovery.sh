@@ -41,7 +41,7 @@ request_worker() {
       cat "$response" >&2
       return 1
     fi
-    awk -v seconds="$seconds" 'BEGIN { printf "%.3f\\n", seconds * 1000 }' >> "$tmp/latencies-ms.txt"
+    awk -v seconds="$seconds" 'BEGIN { printf "%.3f\n", seconds * 1000 }' >> "$tmp/latencies-ms.txt"
   done
 }
 for worker in {1..8}; do
