@@ -89,13 +89,13 @@ jobs:
         run: docker build --tag cricpulse-backend:ci .
       - name: Validate production compose
         env:
-          POSTGRES_PASSWORD: ci-postgres-password-long-enough-for-preflight
+          POSTGRES_PASSWORD: Preflight-Only-Secret-7c29a4b6
           JWT_SECRET: ci-jwt-secret-at-least-32-bytes-long
         run: docker compose -f docker-compose.production.yml config --quiet
 
       - name: Run production release preflight guard
         env:
-          POSTGRES_PASSWORD: ci-postgres-password-long-enough-for-preflight
+          POSTGRES_PASSWORD: Preflight-Only-Secret-7c29a4b6
           JWT_SECRET: ci-jwt-secret-at-least-32-bytes-long
           BACKEND_TAG: sha-abcdef1
           FRONTEND_TAG: sha-1234567
