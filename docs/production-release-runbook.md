@@ -26,9 +26,23 @@ bash scripts/production-release-preflight.sh
 
 It rejects missing/weak/default secrets, mutable image tags, and invalid production Compose configuration. It does not test registry access or prove that an image is the intended release; operators must confirm the selected tags against the successful image-publish workflow runs.
 
-## 3. Back up and deploy
+## 3. Back up and verify a PostgreSQL restore
 
-Take and verify a PostgreSQL backup according to the host's database backup policy before upgrading. Then:
+Install PostgreSQL client tools compatible with the server major version on the deployment host. Run the certification script with a role that can read the source database and create/drop a temporary verification database. Use a protected destination with sufficient free space; the dump contains application data and is created with owner-only file permissions.
+
+```bash
+export PGHOST=127.0.0.1
+export PGPORT=5432
+export PGUSER=cricket_app
+export PGPASSWORD='<database-password>'
+export PGDATABASE=cricket
+export BACKUP_FILE=/var/backups/cricpulse/pre-deploy-$(date +%Y%m%d-%H%M%S).dump
+bash scripts/postgres-backup-restore-certification.sh
+```
+
+The script refuses to overwrite an existing backup. It creates a custom-format `pg_dump`, validates the archive, restores it into a uniquely named temporary database, compares the public table inventory, queries every restored table's exact row count, and drops the temporary database on exit. Keep the resulting dump and SHA-256 checksum in protected backup storage; do not commit or upload production dumps to CI artifacts. This is a restore rehearsal, not a substitute for encrypted off-host retention, scheduled backups, or a point-in-time recovery (WAL) policy. Ensure the backup destination is on a protected volume and has enough capacity.
+
+Then deploy the selected immutable images:
 
 ```bash
 docker compose -f docker-compose.production.yml pull
