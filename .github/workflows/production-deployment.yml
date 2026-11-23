@@ -22,6 +22,8 @@ on:
 
 permissions:
   contents: read
+  packages: read
+  attestations: read
 
 concurrency:
   group: cricpulse-production-deployment
@@ -58,6 +60,19 @@ jobs:
           [[ "$DEPLOY_APP_DIR" =~ ^/[a-zA-Z0-9_./-]+$ ]] || { echo "DEPLOY_APP_DIR must be a safe absolute path" >&2; exit 1; }
           [[ "$PRODUCTION_API_BASE_URL" == https://* ]] || { echo "Production API URL must use HTTPS" >&2; exit 1; }
 
+      - name: Authenticate to GHCR for image provenance verification
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify backend image signed provenance before any deployment action
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BACKEND_TAG: ${{ inputs.backend_tag }}
+        run: bash scripts/verify-production-image-attestation.sh "$BACKEND_TAG"
+
       - name: Configure pinned SSH access
         env:
           DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
@@ -65,9 +80,9 @@ jobs:
         run: |
           set -euo pipefail
           install -d -m 700 "$HOME/.ssh"
-          printf '%s\n' "$DEPLOY_SSH_PRIVATE_KEY" > "$HOME/.ssh/cricpulse_deploy"
+          printf '%s\\n' "$DEPLOY_SSH_PRIVATE_KEY" > "$HOME/.ssh/cricpulse_deploy"
           chmod 600 "$HOME/.ssh/cricpulse_deploy"
-          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          printf '%s\\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
 
       - name: Transfer immutable deployment bundle

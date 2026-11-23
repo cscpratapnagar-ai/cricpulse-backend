@@ -6,7 +6,7 @@ This runbook is for an operator deploying the backend and frontend images built 
 
 Use the `sha-<7 lowercase hex>` tags produced by the GitHub Actions production image workflows. Backend and frontend tags come from their own repositories and are expected to differ.
 
-Do not use the mutable `main` or `latest` tags for a production release. Record both selected image tags and the source commit SHAs in the release notes.
+Do not use the mutable `main` or `latest` tags for a production release. Record both selected image tags and the source commit SHAs in the release notes. The backend publish workflow emits a BuildKit SBOM/provenance attestation and a signed GitHub SLSA build-provenance attestation for the image digest.
 
 ## 2. Prepare production secrets
 
@@ -24,7 +24,7 @@ Run the release guard before pulling or restarting containers:
 bash scripts/production-release-preflight.sh
 ```
 
-It rejects missing/weak/default secrets, mutable image tags, and invalid production Compose configuration. It does not test registry access or prove that an image is the intended release; operators must confirm the selected tags against the successful image-publish workflow runs.
+It rejects missing/weak/default secrets, mutable image tags, and invalid production Compose configuration. It does not test registry access or prove that an image is the intended release; the approval-gated deployment workflow now verifies the backend image's signed provenance against this repository and the exact `.github/workflows/publish-production-container.yml` signer workflow before it configures SSH or contacts the deployment host. Frontend image provenance is not yet enforced by this backend-only change; the frontend repository must publish and verify its own attestation before the full release can claim end-to-end provenance enforcement.
 
 ## 3. Back up and verify a PostgreSQL restore
 
@@ -103,7 +103,7 @@ Before triggering the workflow:
    The backup must be a non-empty absolute path and no older than 24 hours. Keep it protected; the workflow receives only its path and prints its checksum, never uploads the dump.
 3. In GitHub Actions, run **Production Deployment** using the exact immutable `sha-...` backend and frontend tags from their respective successful image-publish runs, and provide the backup path. Optionally provide a public match ID for the match snapshot check.
 
-The workflow uses pinned SSH host keys and a serialized deployment concurrency group. The remote script requires existing immutable backend and frontend tags so a known-good rollback target exists. It validates the production secrets and Compose configuration, pulls the requested images, waits for Compose health checks, then runs the public API, private Actuator, and frontend smoke checks. If the new release fails, it restores the previous image tags and attempts to bring the previous release healthy again. A successful deployment writes `.last-known-good-release` on the host.
+The workflow first authenticates to GHCR and verifies the selected backend image's signed SLSA provenance with `gh attestation verify`, scoped to this repository and the trusted backend publish workflow. A missing, invalid, or differently signed attestation fails closed before SSH setup or host contact. It then uses pinned SSH host keys and a serialized deployment concurrency group. The remote script requires existing immutable backend and frontend tags so a known-good rollback target exists. It validates the production secrets and Compose configuration, pulls the requested images, waits for Compose health checks, then runs the public API, private Actuator, and frontend smoke checks. If the new release fails, it restores the previous image tags and attempts to bring the previous release healthy again. A successful deployment writes `.last-known-good-release` on the host.
 
 A failed new release remains a failed workflow even when rollback succeeds; inspect the logs and investigate before retrying. If rollback also fails, the workflow reports that manual operator intervention is required. Do not run concurrent deployments outside this workflow.
 

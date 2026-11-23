@@ -52,10 +52,15 @@ jobs:
           bash -n scripts/postgres-backup-restore-certification.sh
           bash -n scripts/production-deploy-with-rollback.sh
           bash -n scripts/test-production-deploy-rollback.sh
+          bash -n scripts/verify-production-image-attestation.sh
+          bash -n scripts/test-production-image-attestation.sh
           node --check scripts/e2e-scoring-websocket.mjs
 
       - name: Verify production deployment success and rollback paths
         run: bash scripts/test-production-deploy-rollback.sh
+
+      - name: Verify production image provenance enforcement
+        run: bash scripts/test-production-image-attestation.sh
 
       - name: Set up Node.js for WebSocket runtime E2E
         uses: actions/setup-node@v4
