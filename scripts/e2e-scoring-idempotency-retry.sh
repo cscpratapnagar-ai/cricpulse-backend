@@ -8,7 +8,8 @@ BASE_URL="${BASE_URL:-http://localhost:8080/api}"
 
 tmp="$(mktemp -d)"
 ws_monitor_pid=""
-trap 'if [[ -n "$ws_monitor_pid" ]]; then kill "$ws_monitor_pid" 2>/dev/null || true; fi; rm -rf "$tmp"' EXIT
+ws_viewer_two_pid=""
+trap 'for pid in "$ws_monitor_pid" "$ws_viewer_two_pid"; do if [[ -n "$pid" ]]; then kill "$pid" 2>/dev/null || true; fi; done; rm -rf "$tmp"' EXIT
 # Cookie-based login: each identity gets its own CSRF and HttpOnly cookie jar.
 login_token() {
   local email="$1" jar="$2" csrf token
@@ -90,29 +91,29 @@ if [[ "$lease_conflict_status" != "409" ]]; then
   exit 1
 fi
 
-echo "[3/7] Connect public live-score WebSocket subscription"
+echo "[3/8] Connect two independent public live-score WebSocket viewers"
 export WS_URL="${WS_URL:-${BASE_URL%/api}/ws}"
 export WS_URL="${WS_URL/http:\/\//ws:\/\/}"
 export WS_URL="${WS_URL/https:\/\//wss:\/\/}"
 export INNINGS_ID="$innings_id"
-export WS_READY_FILE="$tmp/ws-ready"
-export WS_DONE_FILE="$tmp/ws-done"
-export WS_OUTPUT_FILE="$tmp/ws-result.json"
-node scripts/e2e-scoring-websocket.mjs >"$tmp/ws-monitor.log" 2>&1 &
+WS_READY_FILE="$tmp/ws-viewer-one-ready" WS_DONE_FILE="$tmp/ws-viewers-done" WS_OUTPUT_FILE="$tmp/ws-viewer-one.json" WS_EXPECTED_FILE="$tmp/ws-expected.json" node scripts/e2e-scoring-websocket.mjs >"$tmp/ws-viewer-one.log" 2>&1 &
 ws_monitor_pid=$!
+WS_READY_FILE="$tmp/ws-viewer-two-ready" WS_DONE_FILE="$tmp/ws-viewers-done" WS_OUTPUT_FILE="$tmp/ws-viewer-two.json" WS_EXPECTED_FILE="$tmp/ws-expected.json" node scripts/e2e-scoring-websocket.mjs >"$tmp/ws-viewer-two.log" 2>&1 &
+ws_viewer_two_pid=$!
 for attempt in {1..150}; do
-  if [[ -f "$WS_READY_FILE" ]]; then break; fi
-  if ! kill -0 "$ws_monitor_pid" 2>/dev/null; then
-    cat "$tmp/ws-monitor.log" >&2
+  if [[ -f "$tmp/ws-viewer-one-ready" && -f "$tmp/ws-viewer-two-ready" ]]; then break; fi
+  if ! kill -0 "$ws_monitor_pid" 2>/dev/null || ! kill -0 "$ws_viewer_two_pid" 2>/dev/null; then
+    cat "$tmp/ws-viewer-one.log" "$tmp/ws-viewer-two.log" >&2
     exit 1
   fi
   sleep 0.1
 done
-if [[ ! -f "$WS_READY_FILE" ]]; then
-  echo "FAIL: WebSocket subscription did not become ready" >&2
-  cat "$tmp/ws-monitor.log" >&2
+if [[ ! -f "$tmp/ws-viewer-one-ready" || ! -f "$tmp/ws-viewer-two-ready" ]]; then
+  echo "FAIL: both independent public WebSocket viewers must subscribe before scoring" >&2
+  cat "$tmp/ws-viewer-one.log" "$tmp/ws-viewer-two.log" >&2
   exit 1
 fi
+echo "PASS: two independent public viewers subscribed before the first scoring command"
 
 # Baseline snapshot: undo must restore all authoritative scoring state, not only totals.
 baseline_score="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "${auth[@]}")"
@@ -129,7 +130,7 @@ baseline_projection="$(jq -S -c '{runs:(.runs // .totalRuns // .total_runs // 0)
 delivery="$(jq -nc --arg innings "$innings_id" --arg striker "$A_STRIKER_ID" --arg non "$A_NON_STRIKER_ID" --arg bowler "$B_BOWLER_ID" '{inningsId:$innings,strikerId:$striker,nonStrikerId:$non,bowlerId:$bowler,overNumber:0,ballNumber:1,batRuns:1,extraRuns:0,extraType:null,wicketType:null,dismissedPlayerId:null,newBatterId:null}')"
 command_id="$(cat /proc/sys/kernel/random/uuid)"
 
-echo "[4/7] Reject stale lease and concurrently replay the same command ID"
+echo "[4/8] Reject stale lease and concurrently replay the same command ID"
 stale_lease_token="$(cat /proc/sys/kernel/random/uuid)"
 stale_status="$(curl -sS -o "$tmp/stale-lease.json" -w '%{http_code}' -X POST "$BASE_URL/scoring/innings/$innings_id/deliveries" "${auth[@]}" -H "X-Scorer-Lease: $stale_lease_token" -H "X-Command-Id: $command_id" --data "$delivery")"
 if [[ "$stale_status" -lt 400 || "$stale_status" -ge 500 ]]; then
@@ -174,23 +175,61 @@ if [[ "$balls_first" != "1" || "$runs_first" != "1" || "$delivery_count_first" !
 fi
 echo "PASS: concurrent duplicate requests acknowledged; one delivery persisted (HTTP $status_a/$status_b)"
 
-echo "[5/7] Replay exact same delivery with same command ID"
+echo "[5/8] Race two different scorer commands for the same next ball position"
+race_a_command_id="$(cat /proc/sys/kernel/random/uuid)"
+race_b_command_id="$(cat /proc/sys/kernel/random/uuid)"
+race_striker_id="$(jq -r '.strikerId // .striker_id' <<<"$score_after_first")"
+race_non_striker_id="$(jq -r '.nonStrikerId // .non_striker_id' <<<"$score_after_first")"
+race_a_delivery="$(jq -nc --argjson base "$delivery" --arg striker "$race_striker_id" --arg non "$race_non_striker_id" '$base | .strikerId = $striker | .nonStrikerId = $non | .overNumber = 0 | .ballNumber = 2 | .batRuns = 2')"
+race_b_delivery="$(jq -nc --argjson base "$delivery" --arg striker "$race_striker_id" --arg non "$race_non_striker_id" '$base | .strikerId = $striker | .nonStrikerId = $non | .overNumber = 0 | .ballNumber = 2 | .batRuns = 4')"
+curl -sS -o "$tmp/race-a.json" -w '%{http_code}' -X POST "$BASE_URL/scoring/innings/$innings_id/deliveries" "${auth[@]}" "${lease[@]}" -H "X-Command-Id: $race_a_command_id" --data "$race_a_delivery" >"$tmp/race-a.status" &
+race_a_pid=$!
+curl -sS -o "$tmp/race-b.json" -w '%{http_code}' -X POST "$BASE_URL/scoring/innings/$innings_id/deliveries" "${auth[@]}" "${lease[@]}" -H "X-Command-Id: $race_b_command_id" --data "$race_b_delivery" >"$tmp/race-b.status" &
+race_b_pid=$!
+wait "$race_a_pid"
+wait "$race_b_pid"
+race_status_a="$(cat "$tmp/race-a.status")"
+race_status_b="$(cat "$tmp/race-b.status")"
+if [[ "$race_status_a" =~ ^2[0-9][0-9]$ && "$race_status_b" =~ ^4[0-9][0-9]$ ]]; then
+  winning_race_runs=2
+elif [[ "$race_status_b" =~ ^2[0-9][0-9]$ && "$race_status_a" =~ ^4[0-9][0-9]$ ]]; then
+  winning_race_runs=4
+else
+  echo "FAIL: conflicting commands for one ball position must yield exactly one success and one 4xx; got HTTP $race_status_a/$race_status_b" >&2
+  cat "$tmp/race-a.json" "$tmp/race-b.json" >&2
+  exit 1
+fi
+score_after_race="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "${auth[@]}")"
+race_runs="$(jq -r '.runs // .totalRuns // .total_runs // -1' <<<"$score_after_race")"
+race_balls="$(jq -r '.legalBalls // .legal_balls // -1' <<<"$score_after_race")"
+race_delivery_count="$(jq -r '.recentBalls | length' <<<"$score_after_race")"
+race_version="$(jq -r '.eventVersion // -1' <<<"$score_after_race")"
+public_race_score="$(curl -fsS "$BASE_URL/public/innings/$innings_id")"
+public_race_version="$(jq -r '.eventVersion // -1' <<<"$public_race_score")"
+if [[ "$race_runs" != "$((1 + winning_race_runs))" || "$race_balls" != "2" || "$race_delivery_count" != "2" || "$public_race_version" != "$race_version" ]]; then
+  echo "FAIL: competing scorer commands caused a duplicate or inconsistent projection" >&2
+  echo "Winner runs=$winning_race_runs score=$race_runs/$race_balls deliveries=$race_delivery_count scorerVersion=$race_version publicVersion=$public_race_version" >&2
+  exit 1
+fi
+echo "PASS: same-position race committed one command only (HTTP $race_status_a/$race_status_b)"
+
+echo "[6/8] Replay exact same delivery with same command ID"
 retry="$(curl -fsS -X POST "$BASE_URL/scoring/innings/$innings_id/deliveries" "${auth[@]}" "${lease[@]}" -H "X-Command-Id: $command_id" --data "$delivery")"
 score_after_retry="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "${auth[@]}")"
 balls_retry="$(jq -r '.legalBalls // .legal_balls // -1' <<<"$score_after_retry")"
 runs_retry="$(jq -r '.runs // .totalRuns // .total_runs // -1' <<<"$score_after_retry")"
-if [[ "$balls_retry" != "$balls_first" || "$runs_retry" != "$runs_first" ]]; then
-  echo "FAIL: duplicate command changed score: before=$runs_first/$balls_first after=$runs_retry/$balls_retry" >&2
+if [[ "$balls_retry" != "$race_balls" || "$runs_retry" != "$race_runs" ]]; then
+  echo "FAIL: duplicate command changed score: before=$race_runs/$race_balls after=$runs_retry/$balls_retry" >&2
   echo "first response: $first" >&2
   echo "retry response: $retry" >&2
   exit 1
 fi
 
-echo "[6/7] Verify conflicting payload under the same command ID cannot mutate scoring state"
+echo "[7/8] Verify conflicting payload under the same command ID cannot mutate scoring state"
 conflicting_delivery="$(jq -c '.batRuns = 2' <<<"$delivery")"
 conflict_status="$(curl -sS -o "$tmp/conflict-response.json" -w '%{http_code}' -X POST "$BASE_URL/scoring/innings/$innings_id/deliveries" "${auth[@]}" "${lease[@]}" -H "X-Command-Id: $command_id" --data "$conflicting_delivery")"
 conflict_response="$(cat "$tmp/conflict-response.json")"
-if [[ ! "$conflict_status" =~ ^[234][0-9][0-9]$ ]]; then
+if [[ ! "$conflict_status" =~ ^[24][0-9][0-9]$ ]]; then
   echo "FAIL: conflicting command ID returned unexpected HTTP $conflict_status" >&2
   echo "Response: $conflict_response" >&2
   exit 1
@@ -199,23 +238,36 @@ score_after_conflict="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "${aut
 balls_conflict="$(jq -r '.legalBalls // .legal_balls // -1' <<<"$score_after_conflict")"
 runs_conflict="$(jq -r '.runs // .totalRuns // .total_runs // -1' <<<"$score_after_conflict")"
 conflict_delivery_count="$(jq -r '.recentBalls | length' <<<"$score_after_conflict")"
-conflict_record_bat_runs="$(jq -r '.recentBalls[0].batRuns // -1' <<<"$score_after_conflict")"
-conflict_record_total_runs="$(jq -r '.recentBalls[0].totalRuns // -1' <<<"$score_after_conflict")"
-if [[ "$balls_conflict" != "$balls_first" || "$runs_conflict" != "$runs_first" || "$conflict_delivery_count" != "1" || "$conflict_record_bat_runs" != "1" || "$conflict_record_total_runs" != "1" ]]; then
+conflict_record_bat_runs="$(jq -r '[.recentBalls[] | select(.ballNumber == 1) | .batRuns] | first // -1' <<<"$score_after_conflict")"
+conflict_record_total_runs="$(jq -r '[.recentBalls[] | select(.ballNumber == 1) | .totalRuns] | first // -1' <<<"$score_after_conflict")"
+if [[ "$balls_conflict" != "$race_balls" || "$runs_conflict" != "$race_runs" || "$conflict_delivery_count" != "2" || "$conflict_record_bat_runs" != "1" || "$conflict_record_total_runs" != "1" ]]; then
   echo "FAIL: conflicting command mutated scoring state" >&2
-  echo "Expected score=$runs_first/$balls_first deliveries=1 batRuns=1 totalRuns=1" >&2
+  echo "Expected score=$race_runs/$race_balls deliveries=2 firstBallBatRuns=1 firstBallTotalRuns=1" >&2
   echo "Actual score=$runs_conflict/$balls_conflict deliveries=$conflict_delivery_count batRuns=$conflict_record_bat_runs totalRuns=$conflict_record_total_runs" >&2
   echo "Response: $conflict_response" >&2
   exit 1
 fi
 echo "PASS: conflicting payload did not mutate score, ball count, or delivery record (HTTP $conflict_status)"
 
-echo "[7/7] Undo delivery and verify score rollback"
+echo "[8/8] Undo both committed deliveries and verify complete score rollback"
 undo_status="$(curl -sS -o "$tmp/undo-response.json" -w '%{http_code}' -X POST "$BASE_URL/scoring/innings/$innings_id/undo" "${auth[@]}" "${lease[@]}")"
 undo_response="$(cat "$tmp/undo-response.json")"
 if [[ ! "$undo_status" =~ ^2[0-9][0-9]$ ]]; then
   echo "FAIL: undo delivery returned HTTP $undo_status" >&2
   echo "Response: $undo_response" >&2
+  exit 1
+fi
+score_after_first_undo="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "${auth[@]}")"
+first_undo_balls="$(jq -r '.legalBalls // .legal_balls // -1' <<<"$score_after_first_undo")"
+first_undo_runs="$(jq -r '.runs // .totalRuns // .total_runs // -1' <<<"$score_after_first_undo")"
+if [[ "$first_undo_balls" != "1" || "$first_undo_runs" != "1" ]]; then
+  echo "FAIL: first undo should restore the preceding committed ball, got $first_undo_runs/$first_undo_balls" >&2
+  exit 1
+fi
+second_undo_status="$(curl -sS -o "$tmp/second-undo-response.json" -w '%{http_code}' -X POST "$BASE_URL/scoring/innings/$innings_id/undo" "${auth[@]}" "${lease[@]}")"
+if [[ ! "$second_undo_status" =~ ^2[0-9][0-9]$ ]]; then
+  echo "FAIL: second undo returned HTTP $second_undo_status" >&2
+  cat "$tmp/second-undo-response.json" >&2
   exit 1
 fi
 score_after_undo="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "${auth[@]}")"
@@ -266,12 +318,26 @@ fi
 echo "PASS: undo restored score to 0/0 and empty undo was a no-op"
 echo "match=$match_id innings=$innings_id commandId=$command_id runsAfterUndo=$runs_undo legalBallsAfterUndo=$balls_undo"
 
-# Let the WebSocket monitor inspect the complete delivery/retry/undo sequence.
-touch "$WS_DONE_FILE"
+# Each viewer must observe the same four committed state transitions, with no
+# duplicate from the idempotent retry, rejected race loser, or no-op undo.
+jq -nc --argjson raceRuns "$((1 + winning_race_runs))" '[{runs:1,legalBalls:1},{runs:$raceRuns,legalBalls:2},{runs:1,legalBalls:1},{runs:0,legalBalls:0}]' >"$tmp/ws-expected.json"
+touch "$tmp/ws-viewers-done"
 if ! wait "$ws_monitor_pid"; then
-  cat "$tmp/ws-monitor.log" >&2
-  cat "$WS_OUTPUT_FILE" >&2 || true
+  cat "$tmp/ws-viewer-one.log" >&2
+  cat "$tmp/ws-viewer-one.json" >&2 || true
   exit 1
 fi
 ws_monitor_pid=""
-cat "$tmp/ws-monitor.log"
+if ! wait "$ws_viewer_two_pid"; then
+  cat "$tmp/ws-viewer-two.log" >&2
+  cat "$tmp/ws-viewer-two.json" >&2 || true
+  exit 1
+fi
+ws_viewer_two_pid=""
+cat "$tmp/ws-viewer-one.log" "$tmp/ws-viewer-two.log"
+if ! cmp -s "$tmp/ws-viewer-one.json" "$tmp/ws-viewer-two.json"; then
+  echo "FAIL: independent viewers received different authoritative event streams" >&2
+  diff -u "$tmp/ws-viewer-one.json" "$tmp/ws-viewer-two.json" >&2 || true
+  exit 1
+fi
+echo "PASS: two independent viewers received identical ordered authoritative updates"
