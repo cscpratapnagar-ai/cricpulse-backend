@@ -73,7 +73,43 @@ The script checks:
 
 If no `APP_URL` or `MATCH_ID` is supplied, those checks are explicitly skipped and the script reports the skips. Do not treat a partial run as full release sign-off.
 
-## 5. Staging and operator certification still required
+## 5. Approval-gated deployment with automatic rollback
+
+The repository includes a manual-only GitHub Actions workflow at `.github/workflows/production-deployment.yml`. It does not deploy on push or merge. Configure a GitHub Environment named `production` with required reviewers before using it; put the deployment secrets below in that environment (not as plaintext repository files).
+
+Required environment secrets:
+
+- `DEPLOY_HOST`: production SSH hostname
+- `DEPLOY_USER`: restricted deployment user
+- `DEPLOY_SSH_PRIVATE_KEY`: private key for that user
+- `DEPLOY_SSH_KNOWN_HOSTS`: pinned known-hosts entry for the host; do not disable host-key checking
+- `DEPLOY_APP_DIR`: absolute application directory containing the existing production `.env`
+- `PRODUCTION_API_BASE_URL`: public HTTPS API origin
+- `PRODUCTION_ACTUATOR_URL`: host-local readiness URL, normally `http://127.0.0.1:8081/actuator/health/readiness`
+- `PRODUCTION_APP_URL`: optional public HTTPS frontend origin
+
+Before triggering the workflow:
+
+1. Ensure the host has Docker Engine and the Compose plugin, is already logged into GHCR with read access to both private images (if applicable), and the deployment user can run Docker Compose.
+2. Create and restore-verify a fresh PostgreSQL dump on the host. For example, from the application directory:
+
+   ```bash
+   export PGHOST=127.0.0.1 PGPORT=5432 PGUSER=cricket_app PGDATABASE=cricket
+   export PGPASSWORD='<database-password>'
+   export BACKUP_FILE=/var/backups/cricpulse/pre-deploy-$(date +%Y%m%d-%H%M%S).dump
+   bash release-tools/postgres-backup-restore-certification.sh
+   ```
+
+   The backup must be a non-empty absolute path and no older than 24 hours. Keep it protected; the workflow receives only its path and prints its checksum, never uploads the dump.
+3. In GitHub Actions, run **Production Deployment** using the exact immutable `sha-...` backend and frontend tags from their respective successful image-publish runs, and provide the backup path. Optionally provide a public match ID for the match snapshot check.
+
+The workflow uses pinned SSH host keys and a serialized deployment concurrency group. The remote script requires existing immutable backend and frontend tags so a known-good rollback target exists. It validates the production secrets and Compose configuration, pulls the requested images, waits for Compose health checks, then runs the public API, private Actuator, and frontend smoke checks. If the new release fails, it restores the previous image tags and attempts to bring the previous release healthy again. A successful deployment writes `.last-known-good-release` on the host.
+
+A failed new release remains a failed workflow even when rollback succeeds; inspect the logs and investigate before retrying. If rollback also fails, the workflow reports that manual operator intervention is required. Do not run concurrent deployments outside this workflow.
+
+This automation does not provision the server, configure DNS/TLS/firewalls, create GitHub environment reviewers, install secrets, or guarantee database schema backward compatibility. Database migrations must remain compatible with the previous application version for rollback to be safe. The pre-deployment backup is a recovery aid, not an automatic database restore during rollback.
+
+## 6. Staging and operator certification still required
 
 Before announcing a production release, record evidence for:
 - Two physical devices/browser profiles (scorer and public viewer)
