@@ -9,6 +9,8 @@ on:
 permissions:
   contents: read
   packages: write
+  id-token: write
+  attestations: write
 
 env:
   REGISTRY: ghcr.io
@@ -16,7 +18,7 @@ env:
 
 jobs:
   publish:
-    name: Build and publish backend image
+    name: Build, publish, and attest backend image
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -49,10 +51,20 @@ jobs:
             type=raw,value=latest
             type=raw,value=main
 
-      - name: Build and push production image
+      - name: Build and push production image with SBOM and provenance
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          sbom: true
+          provenance: mode=max
+
+      - name: Create signed GitHub build provenance attestation
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
