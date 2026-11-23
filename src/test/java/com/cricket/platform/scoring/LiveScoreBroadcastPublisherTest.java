@@ -11,17 +11,15 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 class LiveScoreBroadcastPublisherTest {
 
     @Test
-    void publishesCommittedScoreToPrivateAndPublicTopicsWithVersionMetadata() {
+    void publishesOneAtomicScoreVersionToPrivateAndPublicTopics() {
         ApplicationEventPublisher events = org.mockito.Mockito.mock(ApplicationEventPublisher.class);
         SimpMessagingTemplate messaging = org.mockito.Mockito.mock(SimpMessagingTemplate.class);
         GetLiveScore liveScore = org.mockito.Mockito.mock(GetLiveScore.class);
-        JdbcTemplate jdbc = org.mockito.Mockito.mock(JdbcTemplate.class);
 
         UUID inningsId = UUID.randomUUID();
         UUID matchId = UUID.randomUUID();
@@ -33,17 +31,17 @@ class LiveScoreBroadcastPublisherTest {
         GetLiveScore.Score score = new GetLiveScore.Score(
                 inningsId, matchId, 1, 42, 1, 30, 20, "LIVE", 0,
                 3, 2, striker, nonStriker, bowler,
-                List.of(), List.of(), List.of(), List.of(), null, List.of());
+                List.of(), List.of(), List.of(), List.of(), null, List.of()
+        ).withEventVersion(7L);
         when(liveScore.execute(inningsId)).thenReturn(score);
-        when(jdbc.queryForObject("SELECT state_version FROM innings WHERE id = ?", Long.class, inningsId))
-                .thenReturn(7L);
 
         LiveScoreBroadcastPublisher publisher =
-                new LiveScoreBroadcastPublisher(events, messaging, liveScore, jdbc);
+                new LiveScoreBroadcastPublisher(events, messaging, liveScore);
 
         publisher.onCommitted(new LiveScoreCommittedEvent(
                 inningsId, eventId, 9L, 6, "DELIVERY_RECORDED"));
 
+        verify(liveScore).execute(inningsId);
         verify(messaging).convertAndSend(eq("/topic/innings/" + inningsId), any(Object.class));
         verify(messaging).convertAndSend(eq("/topic/public/innings/" + inningsId), any(Object.class));
 
