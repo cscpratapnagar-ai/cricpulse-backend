@@ -30,9 +30,13 @@ check_json() {
   }
 }
 
-echo "[1/4] Verify Spring Boot readiness"
-check_json "$API_BASE_URL/actuator/health/readiness" "$tmp/readiness.json" "API readiness" "200"
-jq -e '.status == "UP"' "$tmp/readiness.json" >/dev/null || fail "API readiness is not UP"
+echo "[1/4] Verify Spring Boot readiness (when ACTUATOR_URL is supplied)"
+if [[ -n "${ACTUATOR_URL:-}" ]]; then
+  check_json "$ACTUATOR_URL" "$tmp/readiness.json" "API readiness" "200"
+  jq -e '.status == "UP"' "$tmp/readiness.json" >/dev/null || fail "API readiness is not UP"
+else
+  echo "SKIP: ACTUATOR_URL not supplied; private/internal actuator readiness was not checked"
+fi
 
 echo "[2/4] Verify database-backed public broadcast readiness"
 check_json "$API_BASE_URL/api/public/broadcast-health" "$tmp/broadcast-health.json" "Broadcast readiness" "200"
