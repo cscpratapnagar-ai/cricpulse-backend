@@ -218,8 +218,8 @@ retry="$(curl -fsS -X POST "$BASE_URL/scoring/innings/$innings_id/deliveries" "$
 score_after_retry="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "${auth[@]}")"
 balls_retry="$(jq -r '.legalBalls // .legal_balls // -1' <<<"$score_after_retry")"
 runs_retry="$(jq -r '.runs // .totalRuns // .total_runs // -1' <<<"$score_after_retry")"
-if [[ "$balls_retry" != "$balls_first" || "$runs_retry" != "$runs_first" ]]; then
-  echo "FAIL: duplicate command changed score: before=$runs_first/$balls_first after=$runs_retry/$balls_retry" >&2
+if [[ "$balls_retry" != "$race_balls" || "$runs_retry" != "$race_runs" ]]; then
+  echo "FAIL: duplicate command changed score: before=$race_runs/$race_balls after=$runs_retry/$balls_retry" >&2
   echo "first response: $first" >&2
   echo "retry response: $retry" >&2
   exit 1
