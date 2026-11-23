@@ -50,7 +50,12 @@ jobs:
           bash -n scripts/production-release-preflight.sh
           bash -n scripts/production-deployment-smoke.sh
           bash -n scripts/postgres-backup-restore-certification.sh
+          bash -n scripts/production-deploy-with-rollback.sh
+          bash -n scripts/test-production-deploy-rollback.sh
           node --check scripts/e2e-scoring-websocket.mjs
+
+      - name: Verify production deployment success and rollback paths
+        run: bash scripts/test-production-deploy-rollback.sh
 
       - name: Set up Node.js for WebSocket runtime E2E
         uses: actions/setup-node@v4
