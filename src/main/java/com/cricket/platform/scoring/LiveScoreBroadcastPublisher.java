@@ -1,7 +1,6 @@
 package com.cricket.platform.scoring;
 
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
@@ -20,16 +19,13 @@ public class LiveScoreBroadcastPublisher {
     private final ApplicationEventPublisher applicationEventPublisher;
     private final SimpMessagingTemplate messagingTemplate;
     private final GetLiveScore getLiveScore;
-    private final JdbcTemplate jdbc;
 
     public LiveScoreBroadcastPublisher(ApplicationEventPublisher applicationEventPublisher,
                                        SimpMessagingTemplate messagingTemplate,
-                                       GetLiveScore getLiveScore,
-                                       JdbcTemplate jdbc) {
+                                       GetLiveScore getLiveScore) {
         this.applicationEventPublisher = applicationEventPublisher;
         this.messagingTemplate = messagingTemplate;
         this.getLiveScore = getLiveScore;
-        this.jdbc = jdbc;
     }
 
     public void publishAfterCommit(LiveScoreCommittedEvent event) {
@@ -38,16 +34,12 @@ public class LiveScoreBroadcastPublisher {
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onCommitted(LiveScoreCommittedEvent event) {
+        // Score and eventVersion are read from the same authoritative projection.
+        // A second query here could observe a later commit and pair its version
+        // with an earlier score payload, creating a false revision boundary.
         GetLiveScore.Score score = getLiveScore.execute(event.inningsId());
-        Long stateVersion = jdbc.queryForObject(
-                "SELECT state_version FROM innings WHERE id = ?",
-                Long.class,
-                event.inningsId()
-        );
         Map<String, Object> payload = new LinkedHashMap<>();
 
-        // Keep the realtime contract flat so existing Angular consumers can
-        // continue treating the event body as a LiveScore object.
         payload.put("inningsId", score.inningsId());
         payload.put("matchId", score.matchId());
         payload.put("inningsNumber", score.inningsNumber());
@@ -71,7 +63,7 @@ public class LiveScoreBroadcastPublisher {
         payload.put("eventType", event.eventType());
         payload.put("eventId", event.eventId() != null ? event.eventId() : UUID.randomUUID());
         payload.put("sequenceNo", event.sequenceNo());
-        payload.put("eventVersion", stateVersion != null ? stateVersion : (long) event.eventVersion());
+        payload.put("eventVersion", score.eventVersion());
         payload.put("occurredAt", OffsetDateTime.now());
 
         String inningsId = event.inningsId().toString();
