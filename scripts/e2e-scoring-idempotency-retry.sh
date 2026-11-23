@@ -236,8 +236,8 @@ score_after_conflict="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "${aut
 balls_conflict="$(jq -r '.legalBalls // .legal_balls // -1' <<<"$score_after_conflict")"
 runs_conflict="$(jq -r '.runs // .totalRuns // .total_runs // -1' <<<"$score_after_conflict")"
 conflict_delivery_count="$(jq -r '.recentBalls | length' <<<"$score_after_conflict")"
-conflict_record_bat_runs="$(jq -r '.recentBalls[0].batRuns // -1' <<<"$score_after_conflict")"
-conflict_record_total_runs="$(jq -r '.recentBalls[0].totalRuns // -1' <<<"$score_after_conflict")"
+conflict_record_bat_runs="$(jq -r '[.recentBalls[] | select(.ballNumber == 1) | .batRuns] | first // -1' <<<"$score_after_conflict")"
+conflict_record_total_runs="$(jq -r '[.recentBalls[] | select(.ballNumber == 1) | .totalRuns] | first // -1' <<<"$score_after_conflict")"
 if [[ "$balls_conflict" != "$race_balls" || "$runs_conflict" != "$race_runs" || "$conflict_delivery_count" != "2" || "$conflict_record_bat_runs" != "1" || "$conflict_record_total_runs" != "1" ]]; then
   echo "FAIL: conflicting command mutated scoring state" >&2
   echo "Expected score=$race_runs/$race_balls deliveries=2 firstBallBatRuns=1 firstBallTotalRuns=1" >&2
