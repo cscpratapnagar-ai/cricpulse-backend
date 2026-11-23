@@ -46,6 +46,7 @@ jobs:
           bash -n scripts/seed-qualification-test-data.sh
           bash -n scripts/e2e-double-round-robin-regression.sh
           bash -n scripts/e2e-scoring-idempotency-retry.sh
+          bash -n scripts/e2e-broadcast-performance-recovery.sh
           node --check scripts/e2e-scoring-websocket.mjs
 
       - name: Set up Node.js for WebSocket runtime E2E
@@ -202,6 +203,14 @@ jobs:
           DATABASE_USERNAME: ${{ env.DATABASE_USERNAME }}
           DATABASE_PASSWORD: ${{ env.DATABASE_PASSWORD }}
         run: bash scripts/e2e-tournament-playoff-progression.sh
+
+      - name: Run broadcast performance and API recovery E2E
+        env:
+          BASE_URL: http://localhost:8080/api
+          MATCH_ID: ${{ env.E2E_MATCH_ID }}
+          API_PID_FILE: ${{ runner.temp }}/cricpulse-api.pid
+          API_LOG_FILE: ${{ runner.temp }}/cricpulse-api.log
+        run: bash scripts/e2e-broadcast-performance-recovery.sh
 
       - name: Upload API log on failure
         if: failure()
