@@ -101,6 +101,19 @@ jobs:
           FRONTEND_TAG: sha-1234567
         run: bash scripts/production-release-preflight.sh
 
+      - name: Verify mutable image tags are rejected
+        env:
+          POSTGRES_PASSWORD: Preflight-Only-Secret-7c29a4b6
+          JWT_SECRET: ci-jwt-secret-at-least-32-bytes-long
+          BACKEND_TAG: main
+          FRONTEND_TAG: sha-1234567
+        run: |
+          if bash scripts/production-release-preflight.sh; then
+            echo "Release preflight unexpectedly accepted the mutable main tag" >&2
+            exit 1
+          fi
+          echo "PASS: mutable production image tags are rejected"
+
       - name: Start application
         run: |
           nohup java -jar target/*.jar > "$RUNNER_TEMP/cricpulse-api.log" 2>&1 &
