@@ -26,7 +26,7 @@ This backend PR consolidates the backend portion of the six broadcast workstream
 3. Overlay synchronization — atomic score/event-version publication prevents mismatched revisions.
 4. Live broadcast E2E — validate initial REST snapshot followed by public/private STOMP events.
 5. Multi-device certification — verify separate scorer and viewer clients observe the same committed version; manual device execution remains an operator responsibility.
-6. Performance/network failure — exercise dependency outage and recovery using readiness probe plus reconnect/reconciliation tests; collect production-like latency/load measurements before release.
+6. Performance/network failure — CI now issues 64 concurrent public broadcast-state reads (8 clients × 8 requests), validates every response against the seeded match, records p95/max latency, and applies a coarse 5,000ms p95 regression ceiling. It then terminates the API process, verifies the public readiness probe becomes unavailable, restarts the packaged application, and confirms readiness plus the same public broadcast-state snapshot recover. This is an API-process interruption test, not a packet-loss/Toxiproxy simulation or a production SLO.
 
 ## Verification
 
@@ -38,3 +38,17 @@ mvn -B verify
 ```
 
 The final GitHub Actions status for the PR head SHA is the authoritative CI result. A successful unit test does not replace the required live multi-device and network-interruption rehearsal.
+
+
+## Performance and restart-recovery E2E
+
+The backend CI runs `scripts/e2e-broadcast-performance-recovery.sh` after the disposable match lifecycle has been exercised.
+
+- 8 concurrent workers each request the public broadcast-state endpoint 8 times (64 requests total).
+- Every response must be HTTP 200 and contain the expected match ID plus an innings array.
+- CI records p95 and maximum response latency; p95 above 5 seconds fails as a coarse regression guard.
+- The script stops the running API process and confirms the public health endpoint is unreachable.
+- The packaged application is restarted against the same CI PostgreSQL service; readiness must return UP and the same match's broadcast-state endpoint must return a valid snapshot.
+- Latency and recovery observations are appended to the GitHub Actions step summary.
+
+The shared GitHub runner is not a production-like load environment. Do not interpret these timings as a published SLO. Packet loss, bandwidth throttling, device/browser diversity, OBS/vMix rendering, and a sustained live-match soak still require a staging rehearsal and operator sign-off.
