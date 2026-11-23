@@ -6,8 +6,9 @@ const inningsId = process.env.INNINGS_ID;
 const readyFile = process.env.WS_READY_FILE;
 const doneFile = process.env.WS_DONE_FILE;
 const outputFile = process.env.WS_OUTPUT_FILE;
-if (![wsUrl, inningsId, readyFile, doneFile, outputFile].every(Boolean)) {
-  throw new Error("WS_URL, INNINGS_ID, WS_READY_FILE, WS_DONE_FILE and WS_OUTPUT_FILE are required");
+const expectedFile = process.env.WS_EXPECTED_FILE;
+if (![wsUrl, inningsId, readyFile, doneFile, outputFile, expectedFile].every(Boolean)) {
+  throw new Error("WS_URL, INNINGS_ID, WS_READY_FILE, WS_DONE_FILE, WS_OUTPUT_FILE and WS_EXPECTED_FILE are required");
 }
 if (typeof WebSocket === "undefined") {
   throw new Error("Node.js with built-in WebSocket support (Node 22+) is required");
@@ -121,14 +122,24 @@ if (!failure) {
 }
 if (!failure) await sleep(1500);
 
-const expected = [[1, 1], [0, 0]];
+let expected = [];
+if (!failure) {
+  try {
+    expected = JSON.parse(fs.readFileSync(expectedFile, "utf8"));
+    if (!Array.isArray(expected) || expected.length === 0) {
+      throw new Error("Expected WebSocket sequence must be a non-empty array");
+    }
+  } catch (error) {
+    failure = new Error(`Could not read expected WebSocket sequence: ${error.message}`);
+  }
+}
 if (!failure && frames.length !== expected.length) {
-  failure = new Error(`Expected exactly 2 WebSocket updates (delivery + undo); received ${frames.length}. A retry may have emitted a duplicate event.`);
+  failure = new Error(`Expected exactly ${expected.length} authoritative WebSocket updates; received ${frames.length}. Duplicate or missed delivery events are not allowed.`);
 }
 if (!failure) {
   for (let index = 0; index < expected.length; index++) {
     const payload = frames[index];
-    const [runs, legalBalls] = expected[index];
+    const { runs, legalBalls } = expected[index];
     if (payload.inningsId !== inningsId || Number(payload.runs) !== runs || Number(payload.legalBalls) !== legalBalls) {
       failure = new Error(`Update #${index + 1} mismatch: expected innings=${inningsId} score=${runs}/${legalBalls}, got innings=${payload.inningsId} score=${payload.runs}/${payload.legalBalls}`);
       break;
@@ -136,16 +147,16 @@ if (!failure) {
   }
 }
 if (!failure) {
-  const [delivery, undo] = frames;
-  if (typeof delivery.eventId !== "string" || !delivery.eventId || typeof undo.eventId !== "string" || !undo.eventId) {
-    failure = new Error("Both delivery and undo updates must include a non-empty eventId");
-  } else if (delivery.eventId === undo.eventId) {
-    failure = new Error("Delivery and undo updates unexpectedly reused the same eventId");
-  } else if (delivery.eventVersion == null || undo.eventVersion == null
-      || !Number.isFinite(Number(delivery.eventVersion)) || !Number.isFinite(Number(undo.eventVersion))) {
-    failure = new Error("Both WebSocket snapshots must include a numeric eventVersion");
-  } else if (Number(undo.eventVersion) <= Number(delivery.eventVersion)) {
-    failure = new Error(`Undo eventVersion must be newer than delivery (delivery=${delivery.eventVersion}, undo=${undo.eventVersion})`);
+  const eventIds = frames.map(frame => frame.eventId);
+  if (eventIds.some(eventId => typeof eventId !== "string" || !eventId)
+      || new Set(eventIds).size !== eventIds.length) {
+    failure = new Error("Every committed state transition must have a unique non-empty eventId");
+  }
+  const versions = frames.map(frame => Number(frame.eventVersion));
+  if (!failure && versions.some(version => !Number.isFinite(version))) {
+    failure = new Error("Every WebSocket snapshot must include a numeric eventVersion");
+  } else if (!failure && versions.some((version, index) => index > 0 && version <= versions[index - 1])) {
+    failure = new Error(`Authoritative eventVersion must increase strictly for every committed transition: ${versions.join(" -> ")}`);
   }
 }
 
