@@ -49,6 +49,7 @@ jobs:
           bash -n scripts/e2e-broadcast-performance-recovery.sh
           bash -n scripts/production-release-preflight.sh
           bash -n scripts/production-deployment-smoke.sh
+          bash -n scripts/postgres-backup-restore-certification.sh
           node --check scripts/e2e-scoring-websocket.mjs
 
       - name: Set up Node.js for WebSocket runtime E2E
@@ -128,6 +129,16 @@ jobs:
           echo "CricPulse API did not become healthy" >&2
           cat "$RUNNER_TEMP/cricpulse-api.log" >&2 || true
           exit 1
+
+      - name: Certify PostgreSQL backup and isolated restore
+        env:
+          PGHOST: localhost
+          PGPORT: 5432
+          PGUSER: cricket_app
+          PGPASSWORD: cricket_dev_password
+          PGDATABASE: cricket
+          BACKUP_FILE: ${{ runner.temp }}/cricpulse-ci-backup.dump
+        run: bash scripts/postgres-backup-restore-certification.sh
 
       - name: Seed disposable HTTP lifecycle fixtures
         env:
