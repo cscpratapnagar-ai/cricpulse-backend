@@ -24,7 +24,7 @@ BACKEND_TAG=sha-abcdef1
 FRONTEND_TAG=sha-1234567
 ENV
   cp "$ROOT/scripts/production-release-preflight.sh" "$app/release-tools/"
-  touch "$app/release-tools/docker-compose.production.yml"
+  touch "$app/docker-compose.production.yml"
   if [[ "$smoke_mode" == "rollback" ]]; then
     cat > "$app/release-tools/production-deployment-smoke.sh" <<'SMOKE'
 #!/usr/bin/env bash
