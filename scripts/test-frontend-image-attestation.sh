@@ -44,7 +44,7 @@ grep -Fxq -- '--repo' "$GH_CALL_LOG"
 grep -Fxq 'cscpratapnagar-ai/cricpulse-ui' "$GH_CALL_LOG"
 grep -Fxq 'cscpratapnagar-ai/cricpulse-ui/.github/workflows/publish-production-container.yml' "$GH_CALL_LOG"
 grep -Fxq -- '--source-ref' "$GH_CALL_LOG"
-grep -Fxq 'refs/heads/develop' "$GH_CALL_LOG"
+grep -Fxq 'refs/heads/main' "$GH_CALL_LOG"
 grep -Fxq "image_digest=sha256:$EXPECTED_DIGEST" "$GITHUB_OUTPUT"
 grep -Fxq "image_ref=ghcr.io/cscpratapnagar-ai/cricpulse-ui@sha256:$EXPECTED_DIGEST" "$GITHUB_OUTPUT"
 
