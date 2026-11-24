@@ -61,11 +61,15 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Verify backend image signed provenance
+      - name: Set up Docker Buildx for immutable digest resolution
+        uses: docker/setup-buildx-action@v3
+      - name: Verify backend image provenance and resolve immutable digest
+        id: backend_image
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash scripts/verify-production-image-attestation.sh "${{ inputs.backend_tag }}"
-      - name: Verify frontend image signed provenance
+      - name: Verify frontend image provenance and resolve immutable digest
+        id: frontend_image
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash scripts/verify-frontend-image-attestation.sh "${{ inputs.frontend_tag }}"
@@ -97,8 +101,8 @@ jobs:
           DEPLOY_HOST: ${{ secrets.STAGING_DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.STAGING_DEPLOY_USER }}
           DEPLOY_APP_DIR: ${{ secrets.STAGING_DEPLOY_APP_DIR }}
-          BACKEND_TAG: ${{ inputs.backend_tag }}
-          FRONTEND_TAG: ${{ inputs.frontend_tag }}
+          BACKEND_DIGEST: ${{ steps.backend_image.outputs.image_digest }}
+          FRONTEND_DIGEST: ${{ steps.frontend_image.outputs.image_digest }}
           BACKUP_FILE: ${{ inputs.backup_file }}
           API_BASE_URL: ${{ secrets.STAGING_API_BASE_URL }}
           APP_URL: ${{ secrets.STAGING_APP_URL }}
@@ -106,5 +110,7 @@ jobs:
           MATCH_ID: ${{ inputs.match_id }}
         run: |
           set -euo pipefail
-          printf -v REMOTE_COMMAND '%q ' bash -s -- "$DEPLOY_APP_DIR" "$BACKEND_TAG" "$FRONTEND_TAG" "$BACKUP_FILE" "$API_BASE_URL" "$APP_URL" "$ACTUATOR_URL" "${MATCH_ID:-}"
+          [[ "$BACKEND_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "Backend digest output is invalid" >&2; exit 1; }
+          [[ "$FRONTEND_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "Frontend digest output is invalid" >&2; exit 1; }
+          printf -v REMOTE_COMMAND '%q ' bash -s -- "$DEPLOY_APP_DIR" "$BACKEND_DIGEST" "$FRONTEND_DIGEST" "$BACKUP_FILE" "$API_BASE_URL" "$APP_URL" "$ACTUATOR_URL" "${MATCH_ID:-}"
           ssh -i "$HOME/.ssh/cricpulse_staging" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$DEPLOY_USER@$DEPLOY_HOST" "$REMOTE_COMMAND" < scripts/staging-deploy-with-rollback.sh
