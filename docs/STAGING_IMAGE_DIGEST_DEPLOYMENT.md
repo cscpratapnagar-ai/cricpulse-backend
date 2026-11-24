@@ -59,3 +59,10 @@ The staging host preflight now performs a real restore rehearsal before the depl
 4. An exit trap removes the temporary container and its anonymous volumes on both success and failure. The probe runs with Docker's `none` network, publishes no ports, does not mount the staging data volume, cannot connect to the staging database, and does not modify the supplied backup.
 
 A successful `pg_restore --list` alone is not considered sufficient. If the archive cannot be restored, PostgreSQL does not become ready, or no user database objects are present, the host preflight fails closed and deployment does not begin. The staging host must be able to pull the PostgreSQL 16 Alpine image and have enough free disk space for the temporary restore.
+
+
+## Post-deployment stability confirmation
+
+After Docker Compose reports the staging services healthy, the remote deployment script now runs the complete external staging smoke suite three times, with a 10-second interval between passes. Each pass checks API readiness, database-backed broadcast health, frontend HTML delivery, and (when supplied) the requested match broadcast snapshot.
+
+A release is not marked last-known-good until all three passes succeed. If any later pass fails, the same three-pass confirmation is required after restoring the exact previous digest-pinned images. A rollback is reported healthy only after all rollback checks pass; otherwise the script exits with a critical manual-intervention error. This adds a short observation window to catch delayed startup regressions that a single immediate health response can miss.
