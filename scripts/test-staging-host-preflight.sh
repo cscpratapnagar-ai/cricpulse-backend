@@ -35,6 +35,7 @@ if [[ "$1" == "exec" ]]; then
     psql) printf '3\n' ;;
     *) exit 1 ;;
   esac
+  exit $?
 fi
 echo "Unexpected docker invocation: $*" >&2
 exit 1
