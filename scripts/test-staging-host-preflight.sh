@@ -9,7 +9,8 @@ printf 'POSTGRES_PASSWORD=Staging-Only-Secret-123456\nJWT_SECRET=staging-jwt-sec
 chmod 600 "$APP/.env"
 printf 'services: {}\n' > "$APP/docker-compose.staging.yml"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$APP/release-tools/staging-deployment-smoke.sh"
-chmod 700 "$APP/release-tools/staging-deployment-smoke.sh"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$APP/release-tools/staging-backup-restore-rehearsal.sh"
+chmod 700 "$APP/release-tools/staging-deployment-smoke.sh" "$APP/release-tools/staging-backup-restore-rehearsal.sh"
 printf 'mock-custom-format-backup' > "$TMP/backup.dump"
 
 cat > "$TMP/bin/docker" <<'MOCK'
@@ -19,6 +20,14 @@ if [[ "$1" == "compose" && "$2" == "version" ]]; then exit 0; fi
 if [[ "$1" == "buildx" && "$2" == "version" ]]; then exit 0; fi
 if [[ "$1" == "buildx" && "$2" == "imagetools" && "$3" == "inspect" ]]; then exit 0; fi
 if [[ "$1" == "compose" ]]; then exit 0; fi
+if [[ "$1" == "run" || "$1" == "cp" || "$1" == "rm" ]]; then exit 0; fi
+if [[ "$1" == "exec" ]]; then
+  case "$3" in
+    pg_isready|pg_restore) exit 0 ;;
+    psql) printf '3\n' ;;
+    *) exit 1 ;;
+  esac
+fi
 echo "Unexpected docker invocation: $*" >&2
 exit 1
 MOCK

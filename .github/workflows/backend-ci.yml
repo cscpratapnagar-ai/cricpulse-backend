@@ -63,6 +63,8 @@ jobs:
           bash -n scripts/test-staging-deployment.sh
           bash -n scripts/staging-host-preflight.sh
           bash -n scripts/test-staging-host-preflight.sh
+          bash -n scripts/staging-backup-restore-rehearsal.sh
+          bash -n scripts/test-staging-backup-restore-rehearsal.sh
           node --check scripts/e2e-scoring-websocket.mjs
 
       - name: Verify production deployment success and rollback paths
@@ -76,6 +78,9 @@ jobs:
 
       - name: Verify staging deployment and rollback paths
         run: bash scripts/test-staging-deployment.sh
+
+      - name: Verify isolated staging PostgreSQL backup restore rehearsal
+        run: bash scripts/test-staging-backup-restore-rehearsal.sh
 
       - name: Verify staging host bootstrap preflight
         run: bash scripts/test-staging-host-preflight.sh
