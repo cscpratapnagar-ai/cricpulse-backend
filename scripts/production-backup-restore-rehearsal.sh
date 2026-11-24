@@ -13,6 +13,7 @@ docker info >/dev/null 2>&1 || fail "Docker daemon is unavailable"
 CONTAINER="cricpulse-production-restore-probe-$$"
 PROBE_PASSWORD="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
 [[ "$PROBE_PASSWORD" =~ ^[0-9a-f]{64}$ ]] || fail "Could not generate temporary restore-probe credential"
+export POSTGRES_PASSWORD="$PROBE_PASSWORD"
 cleanup() {
   docker rm -fv "$CONTAINER" >/dev/null 2>&1 || true
 }
@@ -20,7 +21,7 @@ trap cleanup EXIT
 
 echo "Starting disposable PostgreSQL 16 production-backup restore probe"
 docker run -d --rm --network none --name "$CONTAINER" --label cricpulse.production.restore-probe=true \
-  -e POSTGRES_PASSWORD="$PROBE_PASSWORD" -e POSTGRES_DB=restore_probe postgres:16-alpine >/dev/null || fail "Could not start isolated PostgreSQL restore-probe container"
+  -e POSTGRES_PASSWORD -e POSTGRES_DB=restore_probe postgres:16-alpine >/dev/null || fail "Could not start isolated PostgreSQL restore-probe container"
 
 ready=false
 for attempt in {1..60}; do
