@@ -99,6 +99,7 @@ jobs:
           "${SCP[@]}" scripts/staging-backup-restore-rehearsal.sh "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_APP_DIR/release-tools/"
           "${SSH[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "chmod 700 '$DEPLOY_APP_DIR/release-tools/staging-deployment-smoke.sh' '$DEPLOY_APP_DIR/release-tools/staging-backup-restore-rehearsal.sh'"
       - name: Run remote staging host bootstrap preflight
+        id: staging_preflight
         env:
           DEPLOY_HOST: ${{ secrets.STAGING_DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.STAGING_DEPLOY_USER }}
@@ -115,6 +116,7 @@ jobs:
           printf -v REMOTE_PREFLIGHT '%q ' bash -s -- "$DEPLOY_APP_DIR" "$BACKUP_FILE" "$BACKEND_IMAGE" "$FRONTEND_IMAGE"
           ssh -i "$HOME/.ssh/cricpulse_staging" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$DEPLOY_USER@$DEPLOY_HOST" "$REMOTE_PREFLIGHT" < scripts/staging-host-preflight.sh
       - name: Deploy staging with automatic rollback
+        id: deploy_staging
         env:
           DEPLOY_HOST: ${{ secrets.STAGING_DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.STAGING_DEPLOY_USER }}
@@ -132,3 +134,27 @@ jobs:
           [[ "$FRONTEND_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "Frontend digest output is invalid" >&2; exit 1; }
           printf -v REMOTE_COMMAND '%q ' bash -s -- "$DEPLOY_APP_DIR" "$BACKEND_DIGEST" "$FRONTEND_DIGEST" "$BACKUP_FILE" "$API_BASE_URL" "$APP_URL" "$ACTUATOR_URL" "${MATCH_ID:-}"
           ssh -i "$HOME/.ssh/cricpulse_staging" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$DEPLOY_USER@$DEPLOY_HOST" "$REMOTE_COMMAND" < scripts/staging-deploy-with-rollback.sh
+
+      - name: Generate sanitized staging release evidence
+        if: always()
+        env:
+          BACKEND_TAG: ${{ inputs.backend_tag }}
+          FRONTEND_TAG: ${{ inputs.frontend_tag }}
+          BACKEND_DIGEST: ${{ steps.backend_image.outputs.image_digest }}
+          FRONTEND_DIGEST: ${{ steps.frontend_image.outputs.image_digest }}
+          BACKEND_VERIFY_OUTCOME: ${{ steps.backend_image.outcome }}
+          FRONTEND_VERIFY_OUTCOME: ${{ steps.frontend_image.outcome }}
+          PREFLIGHT_OUTCOME: ${{ steps.staging_preflight.outcome }}
+          DEPLOY_OUTCOME: ${{ steps.deploy_staging.outcome }}
+          WORKFLOW_STATUS: ${{ job.status }}
+          EVIDENCE_FILE: ${{ runner.temp }}/staging-release-evidence.md
+        run: bash scripts/write-staging-release-evidence.sh
+
+      - name: Upload staging release evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-release-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/staging-release-evidence.md
+          if-no-files-found: ignore
+          retention-days: 90
