@@ -25,14 +25,14 @@ chmod +x "$TMP/bin/docker"
 export PATH="$TMP/bin:$PATH" MOCK_DOCKER_LOG="$TMP/docker.log"
 bash "$ROOT/scripts/staging-backup-restore-rehearsal.sh" "$TMP/backup.dump"
 grep -Fq 'pg_restore --exit-on-error --no-owner --no-privileges' "$MOCK_DOCKER_LOG"
-grep -Fq 'rm -f cricpulse-staging-restore-probe-' "$MOCK_DOCKER_LOG"
+grep -Fq 'rm -fv cricpulse-staging-restore-probe-' "$MOCK_DOCKER_LOG"
 
 : > "$MOCK_DOCKER_LOG"
 if MOCK_RESTORE_FAIL=1 bash "$ROOT/scripts/staging-backup-restore-rehearsal.sh" "$TMP/backup.dump"; then
   echo "Expected an invalid restore to fail closed" >&2
   exit 1
 fi
-grep -Fq 'rm -f cricpulse-staging-restore-probe-' "$MOCK_DOCKER_LOG"
+grep -Fq 'rm -fv cricpulse-staging-restore-probe-' "$MOCK_DOCKER_LOG"
 
 if bash "$ROOT/scripts/staging-backup-restore-rehearsal.sh" "$TMP/missing.dump"; then
   echo "Expected a missing backup to be rejected" >&2
