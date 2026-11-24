@@ -14,10 +14,11 @@ printf 'mock-custom-format-backup' > "$TMP/backup.dump"
 
 cat > "$TMP/bin/docker" <<'MOCK'
 #!/usr/bin/env bash
-case "$*" in
-  "info"|"compose version"|"buildx version"|"compose --env-file "* " config --quiet") exit 0 ;;
-esac
-if [[ "$*" == "buildx imagetools inspect "* ]]; then exit 0; fi
+if [[ "$1" == "info" ]]; then exit 0; fi
+if [[ "$1" == "compose" && "$2" == "version" ]]; then exit 0; fi
+if [[ "$1" == "buildx" && "$2" == "version" ]]; then exit 0; fi
+if [[ "$1" == "buildx" && "$2" == "imagetools" && "$3" == "inspect" ]]; then exit 0; fi
+if [[ "$1" == "compose" ]]; then exit 0; fi
 echo "Unexpected docker invocation: $*" >&2
 exit 1
 MOCK
