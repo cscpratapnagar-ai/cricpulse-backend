@@ -73,7 +73,7 @@ The script checks:
 - Frontend root returns HTTP 200 and HTML
 - Optional match-specific broadcast snapshot returns the expected match ID and innings array
 
-The reusable smoke script can skip optional checks when run manually, but the managed production workflow requires both `PRODUCTION_APP_URL` and `PRODUCTION_ACTUATOR_URL`; a deployment cannot pass with either omitted.
+The reusable smoke script can skip optional checks when run manually, but the managed production workflow requires both `PRODUCTION_APP_URL` and `PRODUCTION_ACTUATOR_URL`; a deployment cannot pass with either omitted. The managed production deployment runs the complete smoke script three consecutive times, with 10 seconds between passes (a 20-second observation window), after the containers report healthy. Any failed pass blocks release certification and initiates rollback to the exact previously running image digests; the restored release must also pass all three checks before rollback is considered healthy.
 
 ## 5. Approval-gated deployment with automatic rollback
 
