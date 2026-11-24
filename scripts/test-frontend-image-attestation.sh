@@ -10,6 +10,10 @@ export GH_CALL_LOG="$TMP/gh-call.log"
 
 cat > "$TMP/bin/gh" <<'MOCK'
 #!/usr/bin/env bash
+if [[ "${1:-}" == "version" ]]; then
+  echo "gh version ${MOCK_GH_VERSION:-2.102.0}"
+  exit 0
+fi
 printf '%s\n' "$@" > "$GH_CALL_LOG"
 exit "${MOCK_GH_EXIT:-0}"
 MOCK
