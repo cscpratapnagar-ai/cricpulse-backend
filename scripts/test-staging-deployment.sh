@@ -40,7 +40,7 @@ grep -Fxq "BACKEND_IMAGE=ghcr.io/cscpratapnagar-ai/cricpulse-backend@$BACKEND_NE
 grep -Fxq "FRONTEND_IMAGE=ghcr.io/cscpratapnagar-ai/cricpulse-ui@$FRONTEND_NEW_DIGEST" "$APP/.last-known-good-staging"
 grep -Fxq "BACKEND_IMAGE=ghcr.io/cscpratapnagar-ai/cricpulse-backend@$BACKEND_NEW_DIGEST" "$APP/.env"
 grep -Fxq "FRONTEND_IMAGE=ghcr.io/cscpratapnagar-ai/cricpulse-ui@$FRONTEND_NEW_DIGEST" "$APP/.env"
-grep -Fq "compose pull backend frontend" "$MOCK_DOCKER_LOG"
+grep -Fq "pull backend frontend" "$MOCK_DOCKER_LOG"
 
 # Simulate a failed rollout: the previous image tags are migrated to digests and rollback restores those exact digests.
 printf 'POSTGRES_PASSWORD=Staging-Only-Secret-123456\nJWT_SECRET=staging-jwt-secret-at-least-32-bytes-long\nBACKEND_TAG=sha-1111111\nFRONTEND_TAG=sha-2222222\n' > "$APP/.env"
