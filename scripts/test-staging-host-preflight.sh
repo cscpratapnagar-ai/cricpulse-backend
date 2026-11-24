@@ -31,7 +31,7 @@ if [[ "$1" == "cp" || "$1" == "rm" ]]; then exit 0; fi
 if [[ "$1" == "exec" ]]; then
   case "$3" in
     pg_isready) exit 0 ;;
-    pg_restore) [[ "\${MOCK_RESTORE_FAIL:-0}" != 1 ]] ;;
+    pg_restore) [[ "${MOCK_RESTORE_FAIL:-0}" != 1 ]] ;;
     psql) printf '3\n' ;;
     *) exit 1 ;;
   esac
