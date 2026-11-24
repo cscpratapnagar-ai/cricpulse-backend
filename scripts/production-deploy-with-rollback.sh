@@ -82,6 +82,8 @@ current_running_image_ref() {
   printf '%s' "${refs[0]}"
 }
 
+# Snapshot the exact images currently running. Never derive rollback references
+# from tags because registry tags can be moved after a release.
 OLD_BACKEND_IMAGE="$(current_running_image_ref backend ghcr.io/cscpratapnagar-ai/cricpulse-backend)"
 OLD_FRONTEND_IMAGE="$(current_running_image_ref frontend ghcr.io/cscpratapnagar-ai/cricpulse-ui)"
 NEW_BACKEND_IMAGE="ghcr.io/cscpratapnagar-ai/cricpulse-backend@$BACKEND_DIGEST"
