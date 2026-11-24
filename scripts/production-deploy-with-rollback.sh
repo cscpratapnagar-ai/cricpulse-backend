@@ -24,7 +24,7 @@ MATCH_ID="${10}"
 [[ "$BACKUP_FILE" == /* && -f "$BACKUP_FILE" && ! -L "$BACKUP_FILE" && -s "$BACKUP_FILE" ]] || fail "A non-empty regular pre-deployment backup file is required"
 find "$BACKUP_FILE" -mmin -1440 -print -quit | grep -q . || fail "Backup must be no older than 24 hours"
 [[ "$API_BASE_URL" == https://* && "$APP_URL" == https://* ]] || fail "Production API and application URLs must use HTTPS"
-[[ "$ACTUATOR_URL" =~ ^http://(127\\.0\\.0\\.1|localhost)(:[0-9]+)?/ ]] || fail "Actuator URL must use a host-local HTTP endpoint"
+[[ "$ACTUATOR_URL" =~ ^http://(127\.0\.0\.1|localhost)(:[0-9]+)?/ ]] || fail "Actuator URL must use a host-local HTTP endpoint"
 if [[ -n "$MATCH_ID" ]]; then
   [[ "$MATCH_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] || fail "MATCH_ID must be a UUID"
 fi
@@ -77,7 +77,7 @@ current_running_image_ref() {
   image_id="$(docker inspect --format '{{.Image}}' "$container")" || fail "Unable to identify existing $service image"
   [[ "$image_id" =~ ^sha256:[0-9a-f]{64}$ ]] || fail "Existing $service image ID is invalid"
   repo_digest="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$image_id")" || fail "Unable to read existing $service RepoDigests"
-  mapfile -t refs < <(printf '%s\\n' "$repo_digest" | grep -E "^$repository@sha256:[0-9a-f]{64}$" || true)
+  mapfile -t refs < <(printf '%s\n' "$repo_digest" | grep -E "^$repository@sha256:[0-9a-f]{64}$" || true)
   [[ "${#refs[@]}" -eq 1 ]] || fail "Expected exactly one existing $service GHCR RepoDigest; refusing a tag-based rollback"
   printf '%s' "${refs[0]}"
 }
@@ -137,7 +137,7 @@ if ! run_preflight "$NEW_BACKEND_TAG" "$NEW_FRONTEND_TAG"; then
 fi
 
 if wait_and_smoke; then
-  printf 'BACKEND_TAG=%s\\nFRONTEND_TAG=%s\\nBACKEND_IMAGE=%s\\nFRONTEND_IMAGE=%s\\nDEPLOYED_AT=%s\\n' \
+  printf 'BACKEND_TAG=%s\nFRONTEND_TAG=%s\nBACKEND_IMAGE=%s\nFRONTEND_IMAGE=%s\nDEPLOYED_AT=%s\n' \
     "$NEW_BACKEND_TAG" "$NEW_FRONTEND_TAG" "$NEW_BACKEND_IMAGE" "$NEW_FRONTEND_IMAGE" "$(date -u +%FT%TZ)" > "$APP_DIR/.last-known-good-release.tmp"
   chmod 600 "$APP_DIR/.last-known-good-release.tmp"
   mv "$APP_DIR/.last-known-good-release.tmp" "$APP_DIR/.last-known-good-release"
