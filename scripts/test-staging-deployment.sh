@@ -22,7 +22,7 @@ chmod +x "$TMP/bin/docker"; export PATH="$TMP/bin:$PATH"
 bash "$ROOT/scripts/staging-deploy-with-rollback.sh" "$APP" sha-3333333 sha-4444444 "$TMP/verified-backup.dump" https://api.staging.example.test https://staging.example.test https://api.staging.example.test/actuator/health/readiness ""
 grep -Fxq 'BACKEND_TAG=sha-3333333' "$APP/.last-known-good-staging"
 grep -Fxq 'FRONTEND_TAG=sha-4444444' "$APP/.last-known-good-staging"
-printf 'BACKEND_TAG=sha-1111111\nFRONTEND_TAG=sha-2222222\n' > "$APP/.env"
+printf 'POSTGRES_PASSWORD=Staging-Only-Secret-123456\nJWT_SECRET=staging-jwt-secret-at-least-32-bytes-long\nBACKEND_TAG=sha-1111111\nFRONTEND_TAG=sha-2222222\n' > "$APP/.env"
 cat > "$TOOLS/staging-deployment-smoke.sh" <<'SMOKE'
 #!/usr/bin/env bash
 set -Eeuo pipefail
