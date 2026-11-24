@@ -64,7 +64,7 @@ AVAILABLE_KB="$(df -Pk "$APP_DIR" | awk 'NR == 2 {print $4}')"
 docker buildx imagetools inspect "$BACKEND_IMAGE" >/dev/null 2>&1 || fail "Staging host cannot access the verified backend digest in GHCR"
 docker buildx imagetools inspect "$FRONTEND_IMAGE" >/dev/null 2>&1 || fail "Staging host cannot access the verified frontend digest in GHCR"
 
-BACKEND_IMAGE="$BACKEND_IMAGE" FRONTEND_IMAGE="$FRONTEND_IMAGE" POSTGRES_PASSWORD="$POSTGRES_PASSWORD" JWT_SECRET="$JWT_SECRET" \
+BACKEND_IMAGE="$BACKEND_IMAGE" FRONTEND_IMAGE="$FRONTEND_IMAGE" \
   docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config --quiet || fail "Staging Compose configuration is invalid"
 
 echo "PASS: staging host, secret-file permissions, backup, Docker, disk, GHCR digest access, and Compose configuration are ready"
