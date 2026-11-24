@@ -59,6 +59,8 @@ jobs:
           bash -n scripts/test-staging-deployment.sh
           bash -n scripts/verify-frontend-image-attestation.sh
           bash -n scripts/test-frontend-image-attestation.sh
+          bash -n scripts/staging-deploy-with-rollback.sh
+          bash -n scripts/test-staging-deployment.sh
           node --check scripts/e2e-scoring-websocket.mjs
 
       - name: Verify production deployment success and rollback paths
@@ -113,8 +115,8 @@ jobs:
         env:
           POSTGRES_PASSWORD: Staging-Only-Secret-123456
           JWT_SECRET: staging-jwt-secret-at-least-32-bytes-long
-          BACKEND_TAG: sha-abcdef1
-          FRONTEND_TAG: sha-1234567
+          BACKEND_IMAGE: ghcr.io/cscpratapnagar-ai/cricpulse-backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          FRONTEND_IMAGE: ghcr.io/cscpratapnagar-ai/cricpulse-ui@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
         run: docker compose -f docker-compose.staging.yml config --quiet
 
       - name: Validate production compose
