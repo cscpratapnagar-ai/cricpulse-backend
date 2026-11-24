@@ -61,6 +61,8 @@ jobs:
           bash -n scripts/test-frontend-image-attestation.sh
           bash -n scripts/staging-deploy-with-rollback.sh
           bash -n scripts/test-staging-deployment.sh
+          bash -n scripts/staging-host-preflight.sh
+          bash -n scripts/test-staging-host-preflight.sh
           node --check scripts/e2e-scoring-websocket.mjs
 
       - name: Verify production deployment success and rollback paths
@@ -74,6 +76,9 @@ jobs:
 
       - name: Verify staging deployment and rollback paths
         run: bash scripts/test-staging-deployment.sh
+
+      - name: Verify staging host bootstrap preflight
+        run: bash scripts/test-staging-host-preflight.sh
 
       - name: Set up Node.js for WebSocket runtime E2E
         uses: actions/setup-node@v4
