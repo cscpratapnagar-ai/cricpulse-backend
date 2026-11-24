@@ -57,6 +57,8 @@ jobs:
           bash -n scripts/staging-deployment-smoke.sh
           bash -n scripts/staging-deploy-with-rollback.sh
           bash -n scripts/test-staging-deployment.sh
+          bash -n scripts/write-staging-release-evidence.sh
+          bash -n scripts/test-staging-release-evidence.sh
           bash -n scripts/verify-frontend-image-attestation.sh
           bash -n scripts/test-frontend-image-attestation.sh
           bash -n scripts/staging-deploy-with-rollback.sh
@@ -78,6 +80,9 @@ jobs:
 
       - name: Verify staging deployment and rollback paths
         run: bash scripts/test-staging-deployment.sh
+
+      - name: Verify sanitized staging release evidence generation
+        run: bash scripts/test-staging-release-evidence.sh
 
       - name: Verify isolated staging PostgreSQL backup restore rehearsal
         run: bash scripts/test-staging-backup-restore-rehearsal.sh
