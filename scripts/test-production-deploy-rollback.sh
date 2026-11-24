@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "\${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -9,7 +9,7 @@ mkdir -p "$TMP/bin"
 cat > "$TMP/bin/docker" <<'MOCK_DOCKER'
 #!/usr/bin/env bash
 set -euo pipefail
-case "\${1:-}" in
+case "${1:-}" in
   compose)
     case " $* " in
       *" compose version "*) echo "Docker Compose version v2.30.0"; exit 0 ;;
@@ -19,8 +19,8 @@ case "\${1:-}" in
     esac
     ;;
   inspect)
-    format="\${3:-}"
-    container="\${4:-}"
+    format="${3:-}"
+    container="${4:-}"
     if [[ "$format" == "{{.State.Running}}" ]]; then
       [[ "$container" == mock-backend-container || "$container" == mock-frontend-container ]] || exit 1
       echo true
@@ -35,15 +35,15 @@ case "\${1:-}" in
     exit 1
     ;;
   image)
-    [[ "\${2:-}" == inspect ]] || exit 1
-    image_id="\${5:-}"
+    [[ "${2:-}" == inspect ]] || exit 1
+    image_id="${5:-}"
     case "$image_id" in
       sha256:1111111111111111111111111111111111111111111111111111111111111111)
-        [[ "\${MOCK_NO_REPODIGEST:-}" == backend ]] || echo "ghcr.io/cscpratapnagar-ai/cricpulse-backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        [[ "${MOCK_NO_REPODIGEST:-}" == backend ]] || echo "ghcr.io/cscpratapnagar-ai/cricpulse-backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         exit 0
         ;;
       sha256:2222222222222222222222222222222222222222222222222222222222222222)
-        [[ "\${MOCK_NO_REPODIGEST:-}" == frontend ]] || echo "ghcr.io/cscpratapnagar-ai/cricpulse-ui@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        [[ "${MOCK_NO_REPODIGEST:-}" == frontend ]] || echo "ghcr.io/cscpratapnagar-ai/cricpulse-ui@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
         exit 0
         ;;
     esac
