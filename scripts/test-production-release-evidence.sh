@@ -28,6 +28,15 @@ export BACKUP_FILE=/secure/backups/prod.dump
 export DEPLOY_SSH_PRIVATE_KEY="PRIVATE-KEY-MUST-NOT-APPEAR"
 export PRODUCTION_API_BASE_URL=https://api.private.example
 
+WORKFLOW="$ROOT/.github/workflows/production-deployment.yml"
+grep -Fq "id: release_preflight" "$WORKFLOW"
+grep -Fq "id: backend_image" "$WORKFLOW"
+grep -Fq "id: frontend_image" "$WORKFLOW"
+grep -Fq "id: production_deploy" "$WORKFLOW"
+grep -Fq "name: Generate sanitized production release evidence" "$WORKFLOW"
+grep -Fq "name: Upload production release evidence" "$WORKFLOW"
+grep -Fq "retention-days: 90" "$WORKFLOW"
+
 bash "$ROOT/scripts/write-production-release-evidence.sh"
 grep -Fq "DEPLOYMENT STEP SUCCEEDED" "$EVIDENCE_FILE"
 grep -Fq "$BACKEND_DIGEST" "$EVIDENCE_FILE"
