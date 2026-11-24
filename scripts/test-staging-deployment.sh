@@ -18,7 +18,8 @@ printf '%s\n' "$*" >> "$MOCK_DOCKER_LOG"
 [[ "$*" == "compose version" ]] && exit 0
 exit 0
 MOCK
-chmod +x "$TMP/bin/docker"; export PATH="$TMP/bin:$PATH"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$TMP/bin/pg_restore"
+chmod +x "$TMP/bin/docker" "$TMP/bin/pg_restore"; export PATH="$TMP/bin:$PATH"
 bash "$ROOT/scripts/staging-deploy-with-rollback.sh" "$APP" sha-3333333 sha-4444444 "$TMP/verified-backup.dump" https://api.staging.example.test https://staging.example.test https://api.staging.example.test/actuator/health/readiness ""
 grep -Fxq 'BACKEND_TAG=sha-3333333' "$APP/.last-known-good-staging"
 grep -Fxq 'FRONTEND_TAG=sha-4444444' "$APP/.last-known-good-staging"
