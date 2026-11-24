@@ -9,7 +9,7 @@ cat > "$TOOLS/staging-deployment-smoke.sh" <<'SMOKE'
 #!/usr/bin/env bash
 exit 0
 SMOKE
-touch "$TMP/verified-backup.dump"
+printf "mock-postgres-backup-archive" > "$TMP/verified-backup.dump"
 printf 'POSTGRES_PASSWORD=Staging-Only-Secret-123456\nJWT_SECRET=staging-jwt-secret-at-least-32-bytes-long\nBACKEND_TAG=sha-1111111\nFRONTEND_TAG=sha-2222222\n' > "$APP/.env"
 export MOCK_DOCKER_LOG="$TMP/docker.log"
 cat > "$TMP/bin/docker" <<'MOCK'
