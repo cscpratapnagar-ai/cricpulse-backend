@@ -96,6 +96,23 @@ jobs:
           "${SSH[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$DEPLOY_APP_DIR/release-tools'"
           "${SCP[@]}" docker-compose.staging.yml "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_APP_DIR/"
           "${SCP[@]}" scripts/staging-deployment-smoke.sh "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_APP_DIR/release-tools/"
+          "${SSH[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "chmod 700 '$DEPLOY_APP_DIR/release-tools/staging-deployment-smoke.sh'"
+      - name: Run remote staging host bootstrap preflight
+        env:
+          DEPLOY_HOST: ${{ secrets.STAGING_DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.STAGING_DEPLOY_USER }}
+          DEPLOY_APP_DIR: ${{ secrets.STAGING_DEPLOY_APP_DIR }}
+          BACKEND_DIGEST: ${{ steps.backend_image.outputs.image_digest }}
+          FRONTEND_DIGEST: ${{ steps.frontend_image.outputs.image_digest }}
+          BACKUP_FILE: ${{ inputs.backup_file }}
+        run: |
+          set -euo pipefail
+          [[ "$BACKEND_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "Backend digest output is invalid" >&2; exit 1; }
+          [[ "$FRONTEND_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "Frontend digest output is invalid" >&2; exit 1; }
+          BACKEND_IMAGE="ghcr.io/cscpratapnagar-ai/cricpulse-backend@$BACKEND_DIGEST"
+          FRONTEND_IMAGE="ghcr.io/cscpratapnagar-ai/cricpulse-ui@$FRONTEND_DIGEST"
+          printf -v REMOTE_PREFLIGHT '%q ' bash -s -- "$DEPLOY_APP_DIR" "$BACKUP_FILE" "$BACKEND_IMAGE" "$FRONTEND_IMAGE"
+          ssh -i "$HOME/.ssh/cricpulse_staging" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$DEPLOY_USER@$DEPLOY_HOST" "$REMOTE_PREFLIGHT" < scripts/staging-host-preflight.sh
       - name: Deploy staging with automatic rollback
         env:
           DEPLOY_HOST: ${{ secrets.STAGING_DEPLOY_HOST }}
