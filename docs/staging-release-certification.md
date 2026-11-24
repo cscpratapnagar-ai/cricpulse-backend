@@ -30,6 +30,12 @@ The staging host must have Docker Engine and the Docker Compose plugin. Provisio
 6. The workflow verifies both attestations, checks staging environment secrets, configures pinned SSH, transfers only staging deployment files, deploys, and runs API readiness, database-backed broadcast health, frontend HTTP/HTML, and optional match snapshot checks.
 7. If a deploy or smoke check fails, the script restores both previous immutable image tags and attempts to bring the previous staging release back to healthy status.
 
+## Release evidence artifact
+
+Every workflow attempt generates a sanitized `staging-release-evidence.md` report and uploads it as a 90-day GitHub Actions artifact, including failed attempts where the evidence step can run. The report records the workflow run/attempt, source commit/ref, requested immutable tags, verified image digests, provenance/preflight/deploy step outcomes, and overall workflow status. It is also appended to the GitHub Actions job summary.
+
+The report deliberately excludes credentials, environment secrets, hostnames, deployment paths, backup paths, and endpoint URLs. A failed deployment step is not automatically described as a successful rollback: operators must inspect the deployment log for `ROLLBACK PASS` or `CRITICAL`.
+
 ## OBS / vMix manual certification
 
 After the staging workflow succeeds:
