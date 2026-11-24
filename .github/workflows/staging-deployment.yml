@@ -96,7 +96,8 @@ jobs:
           "${SSH[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$DEPLOY_APP_DIR/release-tools'"
           "${SCP[@]}" docker-compose.staging.yml "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_APP_DIR/"
           "${SCP[@]}" scripts/staging-deployment-smoke.sh "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_APP_DIR/release-tools/"
-          "${SSH[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "chmod 700 '$DEPLOY_APP_DIR/release-tools/staging-deployment-smoke.sh'"
+          "${SCP[@]}" scripts/staging-backup-restore-rehearsal.sh "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_APP_DIR/release-tools/"
+          "${SSH[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "chmod 700 '$DEPLOY_APP_DIR/release-tools/staging-deployment-smoke.sh' '$DEPLOY_APP_DIR/release-tools/staging-backup-restore-rehearsal.sh'"
       - name: Run remote staging host bootstrap preflight
         env:
           DEPLOY_HOST: ${{ secrets.STAGING_DEPLOY_HOST }}
