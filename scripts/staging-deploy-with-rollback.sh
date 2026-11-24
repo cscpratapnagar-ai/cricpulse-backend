@@ -13,11 +13,13 @@ find "$BACKUP_FILE" -mmin -1440 -print -quit | grep -q . || fail "Staging backup
 command -v docker >/dev/null 2>&1 || fail "Docker is required"
 docker compose version >/dev/null 2>&1 || fail "Docker Compose plugin is required"
 command -v sha256sum >/dev/null 2>&1 || fail "sha256sum is required"
+command -v pg_restore >/dev/null 2>&1 || fail "PostgreSQL pg_restore client is required"
 APP_DIR="$(cd "$APP_DIR" && pwd)"
 TOOLS_DIR="$APP_DIR/release-tools"; ENV_FILE="$APP_DIR/.env"
 COMPOSE_FILE="$APP_DIR/docker-compose.staging.yml"; SMOKE="$TOOLS_DIR/staging-deployment-smoke.sh"
 [[ -f "$ENV_FILE" && -f "$COMPOSE_FILE" && -f "$SMOKE" ]] || fail "Staging deployment files or existing .env are missing"
 echo "Staging pre-deployment backup checksum:"; sha256sum "$BACKUP_FILE"
+pg_restore --list "$BACKUP_FILE" >/dev/null || fail "Staging backup is not a readable PostgreSQL custom-format archive"
 set -a
 # shellcheck disable=SC1090
 source "$ENV_FILE"
