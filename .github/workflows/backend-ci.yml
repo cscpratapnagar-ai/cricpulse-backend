@@ -54,6 +54,9 @@ jobs:
           bash -n scripts/test-production-deploy-rollback.sh
           bash -n scripts/verify-production-image-attestation.sh
           bash -n scripts/test-production-image-attestation.sh
+          bash -n scripts/staging-deployment-smoke.sh
+          bash -n scripts/staging-deploy-with-rollback.sh
+          bash -n scripts/test-staging-deployment.sh
           bash -n scripts/verify-frontend-image-attestation.sh
           bash -n scripts/test-frontend-image-attestation.sh
           node --check scripts/e2e-scoring-websocket.mjs
@@ -66,6 +69,9 @@ jobs:
 
       - name: Verify frontend production image provenance enforcement
         run: bash scripts/test-frontend-image-attestation.sh
+
+      - name: Verify staging deployment and rollback paths
+        run: bash scripts/test-staging-deployment.sh
 
       - name: Set up Node.js for WebSocket runtime E2E
         uses: actions/setup-node@v4
@@ -103,6 +109,14 @@ jobs:
 
       - name: Build production container
         run: docker build --tag cricpulse-backend:ci .
+      - name: Validate isolated staging compose
+        env:
+          POSTGRES_PASSWORD: Staging-Only-Secret-123456
+          JWT_SECRET: staging-jwt-secret-at-least-32-bytes-long
+          BACKEND_TAG: sha-abcdef1
+          FRONTEND_TAG: sha-1234567
+        run: docker compose -f docker-compose.staging.yml config --quiet
+
       - name: Validate production compose
         env:
           POSTGRES_PASSWORD: Preflight-Only-Secret-7c29a4b6
