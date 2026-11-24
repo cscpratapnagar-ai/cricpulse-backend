@@ -15,7 +15,7 @@ services:
       timeout: 5s
       retries: 12
   backend:
-    image: ghcr.io/cscpratapnagar-ai/cricpulse-backend:${BACKEND_TAG:?BACKEND_TAG is required}
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE digest reference is required}
     restart: unless-stopped
     environment:
       DATABASE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-cricket_staging}
@@ -35,7 +35,7 @@ services:
       timeout: 5s
       retries: 12
   frontend:
-    image: ghcr.io/cscpratapnagar-ai/cricpulse-ui:${FRONTEND_TAG:?FRONTEND_TAG is required}
+    image: ${FRONTEND_IMAGE:?FRONTEND_IMAGE digest reference is required}
     restart: unless-stopped
     ports:
       - "127.0.0.1:18080:80"
