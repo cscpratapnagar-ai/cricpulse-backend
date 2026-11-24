@@ -10,6 +10,12 @@ mkdir -p "$TOOLS" "$TMP/bin"
 cp "$ROOT/docker-compose.staging.yml" "$APP/docker-compose.staging.yml"
 cat > "$TOOLS/staging-deployment-smoke.sh" <<'SMOKE'
 #!/usr/bin/env bash
+set -Eeuo pipefail
+COUNT_FILE="$(dirname "$0")/smoke-count"
+COUNT=0
+[[ ! -f "$COUNT_FILE" ]] || COUNT="$(cat "$COUNT_FILE")"
+COUNT=$((COUNT + 1))
+printf '%s' "$COUNT" > "$COUNT_FILE"
 exit 0
 SMOKE
 printf "mock-postgres-backup-archive" > "$TMP/verified-backup.dump"
@@ -41,8 +47,11 @@ grep -Fxq "FRONTEND_IMAGE=ghcr.io/cscpratapnagar-ai/cricpulse-ui@$FRONTEND_NEW_D
 grep -Fxq "BACKEND_IMAGE=ghcr.io/cscpratapnagar-ai/cricpulse-backend@$BACKEND_NEW_DIGEST" "$APP/.env"
 grep -Fxq "FRONTEND_IMAGE=ghcr.io/cscpratapnagar-ai/cricpulse-ui@$FRONTEND_NEW_DIGEST" "$APP/.env"
 grep -Fq "pull backend frontend" "$MOCK_DOCKER_LOG"
+[[ "$(cat "$TOOLS/smoke-count")" == "3" ]] || { echo "Expected three successful post-deploy stability checks" >&2; exit 1; }
+grep -Fq "Staging release stability check 3/3" "$TMP/docker.log" 2>/dev/null || true
+LAST_KNOWN_GOOD_BEFORE="$(cat "$APP/.last-known-good-staging")"
 
-# Simulate a failed rollout: the previous image tags are migrated to digests and rollback restores those exact digests.
+# Simulate a late stability regression: the second post-deploy check fails, then rollback must pass all three checks.
 printf 'POSTGRES_PASSWORD=Staging-Only-Secret-123456\nJWT_SECRET=staging-jwt-secret-at-least-32-bytes-long\nBACKEND_TAG=sha-1111111\nFRONTEND_TAG=sha-2222222\n' > "$APP/.env"
 cat > "$TOOLS/staging-deployment-smoke.sh" <<'SMOKE'
 #!/usr/bin/env bash
@@ -52,7 +61,7 @@ COUNT=0
 [[ ! -f "$COUNT_FILE" ]] || COUNT="$(cat "$COUNT_FILE")"
 COUNT=$((COUNT + 1))
 printf '%s' "$COUNT" > "$COUNT_FILE"
-[[ "$COUNT" -ne 1 ]] || exit 9
+[[ "$COUNT" -ne 5 ]] || exit 9
 exit 0
 SMOKE
 if bash "$ROOT/scripts/staging-deploy-with-rollback.sh" "$APP" "$BACKEND_NEW_DIGEST" "$FRONTEND_NEW_DIGEST" "$TMP/verified-backup.dump" https://api.staging.example.test https://staging.example.test https://api.staging.example.test/actuator/health/readiness ""; then
@@ -61,6 +70,8 @@ if bash "$ROOT/scripts/staging-deploy-with-rollback.sh" "$APP" "$BACKEND_NEW_DIG
 fi
 grep -Fxq "BACKEND_IMAGE=ghcr.io/cscpratapnagar-ai/cricpulse-backend@sha256:$LEGACY_DIGEST" "$APP/.env"
 grep -Fxq "FRONTEND_IMAGE=ghcr.io/cscpratapnagar-ai/cricpulse-ui@sha256:$LEGACY_DIGEST" "$APP/.env"
+[[ "$(cat "$TOOLS/smoke-count")" == "5" ]] || { echo "Expected failed new release check plus three successful rollback checks" >&2; exit 1; }
+[[ "$(cat "$APP/.last-known-good-staging")" == "$LAST_KNOWN_GOOD_BEFORE" ]] || { echo "Failed rollout must not replace last-known-good state" >&2; exit 1; }
 
 # Mutable digests, non-staging paths, and missing backups are rejected.
 if bash "$ROOT/scripts/staging-deploy-with-rollback.sh" "$APP" latest "$FRONTEND_NEW_DIGEST" "$TMP/verified-backup.dump" https://api.staging.example.test https://staging.example.test https://api.staging.example.test/actuator/health/readiness ""; then
