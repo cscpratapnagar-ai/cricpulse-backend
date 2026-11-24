@@ -26,6 +26,16 @@ grep -Fxq 'cscpratapnagar-ai/cricpulse-ui/.github/workflows/publish-production-c
 grep -Fxq -- '--source-ref' "$GH_CALL_LOG"
 grep -Fxq 'refs/heads/develop' "$GH_CALL_LOG"
 
+# Older GitHub CLI releases have a case-insensitive source-ref policy bug and must be rejected.
+rm -f "$GH_CALL_LOG"
+export MOCK_GH_VERSION=2.101.0
+if bash "$VERIFY" sha-abcdef123; then
+  echo "Verifier unexpectedly accepted an outdated GitHub CLI" >&2
+  exit 1
+fi
+[[ ! -e "$GH_CALL_LOG" ]] || { echo "Attestation verification ran with an outdated GitHub CLI" >&2; exit 1; }
+unset MOCK_GH_VERSION
+
 # Mutable or malformed tags must fail before invoking gh.
 rm -f "$GH_CALL_LOG"
 if bash "$VERIFY" latest; then
