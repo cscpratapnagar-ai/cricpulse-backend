@@ -43,7 +43,7 @@ case "${1:-}" in
         exit 0
         ;;
       sha256:2222222222222222222222222222222222222222222222222222222222222222)
-        [[ "${MOCK_NO_REPODIGEST:-}" == frontend ]] || echo "ghcr.io/cscpratapnagar-ai/cricpulse-ui@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        [[ "${MOCK_NO_REPODIGEST:-}" == frontend ]] || echo "ghcr.io/cscpratapnagar-ai/cricpulse-ui@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
         exit 0
         ;;
     esac
