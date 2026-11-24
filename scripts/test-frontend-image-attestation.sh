@@ -17,12 +17,14 @@ chmod +x "$TMP/bin/gh"
 export PATH="$TMP/bin:$PATH"
 export GH_TOKEN="ci-test-token"
 
-# Valid immutable tags must pin the exact frontend repository and trusted workflow.
+# Valid immutable tags must pin the exact frontend repository, signer, and staging source branch.
 bash "$VERIFY" sha-abcdef123
 grep -Fxq 'oci://ghcr.io/cscpratapnagar-ai/cricpulse-ui:sha-abcdef123' "$GH_CALL_LOG"
 grep -Fxq -- '--repo' "$GH_CALL_LOG"
 grep -Fxq 'cscpratapnagar-ai/cricpulse-ui' "$GH_CALL_LOG"
 grep -Fxq 'cscpratapnagar-ai/cricpulse-ui/.github/workflows/publish-production-container.yml' "$GH_CALL_LOG"
+grep -Fxq -- '--source-ref' "$GH_CALL_LOG"
+grep -Fxq 'refs/heads/develop' "$GH_CALL_LOG"
 
 # Mutable or malformed tags must fail before invoking gh.
 rm -f "$GH_CALL_LOG"
@@ -39,4 +41,4 @@ if bash "$VERIFY" sha-abcdef123; then
   exit 1
 fi
 
-echo "PASS: frontend immutable tag validation, signer pinning, and fail-closed attestation verification"
+echo "PASS: frontend immutable tag, trusted signer, develop source-ref, and fail-closed verification"
