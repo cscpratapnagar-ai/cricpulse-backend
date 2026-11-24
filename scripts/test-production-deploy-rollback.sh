@@ -76,19 +76,20 @@ RESTORE
   cat > "$app/release-tools/production-deployment-smoke.sh" <<'SMOKE'
 #!/usr/bin/env bash
 set -euo pipefail
-if [[ "${MOCK_SMOKE_MODE:-success}" == rollback ]]; then
-  count=0
-  [[ ! -f "$MOCK_SMOKE_COUNTER_PATH" ]] || count="$(cat "$MOCK_SMOKE_COUNTER_PATH")"
-  count=$((count + 1))
-  printf '%s' "$count" > "$MOCK_SMOKE_COUNTER_PATH"
-  if [[ "$count" -eq 1 ]]; then
-    echo "simulated new-release smoke failure" >&2
-    exit 1
-  fi
-fi
+count=0
+[[ ! -f "$MOCK_SMOKE_COUNTER_PATH" ]] || count="$(cat "$MOCK_SMOKE_COUNTER_PATH")"
+count=$((count + 1))
+printf '%s' "$count" > "$MOCK_SMOKE_COUNTER_PATH"
+case "${MOCK_SMOKE_MODE:-success}" in
+  rollback)
+    [[ "$count" -ne 1 ]] || { echo "simulated new-release smoke failure" >&2; exit 1; }
+    ;;
+  flaky)
+    [[ "$count" -ne 2 ]] || { echo "simulated intermittent production failure" >&2; exit 1; }
+    ;;
+esac
 echo "simulated deployment smoke success"
-SMOKE
-  touch "$app/docker-compose.production.yml"
+SMOKE  touch "$app/docker-compose.production.yml"
   chmod +x "$app/release-tools/"*.sh
   printf 'test backup data\n' > "$TMP/$name.dump"
   printf '%s\n' "$app"
@@ -100,7 +101,8 @@ export MOCK_RESTORE_LOG="$TMP/restore.log"
 export NEW_BACKEND_DIGEST=sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 export NEW_FRONTEND_DIGEST=sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 
-echo "[1/4] Verify successful deployment requires and records a successful restore rehearsal"
+echo "[1/5] Verify successful deployment requires three consecutive smoke passes and records a successful restore rehearsal"
+rm -f "$MOCK_SMOKE_COUNTER_PATH"
 SUCCESS_APP="$(make_fixture success success)"
 bash "$ROOT/scripts/production-deploy-with-rollback.sh" \
   "$SUCCESS_APP" sha-bbbbbbb sha-ccccccc "$NEW_BACKEND_DIGEST" "$NEW_FRONTEND_DIGEST" \
@@ -113,8 +115,9 @@ grep -qx "FRONTEND_IMAGE=ghcr.io/cscpratapnagar-ai/cricpulse-ui@$NEW_FRONTEND_DI
 grep -qx "BACKEND_IMAGE=ghcr.io/cscpratapnagar-ai/cricpulse-backend@$NEW_BACKEND_DIGEST" "$SUCCESS_APP/.last-known-good-release"
 grep -qx "FRONTEND_IMAGE=ghcr.io/cscpratapnagar-ai/cricpulse-ui@$NEW_FRONTEND_DIGEST" "$SUCCESS_APP/.last-known-good-release"
 grep -Fqx "$TMP/success.dump" "$MOCK_RESTORE_LOG"
+[[ "$(cat "$MOCK_SMOKE_COUNTER_PATH")" == "3" ]] || { echo "Expected three consecutive production smoke passes" >&2; exit 1; }
 
-echo "[2/4] Verify restore failure blocks before .env mutation or container inspection"
+echo "[2/5] Verify restore failure blocks before .env mutation or container inspection"
 RESTORE_FAIL_APP="$(make_fixture restore-fail success)"
 cp "$RESTORE_FAIL_APP/.env" "$TMP/restore-fail.env.before"
 if MOCK_RESTORE_FAIL=1 bash "$ROOT/scripts/production-deploy-with-rollback.sh" \
@@ -127,7 +130,7 @@ fi
 cmp "$TMP/restore-fail.env.before" "$RESTORE_FAIL_APP/.env"
 [[ ! -f "$RESTORE_FAIL_APP/.last-known-good-release" ]]
 
-echo "[3/4] Verify failed smoke check restores exact previous running RepoDigests"
+echo "[3/5] Verify failed smoke check restores exact previous running RepoDigests"
 ROLLBACK_APP="$(make_fixture rollback rollback)"
 rm -f "$MOCK_SMOKE_COUNTER_PATH"
 if MOCK_SMOKE_MODE=rollback bash "$ROOT/scripts/production-deploy-with-rollback.sh" \
@@ -141,9 +144,23 @@ grep -qx 'BACKEND_TAG=sha-abcdef1' "$ROLLBACK_APP/.env"
 grep -qx 'FRONTEND_TAG=sha-1234567' "$ROLLBACK_APP/.env"
 grep -qx 'BACKEND_IMAGE=ghcr.io/cscpratapnagar-ai/cricpulse-backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "$ROLLBACK_APP/.env"
 grep -qx 'FRONTEND_IMAGE=ghcr.io/cscpratapnagar-ai/cricpulse-ui@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' "$ROLLBACK_APP/.env"
-[[ "$(cat "$MOCK_SMOKE_COUNTER_PATH")" == "2" ]] || { echo "Expected smoke to run once for failed release and once for rollback" >&2; exit 1; }
+[[ "$(cat "$MOCK_SMOKE_COUNTER_PATH")" == "4" ]] || { echo "Expected one failed new-release check and three rollback stability checks" >&2; exit 1; }
 
-echo "[4/4] Fail closed when current running image has no registry RepoDigest"
+echo "[4/5] Verify an intermittent second-check failure triggers rollback"
+FLAKY_APP="$(make_fixture flaky flaky)"
+rm -f "$MOCK_SMOKE_COUNTER_PATH"
+if MOCK_SMOKE_MODE=flaky bash "$ROOT/scripts/production-deploy-with-rollback.sh" \
+  "$FLAKY_APP" sha-fffffff sha-9999999 "$NEW_BACKEND_DIGEST" "$NEW_FRONTEND_DIGEST" \
+  "$TMP/flaky.dump" https://api.example.test https://app.example.test \
+  http://127.0.0.1:8081/actuator/health/readiness ""; then
+  echo "Expected intermittent production health failure to roll back the release" >&2
+  exit 1
+fi
+grep -qx 'BACKEND_TAG=sha-abcdef1' "$FLAKY_APP/.env"
+grep -qx 'FRONTEND_TAG=sha-1234567' "$FLAKY_APP/.env"
+[[ "$(cat "$MOCK_SMOKE_COUNTER_PATH")" == "5" ]] || { echo "Expected two new-release checks and three rollback checks" >&2; exit 1; }
+
+echo "[5/5] Fail closed when current running image has no registry RepoDigest"
 NO_DIGEST_APP="$(make_fixture no-digest success)"
 cp "$NO_DIGEST_APP/.env" "$TMP/no-digest.env.before"
 if MOCK_NO_REPODIGEST=backend bash "$ROOT/scripts/production-deploy-with-rollback.sh" \
@@ -155,4 +172,4 @@ if MOCK_NO_REPODIGEST=backend bash "$ROOT/scripts/production-deploy-with-rollbac
 fi
 cmp "$TMP/no-digest.env.before" "$NO_DIGEST_APP/.env"
 
-echo "PASS: production backup restore gate, digest pinning, exact rollback, and fail-closed rollback precondition are covered."
+echo "PASS: production sustained health gate, backup restore, digest pinning, exact rollback, and fail-closed rollback precondition are covered."
