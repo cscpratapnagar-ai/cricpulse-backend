@@ -48,10 +48,10 @@ grep -Fxq "BACKEND_IMAGE=ghcr.io/cscpratapnagar-ai/cricpulse-backend@$BACKEND_NE
 grep -Fxq "FRONTEND_IMAGE=ghcr.io/cscpratapnagar-ai/cricpulse-ui@$FRONTEND_NEW_DIGEST" "$APP/.env"
 grep -Fq "pull backend frontend" "$MOCK_DOCKER_LOG"
 [[ "$(cat "$TOOLS/smoke-count")" == "3" ]] || { echo "Expected three successful post-deploy stability checks" >&2; exit 1; }
-grep -Fq "Staging release stability check 3/3" "$TMP/docker.log" 2>/dev/null || true
 LAST_KNOWN_GOOD_BEFORE="$(cat "$APP/.last-known-good-staging")"
 
 # Simulate a late stability regression: the second post-deploy check fails, then rollback must pass all three checks.
+rm -f "$TOOLS/smoke-count"
 printf 'POSTGRES_PASSWORD=Staging-Only-Secret-123456\nJWT_SECRET=staging-jwt-secret-at-least-32-bytes-long\nBACKEND_TAG=sha-1111111\nFRONTEND_TAG=sha-2222222\n' > "$APP/.env"
 cat > "$TOOLS/staging-deployment-smoke.sh" <<'SMOKE'
 #!/usr/bin/env bash
