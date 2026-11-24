@@ -61,7 +61,7 @@ COUNT=0
 [[ ! -f "$COUNT_FILE" ]] || COUNT="$(cat "$COUNT_FILE")"
 COUNT=$((COUNT + 1))
 printf '%s' "$COUNT" > "$COUNT_FILE"
-[[ "$COUNT" -ne 5 ]] || exit 9
+[[ "$COUNT" -ne 2 ]] || exit 9
 exit 0
 SMOKE
 if bash "$ROOT/scripts/staging-deploy-with-rollback.sh" "$APP" "$BACKEND_NEW_DIGEST" "$FRONTEND_NEW_DIGEST" "$TMP/verified-backup.dump" https://api.staging.example.test https://staging.example.test https://api.staging.example.test/actuator/health/readiness ""; then
