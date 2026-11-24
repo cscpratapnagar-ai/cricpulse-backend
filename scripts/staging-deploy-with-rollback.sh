@@ -115,7 +115,18 @@ run_preflight() {
 }
 wait_and_smoke() {
   compose up -d --remove-orphans --wait --wait-timeout 180
-  API_BASE_URL="$API_BASE_URL" APP_URL="$APP_URL" ACTUATOR_URL="$ACTUATOR_URL" MATCH_ID="$MATCH_ID" bash "$SMOKE"
+  # A single healthy response immediately after startup is not sufficient to certify a release.
+  # Require three complete external smoke passes over a 20-second observation window.
+  for attempt in 1 2 3; do
+    echo "Staging release stability check $attempt/3"
+    API_BASE_URL="$API_BASE_URL" APP_URL="$APP_URL" ACTUATOR_URL="$ACTUATOR_URL" MATCH_ID="$MATCH_ID" bash "$SMOKE" || {
+      echo "Staging stability check $attempt/3 failed" >&2
+      return 1
+    }
+    if [[ "$attempt" -lt 3 ]]; then
+      sleep 10
+    fi
+  done
 }
 
 echo "Applying digest-pinned staging release:"
