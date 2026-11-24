@@ -14,12 +14,12 @@ CONTAINER="cricpulse-staging-restore-probe-$$"
 PROBE_PASSWORD="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
 [[ "$PROBE_PASSWORD" =~ ^[0-9a-f]{64}$ ]] || fail "Could not generate temporary restore-probe credential"
 cleanup() {
-  docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+  docker rm -fv "$CONTAINER" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
 echo "Starting disposable PostgreSQL 16 restore-probe container"
-docker run -d --name "$CONTAINER" --label cricpulse.staging.restore-probe=true \
+docker run -d --rm --network none --name "$CONTAINER" --label cricpulse.staging.restore-probe=true \
   -e POSTGRES_PASSWORD="$PROBE_PASSWORD" -e POSTGRES_DB=restore_probe postgres:16-alpine >/dev/null || fail "Could not start isolated PostgreSQL restore-probe container"
 
 ready=false
