@@ -91,9 +91,9 @@ jobs:
         run: |
           set -euo pipefail
           install -d -m 700 "$HOME/.ssh"
-          printf '%s\\n' "$DEPLOY_SSH_PRIVATE_KEY" > "$HOME/.ssh/cricpulse_deploy"
+          printf '%s\n' "$DEPLOY_SSH_PRIVATE_KEY" > "$HOME/.ssh/cricpulse_deploy"
           chmod 600 "$HOME/.ssh/cricpulse_deploy"
-          printf '%s\\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
 
       - name: Transfer immutable deployment bundle
