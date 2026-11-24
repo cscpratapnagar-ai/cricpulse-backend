@@ -11,7 +11,7 @@ This checklist separates repository/CI evidence from actions that require the re
 - [ ] Provision a dedicated staging host/path ending in `/staging`; do not reuse production database volumes or secrets.
 - [ ] Confirm Docker Engine, Compose, GHCR read access, HTTPS routing, WebSocket upgrade routing, and pinned SSH host keys.
 - [ ] Confirm staging `.env` is owner-only (mode 0600) and contains strong staging-only database/JWT secrets.
-- [ ] Confirm a recent staging backup can be restored in an isolated disposable database.
+- [ ] Confirm a recent staging backup can be restored in an isolated disposable PostgreSQL 16 database; the staging host preflight now runs this rehearsal automatically and blocks deployment on restore failure.
 
 ## Gate 2 — staging deployment and application certification
 
