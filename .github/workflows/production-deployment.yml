@@ -40,6 +40,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Validate release inputs and deployment secrets
+        id: release_preflight
         env:
           BACKEND_TAG: ${{ inputs.backend_tag }}
           FRONTEND_TAG: ${{ inputs.frontend_tag }}
@@ -68,12 +69,14 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify backend image signed provenance before any deployment action
+        id: backend_image
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BACKEND_TAG: ${{ inputs.backend_tag }}
         run: bash scripts/verify-production-image-attestation.sh "$BACKEND_TAG"
 
       - name: Verify frontend image signed provenance before any deployment action
+        id: frontend_image
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FRONTEND_TAG: ${{ inputs.frontend_tag }}
@@ -105,6 +108,7 @@ jobs:
           "${SCP[@]}" scripts/production-release-preflight.sh scripts/production-deployment-smoke.sh scripts/postgres-backup-restore-certification.sh "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_APP_DIR/release-tools/"
 
       - name: Deploy, verify, and automatically roll back on failure
+        id: production_deploy
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
@@ -120,3 +124,27 @@ jobs:
           set -euo pipefail
           printf -v REMOTE_COMMAND '%q ' bash -s -- "$DEPLOY_APP_DIR" "$BACKEND_TAG" "$FRONTEND_TAG" "$BACKUP_FILE" "$API_BASE_URL" "${APP_URL:-}" "$ACTUATOR_URL" "${MATCH_ID:-}"
           ssh -i "$HOME/.ssh/cricpulse_deploy" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$DEPLOY_USER@$DEPLOY_HOST" "$REMOTE_COMMAND" < scripts/production-deploy-with-rollback.sh
+
+      - name: Generate sanitized production release evidence
+        if: always()
+        env:
+          BACKEND_TAG: ${{ inputs.backend_tag }}
+          FRONTEND_TAG: ${{ inputs.frontend_tag }}
+          BACKEND_DIGEST: ${{ steps.backend_image.outputs.image_digest }}
+          FRONTEND_DIGEST: ${{ steps.frontend_image.outputs.image_digest }}
+          BACKEND_VERIFY_OUTCOME: ${{ steps.backend_image.outcome }}
+          FRONTEND_VERIFY_OUTCOME: ${{ steps.frontend_image.outcome }}
+          PREFLIGHT_OUTCOME: ${{ steps.release_preflight.outcome }}
+          DEPLOY_OUTCOME: ${{ steps.production_deploy.outcome }}
+          WORKFLOW_STATUS: ${{ job.status }}
+          EVIDENCE_FILE: ${{ runner.temp }}/production-release-evidence.md
+        run: bash scripts/write-production-release-evidence.sh
+
+      - name: Upload production release evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-release-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/production-release-evidence.md
+          if-no-files-found: ignore
+          retention-days: 90
