@@ -24,7 +24,7 @@ MATCH_ID="${10}"
 [[ "$BACKUP_FILE" == /* && -f "$BACKUP_FILE" && ! -L "$BACKUP_FILE" && -s "$BACKUP_FILE" ]] || fail "A non-empty regular pre-deployment backup file is required"
 find "$BACKUP_FILE" -mmin -1440 -print -quit | grep -q . || fail "Backup must be no older than 24 hours"
 [[ "$API_BASE_URL" == https://* && "$APP_URL" == https://* ]] || fail "Production API and application URLs must use HTTPS"
-[[ "$ACTUATOR_URL" =~ ^http://(127\.0\.0\.1|localhost)(:[0-9]+)?/ ]] || fail "Actuator URL must use a host-local HTTP endpoint"
+[[ "$ACTUATOR_URL" =~ ^http://(127\\.0\\.0\\.1|localhost)(:[0-9]+)?/ ]] || fail "Actuator URL must use a host-local HTTP endpoint"
 if [[ -n "$MATCH_ID" ]]; then
   [[ "$MATCH_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] || fail "MATCH_ID must be a UUID"
 fi
@@ -37,13 +37,19 @@ TOOLS_DIR="$APP_DIR/release-tools"
 ENV_FILE="$APP_DIR/.env"
 COMPOSE_FILE="$APP_DIR/docker-compose.production.yml"
 PREFLIGHT="$TOOLS_DIR/production-release-preflight.sh"
+RESTORE_REHEARSAL="$TOOLS_DIR/production-backup-restore-rehearsal.sh"
 SMOKE="$TOOLS_DIR/production-deployment-smoke.sh"
-[[ -f "$ENV_FILE" && ! -L "$ENV_FILE" && -f "$COMPOSE_FILE" && -f "$PREFLIGHT" && -f "$SMOKE" ]] || fail "Deployment files or existing .env are missing"
+[[ -f "$ENV_FILE" && ! -L "$ENV_FILE" && -f "$COMPOSE_FILE" && -f "$PREFLIGHT" && -f "$RESTORE_REHEARSAL" && -f "$SMOKE" ]] || fail "Deployment files or existing .env are missing"
 [[ -O "$ENV_FILE" ]] || fail "Production .env must be owned by the deployment user"
 [[ "$(stat -c '%a' "$ENV_FILE")" == "600" ]] || fail "Production .env must have mode 0600"
 
 echo "Pre-deployment backup checksum:"
 sha256sum "$BACKUP_FILE"
+
+# Prove the supplied backup is actually restorable before reading or changing
+# release state. The probe uses a disposable PostgreSQL container with no
+# network, published ports, or production volume mounts.
+bash "$RESTORE_REHEARSAL" "$BACKUP_FILE" || fail "Production backup restore rehearsal failed; deployment is blocked"
 
 # Load the existing operator-managed environment without printing secrets.
 set -a
@@ -71,13 +77,11 @@ current_running_image_ref() {
   image_id="$(docker inspect --format '{{.Image}}' "$container")" || fail "Unable to identify existing $service image"
   [[ "$image_id" =~ ^sha256:[0-9a-f]{64}$ ]] || fail "Existing $service image ID is invalid"
   repo_digest="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$image_id")" || fail "Unable to read existing $service RepoDigests"
-  mapfile -t refs < <(printf '%s\n' "$repo_digest" | grep -E "^$repository@sha256:[0-9a-f]{64}$" || true)
+  mapfile -t refs < <(printf '%s\\n' "$repo_digest" | grep -E "^$repository@sha256:[0-9a-f]{64}$" || true)
   [[ "${#refs[@]}" -eq 1 ]] || fail "Expected exactly one existing $service GHCR RepoDigest; refusing a tag-based rollback"
   printf '%s' "${refs[0]}"
 }
 
-# Snapshot the exact images currently running. Never derive rollback references
-# from tags because registry tags can be moved after a release.
 OLD_BACKEND_IMAGE="$(current_running_image_ref backend ghcr.io/cscpratapnagar-ai/cricpulse-backend)"
 OLD_FRONTEND_IMAGE="$(current_running_image_ref frontend ghcr.io/cscpratapnagar-ai/cricpulse-ui)"
 NEW_BACKEND_IMAGE="ghcr.io/cscpratapnagar-ai/cricpulse-backend@$BACKEND_DIGEST"
@@ -133,7 +137,7 @@ if ! run_preflight "$NEW_BACKEND_TAG" "$NEW_FRONTEND_TAG"; then
 fi
 
 if wait_and_smoke; then
-  printf 'BACKEND_TAG=%s\nFRONTEND_TAG=%s\nBACKEND_IMAGE=%s\nFRONTEND_IMAGE=%s\nDEPLOYED_AT=%s\n' \
+  printf 'BACKEND_TAG=%s\\nFRONTEND_TAG=%s\\nBACKEND_IMAGE=%s\\nFRONTEND_IMAGE=%s\\nDEPLOYED_AT=%s\\n' \
     "$NEW_BACKEND_TAG" "$NEW_FRONTEND_TAG" "$NEW_BACKEND_IMAGE" "$NEW_FRONTEND_IMAGE" "$(date -u +%FT%TZ)" > "$APP_DIR/.last-known-good-release.tmp"
   chmod 600 "$APP_DIR/.last-known-good-release.tmp"
   mv "$APP_DIR/.last-known-good-release.tmp" "$APP_DIR/.last-known-good-release"
