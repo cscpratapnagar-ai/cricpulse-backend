@@ -27,10 +27,35 @@ echo "Staging pre-deployment backup checksum:"
 sha256sum "$BACKUP_FILE"
 pg_restore --list "$BACKUP_FILE" >/dev/null || fail "Staging backup is not a readable PostgreSQL custom-format archive"
 
-set -a
-# shellcheck disable=SC1090
-source "$ENV_FILE"
-set +a
+# Parse only literal KEY=value lines. Never execute the staging .env as shell code.
+read_env_value() {
+  local key="$1"
+  awk -v key="$key" '
+    index($0, "=") > 0 {
+      name=substr($0, 1, index($0, "=")-1)
+      if (name == key) {
+        count++
+        value=substr($0, index($0, "=")+1)
+      }
+    }
+    END { if (count == 1) print value; else exit 1 }
+  ' "$ENV_FILE"
+}
+read_optional_env_value() {
+  local key="$1"
+  awk -v key="$key" '
+    index($0, "=") > 0 {
+      name=substr($0, 1, index($0, "=")-1)
+      if (name == key) {
+        count++
+        value=substr($0, index($0, "=")+1)
+      }
+    }
+    END { if (count > 1) exit 1; if (count == 1) print value }
+  ' "$ENV_FILE"
+}
+POSTGRES_PASSWORD="$(read_env_value POSTGRES_PASSWORD)" || fail "POSTGRES_PASSWORD must appear exactly once in .env"
+JWT_SECRET="$(read_env_value JWT_SECRET)" || fail "JWT_SECRET must appear exactly once in .env"
 
 BACKEND_REPOSITORY="ghcr.io/cscpratapnagar-ai/cricpulse-backend"
 FRONTEND_REPOSITORY="ghcr.io/cscpratapnagar-ai/cricpulse-ui"
@@ -49,14 +74,16 @@ validate_image_ref() {
   [[ "${value##*@sha256:}" =~ ^[0-9a-f]{64}$ ]] || fail "$label digest is malformed"
 }
 
-OLD_BACKEND_IMAGE="${BACKEND_IMAGE:-}"
-OLD_FRONTEND_IMAGE="${FRONTEND_IMAGE:-}"
+OLD_BACKEND_IMAGE="$(read_optional_env_value BACKEND_IMAGE)" || fail "BACKEND_IMAGE appears more than once in .env"
+OLD_FRONTEND_IMAGE="$(read_optional_env_value FRONTEND_IMAGE)" || fail "FRONTEND_IMAGE appears more than once in .env"
+LEGACY_BACKEND_TAG="$(read_optional_env_value BACKEND_TAG)" || fail "BACKEND_TAG appears more than once in .env"
+LEGACY_FRONTEND_TAG="$(read_optional_env_value FRONTEND_TAG)" || fail "FRONTEND_TAG appears more than once in .env"
 # One-time migration for an existing staging host deployed by the prior SHA-tag workflow.
 if [[ -z "$OLD_BACKEND_IMAGE" ]]; then
-  OLD_BACKEND_IMAGE="$(resolve_legacy_tag "$BACKEND_REPOSITORY" "${BACKEND_TAG:-}")"
+  OLD_BACKEND_IMAGE="$(resolve_legacy_tag "$BACKEND_REPOSITORY" "$LEGACY_BACKEND_TAG")"
 fi
 if [[ -z "$OLD_FRONTEND_IMAGE" ]]; then
-  OLD_FRONTEND_IMAGE="$(resolve_legacy_tag "$FRONTEND_REPOSITORY" "${FRONTEND_TAG:-}")"
+  OLD_FRONTEND_IMAGE="$(resolve_legacy_tag "$FRONTEND_REPOSITORY" "$LEGACY_FRONTEND_TAG")"
 fi
 validate_image_ref "$OLD_BACKEND_IMAGE" "$BACKEND_REPOSITORY" "Existing backend rollback image"
 validate_image_ref "$OLD_FRONTEND_IMAGE" "$FRONTEND_REPOSITORY" "Existing frontend rollback image"
@@ -79,11 +106,11 @@ update_images() {
 }
 compose() { docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"; }
 run_preflight() {
-  ( cd "$APP_DIR"; set -a; source "$ENV_FILE"; set +a
+  ( cd "$APP_DIR"
     [[ "${#POSTGRES_PASSWORD}" -ge 20 && "${#JWT_SECRET}" -ge 32 ]] || exit 1
     [[ "$JWT_SECRET" != *"change-me"* && "$JWT_SECRET" != *"local-only"* && "$JWT_SECRET" != *"ci-only"* ]] || exit 1
     [[ "$POSTGRES_PASSWORD" != *"cricket_dev_password"* && "$POSTGRES_PASSWORD" != *"ci-postgres-password"* ]] || exit 1
-    BACKEND_IMAGE="$1" FRONTEND_IMAGE="$2" docker compose -f docker-compose.staging.yml config --quiet
+    BACKEND_IMAGE="$1" FRONTEND_IMAGE="$2" docker compose --env-file "$ENV_FILE" -f docker-compose.staging.yml config --quiet
   )
 }
 wait_and_smoke() {
