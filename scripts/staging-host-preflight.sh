@@ -58,6 +58,9 @@ docker compose version >/dev/null 2>&1 || fail "Docker Compose plugin is unavail
 docker buildx version >/dev/null 2>&1 || fail "Docker Buildx is unavailable"
 pg_restore --list "$BACKUP_FILE" >/dev/null 2>&1 || fail "Backup is not a readable PostgreSQL custom-format archive"
 
+# Verify the backup by restoring it into a disposable PostgreSQL container with no network before any release change.
+bash "$RESTORE_REHEARSAL" "$BACKUP_FILE" || fail "Isolated staging backup restore rehearsal failed; deployment is blocked"
+
 AVAILABLE_KB="$(df -Pk "$APP_DIR" | awk 'NR == 2 {print $4}')"
 [[ "$AVAILABLE_KB" =~ ^[0-9]+$ ]] || fail "Unable to determine free disk space"
 (( AVAILABLE_KB >= 2097152 )) || fail "At least 2 GiB of free disk space is required for safe image pulls and rollback"
