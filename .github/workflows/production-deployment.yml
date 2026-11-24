@@ -61,7 +61,7 @@ jobs:
           done
           [[ "$DEPLOY_APP_DIR" =~ ^/[a-zA-Z0-9_./-]+$ ]] || { echo "DEPLOY_APP_DIR must be a safe absolute path" >&2; exit 1; }
           [[ "$PRODUCTION_API_BASE_URL" == https://* && "$PRODUCTION_APP_URL" == https://* ]] || { echo "Production API and application URLs must use HTTPS" >&2; exit 1; }
-          [[ "$PRODUCTION_ACTUATOR_URL" =~ ^http://(127\\.0\\.0\\.1|localhost)(:[0-9]+)?/ ]] || { echo "Production Actuator URL must be a host-local HTTP endpoint" >&2; exit 1; }
+          [[ "$PRODUCTION_ACTUATOR_URL" =~ ^http://(127\.0\.0\.1|localhost)(:[0-9]+)?/ ]] || { echo "Production Actuator URL must be a host-local HTTP endpoint" >&2; exit 1; }
 
       - name: Authenticate to GHCR for image provenance verification
         uses: docker/login-action@v3
@@ -91,9 +91,9 @@ jobs:
         run: |
           set -euo pipefail
           install -d -m 700 "$HOME/.ssh"
-          printf '%s\\n' "$DEPLOY_SSH_PRIVATE_KEY" > "$HOME/.ssh/cricpulse_deploy"
+          printf '%s\n' "$DEPLOY_SSH_PRIVATE_KEY" > "$HOME/.ssh/cricpulse_deploy"
           chmod 600 "$HOME/.ssh/cricpulse_deploy"
-          printf '%s\\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
 
       - name: Transfer immutable deployment bundle
