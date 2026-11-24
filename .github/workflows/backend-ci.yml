@@ -52,6 +52,8 @@ jobs:
           bash -n scripts/postgres-backup-restore-certification.sh
           bash -n scripts/production-deploy-with-rollback.sh
           bash -n scripts/test-production-deploy-rollback.sh
+          bash -n scripts/write-production-release-evidence.sh
+          bash -n scripts/test-production-release-evidence.sh
           bash -n scripts/verify-production-image-attestation.sh
           bash -n scripts/test-production-image-attestation.sh
           bash -n scripts/staging-deployment-smoke.sh
@@ -71,6 +73,9 @@ jobs:
 
       - name: Verify production deployment success and rollback paths
         run: bash scripts/test-production-deploy-rollback.sh
+
+      - name: Verify sanitized production release evidence generation
+        run: bash scripts/test-production-release-evidence.sh
 
       - name: Verify production image provenance enforcement
         run: bash scripts/test-production-image-attestation.sh
