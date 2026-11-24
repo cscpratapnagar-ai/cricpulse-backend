@@ -6,7 +6,7 @@ This runbook is for an operator deploying the backend and frontend images built 
 
 Use the `sha-<7 lowercase hex>` tags produced by the GitHub Actions production image workflows. Backend and frontend tags come from their own repositories and are expected to differ.
 
-Do not use the mutable `main` or `latest` tags for a production release. Record both selected image tags and the source commit SHAs in the release notes. The backend publish workflow emits a BuildKit SBOM/provenance attestation and a signed GitHub SLSA build-provenance attestation for the image digest.
+Do not use the mutable `main` or `latest` tags for a production release. The workflow resolves each selected tag to a registry manifest digest, verifies provenance against that digest, and deploys only the resulting `repository@sha256:...` reference. Record both tags, digests, and source commit SHAs in the release notes. The backend publish workflow emits a BuildKit SBOM/provenance attestation and a signed GitHub SLSA build-provenance attestation for the image digest.
 
 ## 2. Prepare production secrets
 
@@ -71,13 +71,13 @@ The script checks:
 - Frontend root returns HTTP 200 and HTML
 - Optional match-specific broadcast snapshot returns the expected match ID and innings array
 
-If no `APP_URL` or `MATCH_ID` is supplied, those checks are explicitly skipped and the script reports the skips. Do not treat a partial run as full release sign-off.
+The reusable smoke script can skip optional checks when run manually, but the managed production workflow requires both `PRODUCTION_APP_URL` and `PRODUCTION_ACTUATOR_URL`; a deployment cannot pass with either omitted.
 
 ## 5. Approval-gated deployment with automatic rollback
 
 The repository includes a manual-only GitHub Actions workflow at `.github/workflows/production-deployment.yml`. It does not deploy on push or merge. Configure a GitHub Environment named `production` with required reviewers before using it; put the deployment secrets below in that environment (not as plaintext repository files).
 
-Required environment secrets:
+Required production Environment secrets:
 
 - `DEPLOY_HOST`: production SSH hostname
 - `DEPLOY_USER`: restricted deployment user
@@ -86,11 +86,11 @@ Required environment secrets:
 - `DEPLOY_APP_DIR`: absolute application directory containing the existing production `.env`
 - `PRODUCTION_API_BASE_URL`: public HTTPS API origin
 - `PRODUCTION_ACTUATOR_URL`: host-local readiness URL, normally `http://127.0.0.1:8081/actuator/health/readiness`
-- `PRODUCTION_APP_URL`: optional public HTTPS frontend origin
+- `PRODUCTION_APP_URL`: required public HTTPS frontend origin; the production workflow fails closed if it is missing
 
 Before triggering the workflow:
 
-1. Ensure the host has Docker Engine and the Compose plugin, is already logged into GHCR with read access to both private images (if applicable), and the deployment user can run Docker Compose.
+1. Ensure the host has Docker Engine, the Compose plugin and `docker inspect` support, is already logged into GHCR with read access to both private images (if applicable), and the deployment user can run Docker Compose.
 2. Create and restore-verify a fresh PostgreSQL dump on the host. For example, from the application directory:
 
    ```bash
@@ -103,7 +103,7 @@ Before triggering the workflow:
    The backup must be a non-empty absolute path and no older than 24 hours. Keep it protected; the workflow receives only its path and prints its checksum, never uploads the dump.
 3. In GitHub Actions, run **Production Deployment** using the exact immutable `sha-...` backend and frontend tags from their respective successful image-publish runs, and provide the backup path. Optionally provide a public match ID for the match snapshot check.
 
-The workflow first authenticates to GHCR and verifies the selected backend and frontend images' signed SLSA provenance with `gh attestation verify`. Each verification is scoped to its owning repository and exact trusted publish workflow. A missing, invalid, or differently signed attestation for either image fails closed before SSH setup or host contact. It then uses pinned SSH host keys and a serialized deployment concurrency group. The remote script requires existing immutable backend and frontend tags so a known-good rollback target exists. It validates the production secrets and Compose configuration, pulls the requested images, waits for Compose health checks, then runs the public API, private Actuator, and frontend smoke checks. If the new release fails, it restores the previous image tags and attempts to bring the previous release healthy again. A successful deployment writes `.last-known-good-release` on the host.
+The workflow first authenticates to GHCR and resolves each selected tag to a registry manifest digest. It verifies signed SLSA provenance for that exact digest with `gh attestation verify`, scoped to the owning repository and trusted publish workflow. A missing, invalid, or differently signed attestation fails closed before SSH setup or host contact. The remote deployment script independently captures the exact RepoDigest of each currently running container before changing the release. It refuses to proceed if it cannot identify exactly one running container and one valid GHCR RepoDigest for either service. The new `.env` stores both human-readable source tags and digest-pinned image references; Compose pulls and runs only the `repository@sha256:...` references. If the new release fails, rollback restores the exact previously running digests rather than resolving old mutable tags again. A successful deployment writes tags and image digests to `.last-known-good-release`.
 
 A failed new release remains a failed workflow even when rollback succeeds; inspect the logs and investigate before retrying. If rollback also fails, the workflow reports that manual operator intervention is required. Do not run concurrent deployments outside this workflow.
 

@@ -17,6 +17,13 @@ for image_tag in "$BACKEND_TAG" "$FRONTEND_TAG"; do
   [[ "$image_tag" =~ ^sha-[0-9a-f]{7,40}$ ]] || fail "Image tag '$image_tag' is not an immutable sha-<7..40 lowercase hex> tag"
 done
 
+# Managed production releases must pin both images to verified registry digests.
+# Local CI may omit these values to validate the default Compose template.
+if [[ -n "${BACKEND_IMAGE:-}" || -n "${FRONTEND_IMAGE:-}" ]]; then
+  [[ "${BACKEND_IMAGE:-}" =~ ^ghcr\.io/cscpratapnagar-ai/cricpulse-backend@sha256:[0-9a-f]{64}$ ]] || fail "BACKEND_IMAGE must be a verified GHCR digest reference"
+  [[ "${FRONTEND_IMAGE:-}" =~ ^ghcr\.io/cscpratapnagar-ai/cricpulse-ui@sha256:[0-9a-f]{64}$ ]] || fail "FRONTEND_IMAGE must be a verified GHCR digest reference"
+fi
+
 command -v docker >/dev/null 2>&1 || fail "Docker CLI is required"
 docker compose version >/dev/null 2>&1 || fail "Docker Compose plugin is required"
 

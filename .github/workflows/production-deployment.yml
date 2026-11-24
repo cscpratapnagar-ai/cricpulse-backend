@@ -50,16 +50,18 @@ jobs:
           DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
           DEPLOY_APP_DIR: ${{ secrets.DEPLOY_APP_DIR }}
           PRODUCTION_API_BASE_URL: ${{ secrets.PRODUCTION_API_BASE_URL }}
+          PRODUCTION_APP_URL: ${{ secrets.PRODUCTION_APP_URL }}
           PRODUCTION_ACTUATOR_URL: ${{ secrets.PRODUCTION_ACTUATOR_URL }}
         run: |
           set -euo pipefail
           [[ "$BACKEND_TAG" =~ ^sha-[0-9a-f]{7,40}$ ]] || { echo "Invalid backend immutable tag" >&2; exit 1; }
           [[ "$FRONTEND_TAG" =~ ^sha-[0-9a-f]{7,40}$ ]] || { echo "Invalid frontend immutable tag" >&2; exit 1; }
-          for name in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_PRIVATE_KEY DEPLOY_SSH_KNOWN_HOSTS DEPLOY_APP_DIR PRODUCTION_API_BASE_URL PRODUCTION_ACTUATOR_URL; do
+          for name in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_PRIVATE_KEY DEPLOY_SSH_KNOWN_HOSTS DEPLOY_APP_DIR PRODUCTION_API_BASE_URL PRODUCTION_APP_URL PRODUCTION_ACTUATOR_URL; do
             [[ -n "${!name}" ]] || { echo "Missing required environment secret: $name" >&2; exit 1; }
           done
           [[ "$DEPLOY_APP_DIR" =~ ^/[a-zA-Z0-9_./-]+$ ]] || { echo "DEPLOY_APP_DIR must be a safe absolute path" >&2; exit 1; }
-          [[ "$PRODUCTION_API_BASE_URL" == https://* ]] || { echo "Production API URL must use HTTPS" >&2; exit 1; }
+          [[ "$PRODUCTION_API_BASE_URL" == https://* && "$PRODUCTION_APP_URL" == https://* ]] || { echo "Production API and application URLs must use HTTPS" >&2; exit 1; }
+          [[ "$PRODUCTION_ACTUATOR_URL" =~ ^http://(127\.0\.0\.1|localhost)(:[0-9]+)?/ ]] || { echo "Production Actuator URL must use a host-local HTTP endpoint" >&2; exit 1; }
 
       - name: Authenticate to GHCR for image provenance verification
         uses: docker/login-action@v3
@@ -89,9 +91,9 @@ jobs:
         run: |
           set -euo pipefail
           install -d -m 700 "$HOME/.ssh"
-          printf '%s\\n' "$DEPLOY_SSH_PRIVATE_KEY" > "$HOME/.ssh/cricpulse_deploy"
+          printf '%s\n' "$DEPLOY_SSH_PRIVATE_KEY" > "$HOME/.ssh/cricpulse_deploy"
           chmod 600 "$HOME/.ssh/cricpulse_deploy"
-          printf '%s\\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
 
       - name: Transfer immutable deployment bundle
@@ -115,6 +117,8 @@ jobs:
           DEPLOY_APP_DIR: ${{ secrets.DEPLOY_APP_DIR }}
           BACKEND_TAG: ${{ inputs.backend_tag }}
           FRONTEND_TAG: ${{ inputs.frontend_tag }}
+          BACKEND_DIGEST: ${{ steps.backend_image.outputs.image_digest }}
+          FRONTEND_DIGEST: ${{ steps.frontend_image.outputs.image_digest }}
           BACKUP_FILE: ${{ inputs.backup_file }}
           API_BASE_URL: ${{ secrets.PRODUCTION_API_BASE_URL }}
           APP_URL: ${{ secrets.PRODUCTION_APP_URL }}
@@ -122,7 +126,9 @@ jobs:
           MATCH_ID: ${{ inputs.match_id }}
         run: |
           set -euo pipefail
-          printf -v REMOTE_COMMAND '%q ' bash -s -- "$DEPLOY_APP_DIR" "$BACKEND_TAG" "$FRONTEND_TAG" "$BACKUP_FILE" "$API_BASE_URL" "${APP_URL:-}" "$ACTUATOR_URL" "${MATCH_ID:-}"
+          [[ "$BACKEND_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "Backend digest output is invalid" >&2; exit 1; }
+          [[ "$FRONTEND_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "Frontend digest output is invalid" >&2; exit 1; }
+          printf -v REMOTE_COMMAND '%q ' bash -s -- "$DEPLOY_APP_DIR" "$BACKEND_TAG" "$FRONTEND_TAG" "$BACKEND_DIGEST" "$FRONTEND_DIGEST" "$BACKUP_FILE" "$API_BASE_URL" "$APP_URL" "$ACTUATOR_URL" "${MATCH_ID:-}"
           ssh -i "$HOME/.ssh/cricpulse_deploy" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$DEPLOY_USER@$DEPLOY_HOST" "$REMOTE_COMMAND" < scripts/production-deploy-with-rollback.sh
 
       - name: Generate sanitized production release evidence
