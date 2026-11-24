@@ -14,7 +14,7 @@ BACKUP_FILE="$6"
 API_BASE_URL="$7"
 APP_URL="$8"
 ACTUATOR_URL="$9"
-MATCH_ID="\${10}"
+MATCH_ID="${10}"
 
 [[ "$APP_DIR" =~ ^/[a-zA-Z0-9_./-]+$ ]] || fail "APP_DIR must be a safe absolute path"
 [[ "$NEW_BACKEND_TAG" =~ ^sha-[0-9a-f]{7,40}$ ]] || fail "Backend tag must be immutable sha-*"
@@ -50,8 +50,8 @@ set -a
 # shellcheck disable=SC1090
 source "$ENV_FILE"
 set +a
-OLD_BACKEND_TAG="\${BACKEND_TAG:-}"
-OLD_FRONTEND_TAG="\${FRONTEND_TAG:-}"
+OLD_BACKEND_TAG="${BACKEND_TAG:-}"
+OLD_FRONTEND_TAG="${FRONTEND_TAG:-}"
 [[ "$OLD_BACKEND_TAG" =~ ^sha-[0-9a-f]{7,40}$ ]] || fail "Existing BACKEND_TAG is missing or not immutable; automatic rollback is unsafe"
 [[ "$OLD_FRONTEND_TAG" =~ ^sha-[0-9a-f]{7,40}$ ]] || fail "Existing FRONTEND_TAG is missing or not immutable; automatic rollback is unsafe"
 [[ "$OLD_BACKEND_TAG" != "$NEW_BACKEND_TAG" || "$OLD_FRONTEND_TAG" != "$NEW_FRONTEND_TAG" ]] || fail "Requested release is already deployed"
@@ -64,16 +64,16 @@ current_running_image_ref() {
   local service="$1" repository="$2" container running image_id repo_digest
   local -a containers refs
   mapfile -t containers < <(compose ps -q "$service")
-  [[ "\${#containers[@]}" -eq 1 && -n "\${containers[0]}" ]] || fail "Expected exactly one existing $service container; refusing an unsafe rollback"
-  container="\${containers[0]}"
+  [[ "${#containers[@]}" -eq 1 && -n "${containers[0]}" ]] || fail "Expected exactly one existing $service container; refusing an unsafe rollback"
+  container="${containers[0]}"
   running="$(docker inspect --format '{{.State.Running}}' "$container")" || fail "Unable to inspect existing $service container"
   [[ "$running" == "true" ]] || fail "Existing $service container is not running; refusing an unsafe rollback"
   image_id="$(docker inspect --format '{{.Image}}' "$container")" || fail "Unable to identify existing $service image"
   [[ "$image_id" =~ ^sha256:[0-9a-f]{64}$ ]] || fail "Existing $service image ID is invalid"
   repo_digest="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$image_id")" || fail "Unable to read existing $service RepoDigests"
   mapfile -t refs < <(printf '%s\n' "$repo_digest" | grep -E "^$repository@sha256:[0-9a-f]{64}$" || true)
-  [[ "\${#refs[@]}" -eq 1 ]] || fail "Expected exactly one existing $service GHCR RepoDigest; refusing a tag-based rollback"
-  printf '%s' "\${refs[0]}"
+  [[ "${#refs[@]}" -eq 1 ]] || fail "Expected exactly one existing $service GHCR RepoDigest; refusing a tag-based rollback"
+  printf '%s' "${refs[0]}"
 }
 
 # Snapshot the exact images currently running. Never derive rollback references
