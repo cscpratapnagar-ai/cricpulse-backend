@@ -10,9 +10,11 @@ command -v gh >/dev/null 2>&1 || fail "GitHub CLI (gh) is required"
 
 IMAGE_URI="oci://ghcr.io/cscpratapnagar-ai/cricpulse-backend:${IMAGE_TAG}"
 SIGNER_WORKFLOW="cscpratapnagar-ai/cricpulse-backend/.github/workflows/publish-production-container.yml"
+SOURCE_REF="refs/heads/main"
 
-echo "Verifying signed SLSA provenance for ${IMAGE_URI}"
+echo "Verifying signed SLSA provenance for ${IMAGE_URI} from ${SOURCE_REF}"
 gh attestation verify "$IMAGE_URI" \
   --repo cscpratapnagar-ai/cricpulse-backend \
-  --signer-workflow "$SIGNER_WORKFLOW"
-echo "PASS: backend image provenance is valid and signed by the trusted publish workflow"
+  --signer-workflow "$SIGNER_WORKFLOW" \
+  --source-ref "$SOURCE_REF"
+echo "PASS: backend image provenance is valid, signed by the trusted publish workflow, and built from main"
