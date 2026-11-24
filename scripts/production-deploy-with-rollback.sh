@@ -122,9 +122,21 @@ run_preflight() {
 }
 
 wait_and_smoke() {
-  compose pull backend frontend
-  compose up -d --remove-orphans --wait --wait-timeout 180
-  API_BASE_URL="$API_BASE_URL" APP_URL="$APP_URL" ACTUATOR_URL="$ACTUATOR_URL" MATCH_ID="$MATCH_ID" REQUIRE_HTTPS=true bash "$SMOKE"
+  compose pull backend frontend || return 1
+  compose up -d --remove-orphans --wait --wait-timeout 180 || return 1
+
+  # One healthy response is not enough to certify a production release.
+  # Require three complete external smoke passes across a 20-second window.
+  for attempt in 1 2 3; do
+    echo "Production release stability check $attempt/3"
+    API_BASE_URL="$API_BASE_URL" APP_URL="$APP_URL" ACTUATOR_URL="$ACTUATOR_URL" MATCH_ID="$MATCH_ID" REQUIRE_HTTPS=true bash "$SMOKE" || {
+      echo "Production stability check $attempt/3 failed" >&2
+      return 1
+    }
+    if [[ "$attempt" -lt 3 ]]; then
+      sleep 10
+    fi
+  done
 }
 
 echo "Applying digest-pinned production release:"
