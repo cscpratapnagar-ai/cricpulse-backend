@@ -17,11 +17,14 @@ chmod +x "$TMP/bin/gh"
 export PATH="$TMP/bin:$PATH"
 export GH_TOKEN="ci-test-token"
 
-# Valid immutable tags must call gh with the exact image and trusted workflow identity.
+# Valid immutable tags must pin the exact image, signer workflow, and protected source branch.
 bash "$VERIFY" sha-abcdef123
 grep -Fxq 'oci://ghcr.io/cscpratapnagar-ai/cricpulse-backend:sha-abcdef123' "$GH_CALL_LOG"
 grep -Fxq -- '--repo' "$GH_CALL_LOG"
+grep -Fxq 'cscpratapnagar-ai/cricpulse-backend' "$GH_CALL_LOG"
 grep -Fxq 'cscpratapnagar-ai/cricpulse-backend/.github/workflows/publish-production-container.yml' "$GH_CALL_LOG"
+grep -Fxq -- '--source-ref' "$GH_CALL_LOG"
+grep -Fxq 'refs/heads/main' "$GH_CALL_LOG"
 
 # Mutable or malformed tags must fail before invoking gh.
 rm -f "$GH_CALL_LOG"
@@ -34,8 +37,8 @@ fi
 # A cryptographic verification failure must block deployment (non-zero is preserved).
 export MOCK_GH_EXIT=1
 if bash "$VERIFY" sha-abcdef123; then
-  echo "Verifier unexpectedly ignored a failed gh attestation check" >&2
+  echo "Verifier unexpectedly ignored a failed attestation check" >&2
   exit 1
 fi
 
-echo "PASS: immutable tag validation, signer pinning, and fail-closed attestation verification"
+echo "PASS: backend immutable tag, trusted signer, main source-ref, and fail-closed verification"
