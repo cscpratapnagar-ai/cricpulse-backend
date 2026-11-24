@@ -49,14 +49,14 @@ cat > "$EVIDENCE_FILE" <<REPORT
 # CricPulse staging release evidence
 
 - Result: **$release_result**
-- Repository: `$GITHUB_REPOSITORY`
+- Repository: \`$GITHUB_REPOSITORY\`
 - Workflow run: [#$GITHUB_RUN_ID](https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID) (attempt $GITHUB_RUN_ATTEMPT)
-- Source commit: `$GITHUB_SHA`
-- Source ref: `$GITHUB_REF`
-- Backend source tag: `$backend_tag`
-- Frontend source tag: `$frontend_tag`
-- Backend verified digest: `$backend_digest`
-- Frontend verified digest: `$frontend_digest`
+- Source commit: \`$GITHUB_SHA\`
+- Source ref: \`$GITHUB_REF\`
+- Backend source tag: \`$backend_tag\`
+- Frontend source tag: \`$frontend_tag\`
+- Backend verified digest: \`$backend_digest\`
+- Frontend verified digest: \`$frontend_digest\`
 
 ## Gate outcomes
 
@@ -70,7 +70,7 @@ cat > "$EVIDENCE_FILE" <<REPORT
 
 ## Interpretation
 
-A successful deployment step means the remote deployment script completed its post-deploy stability checks. A failed deployment step may have completed an automatic rollback; inspect the deployment log for the explicit `ROLLBACK PASS` or `CRITICAL` marker. This report does not infer rollback success from a non-zero exit code.
+A successful deployment step means the remote deployment script completed its post-deploy stability checks. A failed deployment step may have completed an automatic rollback; inspect the deployment log for the explicit \`ROLLBACK PASS\` or \`CRITICAL\` marker. This report does not infer rollback success from a non-zero exit code.
 
 This report intentionally excludes SSH credentials, environment secrets, hostnames, deployment paths, backup paths, and endpoint URLs.
 REPORT
