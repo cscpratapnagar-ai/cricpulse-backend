@@ -33,3 +33,17 @@ The staging host must already have Docker Compose, Docker Buildx, `pg_restore`, 
 - Failed deployment smoke checks restore the exact previous digest-pinned references. A failed rollback reports a critical operator-intervention error.
 
 This workflow change does not deploy to staging or production by itself. Staging still requires configured GitHub Environment secrets, a reachable staging host, GHCR access, and a recent verified database backup.
+
+## Remote staging host bootstrap preflight
+
+Before the deployment script can change the running stack, the workflow transfers the staging Compose and smoke-check files and runs `scripts/staging-host-preflight.sh` over the pinned SSH connection. This check is read-only with respect to the running containers and fails closed unless:
+
+- The dedicated `/staging` application directory exists, is not a symlink, resolves within the permitted staging path, and is owned by the SSH deployment user.
+- The staging `.env` is a regular file owned by that user with no group/other permissions (normally `0600`); required database/JWT secrets exist, meet minimum lengths, and are not known CI/development placeholders.
+- Docker daemon access, Docker Compose, Docker Buildx, `pg_restore`, `curl`, `jq`, and required host utilities are available.
+- The supplied custom-format PostgreSQL backup is readable, non-empty, and no older than 24 hours.
+- At least 2 GiB of free disk space is available.
+- The staging host can inspect both exact verified GHCR digest references using its own registry credentials.
+- The staged Compose configuration validates with those exact digest references and the existing staging secrets.
+
+The host's GHCR login must be configured for the SSH deployment user before running the workflow. The preflight never prints secret values and does not source `.env` as shell code. It does not install packages, change firewall rules, create secrets, or deploy containers; missing prerequisites are reported so an operator can bootstrap the host safely and rerun the workflow.
