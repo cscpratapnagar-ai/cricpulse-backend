@@ -47,3 +47,15 @@ Before the deployment script can change the running stack, the workflow transfer
 - The staged Compose configuration validates with those exact digest references and the existing staging secrets.
 
 The host's GHCR login must be configured for the SSH deployment user before running the workflow. The preflight never prints secret values and does not source `.env` as shell code. It does not install packages, change firewall rules, create secrets, or deploy containers; missing prerequisites are reported so an operator can bootstrap the host safely and rerun the workflow.
+
+
+## Isolated PostgreSQL backup restore rehearsal
+
+The staging host preflight now performs a real restore rehearsal before the deployment script is allowed to change the running staging stack:
+
+1. It starts a disposable `postgres:16-alpine` container with a temporary random credential and a fresh `restore_probe` database.
+2. It copies the supplied backup into that isolated container and runs `pg_restore --exit-on-error --no-owner --no-privileges`.
+3. It queries PostgreSQL system catalogs and requires at least one restored user table, partitioned table, view, materialized view, or sequence.
+4. An exit trap removes the temporary container on both success and failure. The probe does not publish a port, mount the staging data volume, connect to the staging database, or modify the supplied backup.
+
+A successful `pg_restore --list` alone is not considered sufficient. If the archive cannot be restored, PostgreSQL does not become ready, or no user database objects are present, the host preflight fails closed and deployment does not begin. The staging host must be able to pull the PostgreSQL 16 Alpine image and have enough free disk space for the temporary restore.
