@@ -11,6 +11,7 @@ API_BASE_URL="$5"; APP_URL="$6"; ACTUATOR_URL="$7"; MATCH_ID="$8"
 [[ "$BACKUP_FILE" == /* && -s "$BACKUP_FILE" ]] || fail "A non-empty absolute staging database backup is required"
 find "$BACKUP_FILE" -mmin -1440 -print -quit | grep -q . || fail "Staging backup must be no older than 24 hours"
 command -v docker >/dev/null 2>&1 || fail "Docker is required"
+docker compose version >/dev/null 2>&1 || fail "Docker Compose plugin is required"
 command -v sha256sum >/dev/null 2>&1 || fail "sha256sum is required"
 APP_DIR="$(cd "$APP_DIR" && pwd)"
 TOOLS_DIR="$APP_DIR/release-tools"; ENV_FILE="$APP_DIR/.env"
@@ -42,6 +43,7 @@ run_preflight() {
   ( cd "$APP_DIR"; set -a; source "$ENV_FILE"; set +a
     [[ "${#POSTGRES_PASSWORD}" -ge 20 && "${#JWT_SECRET}" -ge 32 ]] || exit 1
     [[ "$JWT_SECRET" != *"change-me"* && "$JWT_SECRET" != *"local-only"* && "$JWT_SECRET" != *"ci-only"* ]] || exit 1
+    [[ "$POSTGRES_PASSWORD" != *"cricket_dev_password"* && "$POSTGRES_PASSWORD" != *"ci-postgres-password"* ]] || exit 1
     BACKEND_TAG="$1" FRONTEND_TAG="$2" docker compose -f docker-compose.staging.yml config --quiet
   )
 }
