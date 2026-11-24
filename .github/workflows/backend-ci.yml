@@ -50,9 +50,11 @@ jobs:
           bash -n scripts/production-release-preflight.sh
           bash -n scripts/production-deployment-smoke.sh
           bash -n scripts/postgres-backup-restore-certification.sh
+          bash -n scripts/production-backup-restore-rehearsal.sh
           bash -n scripts/production-deploy-with-rollback.sh
           bash -n scripts/test-production-deploy-rollback.sh
           bash -n scripts/test-production-deployment-workflow.sh
+          bash -n scripts/test-production-backup-restore-rehearsal.sh
           bash -n scripts/write-production-release-evidence.sh
           bash -n scripts/test-production-release-evidence.sh
           bash -n scripts/verify-production-image-attestation.sh
@@ -77,6 +79,9 @@ jobs:
 
       - name: Verify production deployment workflow safety contract
         run: bash scripts/test-production-deployment-workflow.sh
+
+      - name: Verify isolated production PostgreSQL backup restore rehearsal
+        run: bash scripts/test-production-backup-restore-rehearsal.sh
 
       - name: Verify sanitized production release evidence generation
         run: bash scripts/test-production-release-evidence.sh

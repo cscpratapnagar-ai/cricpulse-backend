@@ -42,6 +42,8 @@ bash scripts/postgres-backup-restore-certification.sh
 
 The script refuses to overwrite an existing backup. It creates a custom-format `pg_dump`, validates the archive, restores it into a uniquely named temporary database, compares the public table inventory, queries every restored table's exact row count, and drops the temporary database on exit. Keep the resulting dump and SHA-256 checksum in protected backup storage; do not commit or upload production dumps to CI artifacts. This is a restore rehearsal, not a substitute for encrypted off-host retention, scheduled backups, or a point-in-time recovery (WAL) policy. Ensure the backup destination is on a protected volume and has enough capacity.
 
+The managed Production Deployment workflow also performs an independent restore rehearsal against the exact supplied backup path immediately before any release-state mutation. It starts a disposable `postgres:16-alpine` container with `--network none`, no published ports, and no production volume mounts; copies the backup into that container; runs `pg_restore --exit-on-error`; and verifies that restored user database objects exist. The container is removed by an EXIT trap on both success and failure. If the restore probe fails, deployment stops before changing `.env`, pulling images, or restarting services. The host needs Docker access and must be able to pull the PostgreSQL 16 image before the release is changed.
+
 Then deploy the selected immutable images:
 
 ```bash

@@ -37,13 +37,19 @@ TOOLS_DIR="$APP_DIR/release-tools"
 ENV_FILE="$APP_DIR/.env"
 COMPOSE_FILE="$APP_DIR/docker-compose.production.yml"
 PREFLIGHT="$TOOLS_DIR/production-release-preflight.sh"
+RESTORE_REHEARSAL="$TOOLS_DIR/production-backup-restore-rehearsal.sh"
 SMOKE="$TOOLS_DIR/production-deployment-smoke.sh"
-[[ -f "$ENV_FILE" && ! -L "$ENV_FILE" && -f "$COMPOSE_FILE" && -f "$PREFLIGHT" && -f "$SMOKE" ]] || fail "Deployment files or existing .env are missing"
+[[ -f "$ENV_FILE" && ! -L "$ENV_FILE" && -f "$COMPOSE_FILE" && -f "$PREFLIGHT" && -f "$RESTORE_REHEARSAL" && -f "$SMOKE" ]] || fail "Deployment files or existing .env are missing"
 [[ -O "$ENV_FILE" ]] || fail "Production .env must be owned by the deployment user"
 [[ "$(stat -c '%a' "$ENV_FILE")" == "600" ]] || fail "Production .env must have mode 0600"
 
 echo "Pre-deployment backup checksum:"
 sha256sum "$BACKUP_FILE"
+
+# Prove the supplied backup is actually restorable before reading or changing
+# release state. The probe uses a disposable PostgreSQL container with no
+# network, published ports, or production volume mounts.
+bash "$RESTORE_REHEARSAL" "$BACKUP_FILE" || fail "Production backup restore rehearsal failed; deployment is blocked"
 
 # Load the existing operator-managed environment without printing secrets.
 set -a

@@ -61,7 +61,7 @@ jobs:
           done
           [[ "$DEPLOY_APP_DIR" =~ ^/[a-zA-Z0-9_./-]+$ ]] || { echo "DEPLOY_APP_DIR must be a safe absolute path" >&2; exit 1; }
           [[ "$PRODUCTION_API_BASE_URL" == https://* && "$PRODUCTION_APP_URL" == https://* ]] || { echo "Production API and application URLs must use HTTPS" >&2; exit 1; }
-          [[ "$PRODUCTION_ACTUATOR_URL" =~ ^http://(127\.0\.0\.1|localhost)(:[0-9]+)?/ ]] || { echo "Production Actuator URL must use a host-local HTTP endpoint" >&2; exit 1; }
+          [[ "$PRODUCTION_ACTUATOR_URL" =~ ^http://(127\.0\.0\.1|localhost)(:[0-9]+)?/ ]] || { echo "Production Actuator URL must be a host-local HTTP endpoint" >&2; exit 1; }
 
       - name: Authenticate to GHCR for image provenance verification
         uses: docker/login-action@v3
@@ -107,7 +107,8 @@ jobs:
           SCP=(scp -i "$HOME/.ssh/cricpulse_deploy" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes)
           "${SSH[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$DEPLOY_APP_DIR/release-tools'"
           "${SCP[@]}" docker-compose.production.yml "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_APP_DIR/"
-          "${SCP[@]}" scripts/production-release-preflight.sh scripts/production-deployment-smoke.sh scripts/postgres-backup-restore-certification.sh "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_APP_DIR/release-tools/"
+          "${SCP[@]}" scripts/production-release-preflight.sh scripts/production-deployment-smoke.sh scripts/postgres-backup-restore-certification.sh scripts/production-backup-restore-rehearsal.sh "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_APP_DIR/release-tools/"
+          "${SSH[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "chmod 700 '$DEPLOY_APP_DIR/release-tools/production-release-preflight.sh' '$DEPLOY_APP_DIR/release-tools/production-deployment-smoke.sh' '$DEPLOY_APP_DIR/release-tools/postgres-backup-restore-certification.sh' '$DEPLOY_APP_DIR/release-tools/production-backup-restore-rehearsal.sh'"
 
       - name: Deploy, verify, and automatically roll back on failure
         id: production_deploy
