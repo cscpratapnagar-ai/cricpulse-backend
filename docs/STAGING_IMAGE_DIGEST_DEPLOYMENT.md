@@ -56,6 +56,6 @@ The staging host preflight now performs a real restore rehearsal before the depl
 1. It starts a disposable `postgres:16-alpine` container with a temporary random credential and a fresh `restore_probe` database.
 2. It copies the supplied backup into that isolated container and runs `pg_restore --exit-on-error --no-owner --no-privileges`.
 3. It queries PostgreSQL system catalogs and requires at least one restored user table, partitioned table, view, materialized view, or sequence.
-4. An exit trap removes the temporary container on both success and failure. The probe does not publish a port, mount the staging data volume, connect to the staging database, or modify the supplied backup.
+4. An exit trap removes the temporary container and its anonymous volumes on both success and failure. The probe runs with Docker's `none` network, publishes no ports, does not mount the staging data volume, cannot connect to the staging database, and does not modify the supplied backup.
 
 A successful `pg_restore --list` alone is not considered sufficient. If the archive cannot be restored, PostgreSQL does not become ready, or no user database objects are present, the host preflight fails closed and deployment does not begin. The staging host must be able to pull the PostgreSQL 16 Alpine image and have enough free disk space for the temporary restore.
