@@ -89,7 +89,8 @@ case "${MOCK_SMOKE_MODE:-success}" in
     ;;
 esac
 echo "simulated deployment smoke success"
-SMOKE  touch "$app/docker-compose.production.yml"
+SMOKE
+  touch "$app/docker-compose.production.yml"
   chmod +x "$app/release-tools/"*.sh
   printf 'test backup data\n' > "$TMP/$name.dump"
   printf '%s\n' "$app"
