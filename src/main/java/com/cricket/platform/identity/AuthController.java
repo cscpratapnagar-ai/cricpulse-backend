@@ -16,16 +16,19 @@ import java.time.Duration;
 @RequestMapping("/api/auth")
 public class AuthController {
     private final LoginUser loginUser;
+    private final JwtService jwtService;
     private final boolean cookieSecure;
     private final String cookieSameSite;
     private final long tokenExpirationSeconds;
 
     public AuthController(
             LoginUser loginUser,
+            JwtService jwtService,
             @Value("${security.auth.cookie-secure:true}") boolean cookieSecure,
             @Value("${security.auth.cookie-same-site:Lax}") String cookieSameSite,
             @Value("${security.jwt.expiration-seconds:86400}") long tokenExpirationSeconds) {
         this.loginUser = loginUser;
+        this.jwtService = jwtService;
         this.cookieSecure = cookieSecure;
         this.cookieSameSite = cookieSameSite;
         this.tokenExpirationSeconds = tokenExpirationSeconds;
@@ -49,6 +52,19 @@ public class AuthController {
     @GetMapping("/csrf")
     java.util.Map<String, String> csrf(CsrfToken token) {
         return java.util.Map.of("token", token.getToken());
+    }
+
+    @GetMapping("/ws-ticket")
+    java.util.Map<String, String> webSocketTicket(Authentication authentication) {
+        String role = authentication.getAuthorities().stream()
+                .map(authority -> authority.getAuthority())
+                .filter(authority -> authority.startsWith("ROLE_"))
+                .map(authority -> authority.substring("ROLE_".length()))
+                .findFirst()
+                .orElse("PLAYER");
+        // A ticket is intentionally short-lived and only exposed after the HttpOnly
+        // browser session has been validated by Spring Security.
+        return java.util.Map.of("token", jwtService.create(authentication.getName(), role, 60));
     }
 
     @GetMapping("/me")
