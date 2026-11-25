@@ -42,12 +42,7 @@ public class EventFirstDeliveryService {
         long sequenceNo = eventRepository.nextSequence(command.inningsId());
         int eventVersion = eventRepository.nextVersion(command.inningsId());
         RecordDeliveryEvent.Result result = recordDeliveryEvent.execute(
-                command,
-                sequenceNo,
-                eventVersion,
-                overNumber,
-                ballNumber,
-                legalDelivery
+                command, sequenceNo, eventVersion, overNumber, ballNumber, legalDelivery
         );
 
         if (!result.created()) {
