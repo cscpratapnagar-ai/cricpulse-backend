@@ -60,6 +60,7 @@ jobs:
           bash -n scripts/verify-production-image-attestation.sh
           bash -n scripts/test-production-image-attestation.sh
           bash -n scripts/staging-deployment-smoke.sh
+          bash -n scripts/test-staging-deployment-smoke.sh
           bash -n scripts/staging-deploy-with-rollback.sh
           bash -n scripts/test-staging-deployment.sh
           bash -n scripts/test-staging-deployment-workflow.sh
@@ -98,6 +99,9 @@ jobs:
 
       - name: Verify staging deployment and rollback paths
         run: bash scripts/test-staging-deployment.sh
+
+      - name: Verify HTTPS-only staging smoke requests and redirects
+        run: bash scripts/test-staging-deployment-smoke.sh
 
       - name: Verify sanitized staging release evidence generation
         run: bash scripts/test-staging-release-evidence.sh
