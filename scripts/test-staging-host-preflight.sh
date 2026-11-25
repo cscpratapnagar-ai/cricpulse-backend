@@ -21,6 +21,27 @@ printf '%s\n' "$*" >> "$MOCK_DOCKER_LOG"
 if [[ "$1" == "info" ]]; then exit 0; fi
 if [[ "$1" == "compose" && "$2" == "version" ]]; then exit 0; fi
 if [[ "$1" == "buildx" && "$2" == "version" ]]; then exit 0; fi
+if [[ "$1" == "compose" && "$*" == *"config --format json"* ]]; then
+  POSTGRES_PORTS='[]'
+  BACKEND_HOST='127.0.0.1'
+  FRONTEND_HOST='127.0.0.1'
+  case "${MOCK_NETWORK_VIOLATION:-}" in
+    database) POSTGRES_PORTS='[{"target":5432,"published":"5432","host_ip":"127.0.0.1","protocol":"tcp"}]' ;;
+    backend) BACKEND_HOST='0.0.0.0' ;;
+    frontend) FRONTEND_HOST='0.0.0.0' ;;
+  esac
+  cat <<JSON
+{
+  "services": {
+    "postgres": {"ports": $POSTGRES_PORTS},
+    "backend": {"ports": [{"target":8080,"published":"18081","host_ip":"$BACKEND_HOST","protocol":"tcp"}]},
+    "frontend": {"ports": [{"target":80,"published":"18080","host_ip":"$FRONTEND_HOST","protocol":"tcp"}]}
+  },
+  "volumes": {"cricpulse_staging_postgres_data": {"name":"cricpulse-staging_cricpulse_staging_postgres_data"}}
+}
+JSON
+  exit 0
+fi
 if [[ "$1" == "buildx" && "$2" == "imagetools" && "$3" == "inspect" ]]; then exit 0; fi
 if [[ "$1" == "compose" ]]; then exit 0; fi
 if [[ "$1" == "run" ]]; then
@@ -50,6 +71,21 @@ export PATH="$TMP/bin:$PATH"
 BACKEND="ghcr.io/cscpratapnagar-ai/cricpulse-backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 FRONTEND="ghcr.io/cscpratapnagar-ai/cricpulse-ui@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 bash "$ROOT/scripts/staging-host-preflight.sh" "$APP" "$TMP/backup.dump" "$BACKEND" "$FRONTEND"
+
+# Reject public database ports and non-loopback bindings before any restore or image pull.
+for violation in database backend frontend; do
+  : > "$MOCK_DOCKER_LOG"
+  export MOCK_NETWORK_VIOLATION="$violation"
+  if bash "$ROOT/scripts/staging-host-preflight.sh" "$APP" "$TMP/backup.dump" "$BACKEND" "$FRONTEND"; then
+    echo "Expected staging network violation '$violation' to be rejected" >&2
+    exit 1
+  fi
+  if grep -Eq '^run .*--network none|buildx imagetools inspect' "$MOCK_DOCKER_LOG"; then
+    echo "Network violation '$violation' was not rejected before backup rehearsal/image access" >&2
+    exit 1
+  fi
+done
+unset MOCK_NETWORK_VIOLATION
 
 # The host preflight must run a disposable, network-isolated PostgreSQL restore and clean it up.
 grep -q '^run .*--network none' "$MOCK_DOCKER_LOG"
