@@ -9,7 +9,8 @@ BASE_URL="${BASE_URL:-http://localhost:8080/api}"
 tmp="$(mktemp -d)"
 ws_monitor_pid=""
 ws_viewer_two_pid=""
-trap 'for pid in "$ws_monitor_pid" "$ws_viewer_two_pid"; do if [[ -n "$pid" ]]; then kill "$pid" 2>/dev/null || true; fi; done; rm -rf "$tmp"' EXIT
+ws_public_viewer_pid=""
+trap 'for pid in "$ws_monitor_pid" "$ws_viewer_two_pid" "$ws_public_viewer_pid"; do if [[ -n "$pid" ]]; then kill "$pid" 2>/dev/null || true; fi; done; rm -rf "$tmp"' EXIT
 # Cookie-based login: each identity gets its own CSRF and HttpOnly cookie jar.
 login_token() {
   local email="$1" jar="$2" csrf token
@@ -110,20 +111,25 @@ WS_AUTH_TOKEN="$ws_ticket_a" WS_DESTINATION="$private_destination" WS_READY_FILE
 ws_monitor_pid=$!
 WS_AUTH_TOKEN="$ws_ticket_b" WS_DESTINATION="$private_destination" WS_READY_FILE="$tmp/ws-viewer-two-ready" WS_DONE_FILE="$tmp/ws-viewers-done" WS_OUTPUT_FILE="$tmp/ws-viewer-two.json" WS_EXPECTED_FILE="$tmp/ws-expected.json" node scripts/e2e-scoring-websocket.mjs >"$tmp/ws-viewer-two.log" 2>&1 &
 ws_viewer_two_pid=$!
+# An anonymous browser/OBS-style viewer must receive the same committed events
+# through the read-only public topic, without a login or WebSocket ticket.
+public_destination="/topic/public/innings/$innings_id"
+WS_DESTINATION="$public_destination" WS_READY_FILE="$tmp/ws-public-viewer-ready" WS_DONE_FILE="$tmp/ws-viewers-done" WS_OUTPUT_FILE="$tmp/ws-public-viewer.json" WS_EXPECTED_FILE="$tmp/ws-expected.json" node scripts/e2e-scoring-websocket.mjs >"$tmp/ws-public-viewer.log" 2>&1 &
+ws_public_viewer_pid=$!
 for attempt in {1..150}; do
-  if [[ -f "$tmp/ws-viewer-one-ready" && -f "$tmp/ws-viewer-two-ready" ]]; then break; fi
-  if ! kill -0 "$ws_monitor_pid" 2>/dev/null || ! kill -0 "$ws_viewer_two_pid" 2>/dev/null; then
-    cat "$tmp/ws-viewer-one.log" "$tmp/ws-viewer-two.log" >&2
+  if [[ -f "$tmp/ws-viewer-one-ready" && -f "$tmp/ws-viewer-two-ready" && -f "$tmp/ws-public-viewer-ready" ]]; then break; fi
+  if ! kill -0 "$ws_monitor_pid" 2>/dev/null || ! kill -0 "$ws_viewer_two_pid" 2>/dev/null || ! kill -0 "$ws_public_viewer_pid" 2>/dev/null; then
+    cat "$tmp/ws-viewer-one.log" "$tmp/ws-viewer-two.log" "$tmp/ws-public-viewer.log" >&2
     exit 1
   fi
   sleep 0.1
 done
-if [[ ! -f "$tmp/ws-viewer-one-ready" || ! -f "$tmp/ws-viewer-two-ready" ]]; then
-  echo "FAIL: both independent public WebSocket viewers must subscribe before scoring" >&2
-  cat "$tmp/ws-viewer-one.log" "$tmp/ws-viewer-two.log" >&2
+if [[ ! -f "$tmp/ws-viewer-one-ready" || ! -f "$tmp/ws-viewer-two-ready" || ! -f "$tmp/ws-public-viewer-ready" ]]; then
+  echo "FAIL: two authenticated private viewers and one anonymous public viewer must subscribe before scoring" >&2
+  cat "$tmp/ws-viewer-one.log" "$tmp/ws-viewer-two.log" "$tmp/ws-public-viewer.log" >&2
   exit 1
 fi
-echo "PASS: two different authenticated team owners received WS tickets and subscribed to the private innings topic before scoring"
+echo "PASS: two authenticated team owners subscribed to the private topic and an anonymous viewer subscribed to the public topic before scoring"
 
 # Baseline snapshot: undo must restore all authoritative scoring state, not only totals.
 baseline_score="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "${auth[@]}")"
@@ -344,10 +350,21 @@ if ! wait "$ws_viewer_two_pid"; then
   exit 1
 fi
 ws_viewer_two_pid=""
-cat "$tmp/ws-viewer-one.log" "$tmp/ws-viewer-two.log"
+if ! wait "$ws_public_viewer_pid"; then
+  cat "$tmp/ws-public-viewer.log" >&2
+  cat "$tmp/ws-public-viewer.json" >&2 || true
+  exit 1
+fi
+ws_public_viewer_pid=""
+cat "$tmp/ws-viewer-one.log" "$tmp/ws-viewer-two.log" "$tmp/ws-public-viewer.log"
 if ! cmp -s "$tmp/ws-viewer-one.json" "$tmp/ws-viewer-two.json"; then
-  echo "FAIL: independent viewers received different authoritative event streams" >&2
+  echo "FAIL: independent authenticated viewers received different authoritative event streams" >&2
   diff -u "$tmp/ws-viewer-one.json" "$tmp/ws-viewer-two.json" >&2 || true
   exit 1
 fi
-echo "PASS: two authenticated team owners on independent clients received identical ordered authoritative private-topic updates"
+if ! cmp -s "$tmp/ws-viewer-one.json" "$tmp/ws-public-viewer.json"; then
+  echo "FAIL: anonymous public viewer and authenticated private viewers received different ordered event streams" >&2
+  diff -u "$tmp/ws-viewer-one.json" "$tmp/ws-public-viewer.json" >&2 || true
+  exit 1
+fi
+echo "PASS: two authenticated team owners and one anonymous public viewer received identical ordered authoritative events with no duplicates or missed updates"
