@@ -139,13 +139,47 @@ wait_and_smoke() {
   done
 }
 
+rollback_previous_release() {
+  # Do not allow a second signal to interrupt the recovery path.
+  trap '' INT TERM
+  update_release "$OLD_BACKEND_TAG" "$OLD_FRONTEND_TAG" "$OLD_BACKEND_IMAGE" "$OLD_FRONTEND_IMAGE"
+  if wait_and_smoke; then
+    echo "ROLLBACK PASS: previous exact production image digests are healthy again." >&2
+    return 0
+  fi
+  echo "CRITICAL: production rollback could not restore a healthy previous release." >&2
+  return 1
+}
+
+handle_deploy_signal() {
+  local signal="$1" exit_code=143
+  [[ "$signal" == "INT" ]] && exit_code=130
+  trap - INT TERM
+  if [[ "${DEPLOYMENT_IN_PROGRESS:-false}" == true ]]; then
+    echo "Received $signal during production deployment; restoring previous exact image digests." >&2
+    if rollback_previous_release; then
+      echo "INTERRUPTED PRODUCTION DEPLOYMENT ROLLED BACK: previous release is healthy." >&2
+    else
+      echo "CRITICAL: interrupted production rollback failed; immediate operator intervention is required." >&2
+    fi
+  fi
+  exit "$exit_code"
+}
+
+DEPLOYMENT_IN_PROGRESS=false
+trap 'handle_deploy_signal INT' INT
+trap 'handle_deploy_signal TERM' TERM
+
 echo "Applying digest-pinned production release:"
 echo "  backend tag: $NEW_BACKEND_TAG"
 echo "  backend digest: $BACKEND_DIGEST"
 echo "  frontend tag: $NEW_FRONTEND_TAG"
 echo "  frontend digest: $FRONTEND_DIGEST"
+DEPLOYMENT_IN_PROGRESS=true
 update_release "$NEW_BACKEND_TAG" "$NEW_FRONTEND_TAG" "$NEW_BACKEND_IMAGE" "$NEW_FRONTEND_IMAGE"
 if ! run_preflight "$NEW_BACKEND_TAG" "$NEW_FRONTEND_TAG"; then
+  DEPLOYMENT_IN_PROGRESS=false
+  trap - INT TERM
   update_release "$OLD_BACKEND_TAG" "$OLD_FRONTEND_TAG" "$OLD_BACKEND_IMAGE" "$OLD_FRONTEND_IMAGE"
   fail "Release preflight failed; previous exact image digests were restored in .env"
 fi
@@ -155,16 +189,16 @@ if wait_and_smoke; then
     "$NEW_BACKEND_TAG" "$NEW_FRONTEND_TAG" "$NEW_BACKEND_IMAGE" "$NEW_FRONTEND_IMAGE" "$(date -u +%FT%TZ)" > "$APP_DIR/.last-known-good-release.tmp"
   chmod 600 "$APP_DIR/.last-known-good-release.tmp"
   mv "$APP_DIR/.last-known-good-release.tmp" "$APP_DIR/.last-known-good-release"
+  DEPLOYMENT_IN_PROGRESS=false
+  trap - INT TERM
   echo "PASS: production deployment used verified image digests and all required smoke checks succeeded."
   exit 0
 fi
 
 echo "New release failed health/smoke checks; rolling back to the exact previously running image digests." >&2
-update_release "$OLD_BACKEND_TAG" "$OLD_FRONTEND_TAG" "$OLD_BACKEND_IMAGE" "$OLD_FRONTEND_IMAGE"
-if wait_and_smoke; then
-  echo "ROLLBACK PASS: previous exact image digests are healthy again." >&2
+if rollback_previous_release; then
+  DEPLOYMENT_IN_PROGRESS=false
   fail "New release was rolled back. Investigate deployment logs before retrying."
 fi
-
-echo "CRITICAL: automatic rollback could not restore a healthy previous release." >&2
+DEPLOYMENT_IN_PROGRESS=false
 fail "Manual operator intervention is required. Previous exact image digests remain recorded in .env"
