@@ -7,10 +7,6 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.UUID;
 
-/**
- * Resolves paid capabilities at tournament scope. Entitlements are granted only
- * after payment/admin activation and are revoked/expired centrally.
- */
 @Component
 public class TournamentEntitlementAccess {
     private final JdbcTemplate jdbc;
@@ -19,6 +15,7 @@ public class TournamentEntitlementAccess {
         this.jdbc = jdbc;
     }
 
+    /** Organizer Pro includes every capability sold in Organizer Plus. */
     public boolean hasOrganizerPlus(UUID tournamentId) {
         return hasAnyPackage(tournamentId, "ORGANIZER_PLUS", "ORGANIZER_PRO");
     }
@@ -43,15 +40,14 @@ public class TournamentEntitlementAccess {
 
     private boolean hasAnyPackage(UUID tournamentId, String... packageCodes) {
         if (tournamentId == null || packageCodes.length == 0) return false;
-        Boolean active = jdbc.queryForObject("""
-                SELECT EXISTS (
-                    SELECT 1 FROM user_entitlements
-                    WHERE tournament_id = ?
-                      AND package_code = ANY(?)
-                      AND revoked_at IS NULL
-                      AND (expires_at IS NULL OR expires_at > now())
-                )
-                """, Boolean.class, tournamentId, jdbcArray(packageCodes));
+        String placeholders = String.join(",", java.util.Collections.nCopies(packageCodes.length, "?"));
+        Object[] args = new Object[packageCodes.length + 1];
+        args[0] = tournamentId;
+        System.arraycopy(packageCodes, 0, args, 1, packageCodes.length);
+        String sql = "SELECT EXISTS (SELECT 1 FROM user_entitlements WHERE tournament_id = ? " +
+                "AND package_code IN (" + placeholders + ") AND revoked_at IS NULL " +
+                "AND (expires_at IS NULL OR expires_at > now()))";
+        Boolean active = jdbc.queryForObject(sql, Boolean.class, args);
         return Boolean.TRUE.equals(active);
     }
 
@@ -70,10 +66,5 @@ public class TournamentEntitlementAccess {
         if (!Boolean.TRUE.equals(active)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, message);
         }
-    }
-
-    private java.sql.Array jdbcArray(String[] values) {
-        return jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<java.sql.Array>) connection ->
-                connection.createArrayOf("varchar", values));
     }
 }
