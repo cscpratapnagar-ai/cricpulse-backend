@@ -28,9 +28,16 @@ public class JwtService {
     }
 
     public String create(String subject, String role) {
+        return create(subject, role, expirationSeconds);
+    }
+
+    public String create(String subject, String role, long lifetimeSeconds) {
+        if (lifetimeSeconds <= 0) {
+            throw new IllegalArgumentException("JWT lifetime must be greater than 0");
+        }
         Instant now = Instant.now();
         return Jwts.builder().subject(subject).claim("role", role)
-                .issuedAt(Date.from(now)).expiration(Date.from(now.plusSeconds(expirationSeconds)))
+                .issuedAt(Date.from(now)).expiration(Date.from(now.plusSeconds(lifetimeSeconds)))
                 .signWith(key).compact();
     }
 
