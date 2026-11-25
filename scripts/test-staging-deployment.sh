@@ -89,7 +89,7 @@ fi
 
 # A SIGTERM during the deployment stability window must restore the prior release.
 rm -f "$TOOLS/smoke-count" "$TOOLS/smoke-started"
-printf 'POSTGRES_PASSWORD=Staging-Only-Secret-123456\\nJWT_SECRET=staging-jwt-secret-at-least-32-bytes-long\\nBACKEND_TAG=sha-1111111\\nFRONTEND_TAG=sha-2222222\\n' > "$APP/.env"
+printf 'POSTGRES_PASSWORD=Staging-Only-Secret-123456\nJWT_SECRET=staging-jwt-secret-at-least-32-bytes-long\nBACKEND_TAG=sha-1111111\nFRONTEND_TAG=sha-2222222\n' > "$APP/.env"
 cat > "$TOOLS/staging-deployment-smoke.sh" <<'SMOKE'
 #!/usr/bin/env bash
 set -Eeuo pipefail
