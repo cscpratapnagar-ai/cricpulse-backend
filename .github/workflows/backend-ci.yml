@@ -201,6 +201,8 @@ jobs:
           echo "PASS: mutable production image tags are rejected"
 
       - name: Start application
+        env:
+          LOGGING_LEVEL_COM_CRICKET_PLATFORM_SHARED: DEBUG
         run: |
           nohup java -jar target/*.jar > "$RUNNER_TEMP/cricpulse-api.log" 2>&1 &
           echo $! > "$RUNNER_TEMP/cricpulse-api.pid"
