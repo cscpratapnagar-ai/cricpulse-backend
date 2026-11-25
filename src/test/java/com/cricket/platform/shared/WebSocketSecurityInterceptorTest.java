@@ -31,6 +31,7 @@ class WebSocketSecurityInterceptorTest {
     }
 
     private static Message<byte[]> message(StompHeaderAccessor accessor) {
+        accessor.setLeaveMutable(true);
         return MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
     }
 
@@ -60,6 +61,20 @@ class WebSocketSecurityInterceptorTest {
         assertNotNull(result);
         assertNotNull(StompHeaderAccessor.wrap(result).getUser());
         assertEquals("user@example.com", StompHeaderAccessor.wrap(result).getUser().getName());
+    }
+
+    @Test
+    void connectPreservesPrincipalOnOriginalAccessorForSessionPropagation() {
+        String token = jwt.create("owner@example.com", "PLAYER");
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.CONNECT);
+        accessor.addNativeHeader("Authorization", "Bearer " + token);
+        Message<byte[]> connectMessage = message(accessor);
+
+        Message<?> result = interceptor.preSend(connectMessage, null);
+
+        assertSame(connectMessage, result);
+        assertNotNull(accessor.getUser());
+        assertEquals("owner@example.com", accessor.getUser().getName());
     }
 
     @Test
@@ -118,6 +133,20 @@ class WebSocketSecurityInterceptorTest {
         accessor.setDestination("/topic/innings/" + inningsId);
         when(jdbc.queryForObject(anyString(), eq(Integer.class), any(), any(), any(), any(), any())).thenReturn(1);
         assertDoesNotThrow(() -> interceptor.preSend(message(accessor), null));
+    }
+
+    @Test
+    void subscribeAuthenticatesShortLivedBearerTicketWhenSessionPrincipalIsMissing() {
+        UUID inningsId = UUID.randomUUID();
+        String token = jwt.create("user@example.com", "PLAYER", 60);
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
+        accessor.addNativeHeader("Authorization", "Bearer " + token);
+        accessor.setDestination("/topic/innings/" + inningsId);
+        when(jdbc.queryForObject(anyString(), eq(Integer.class), any(), any(), any(), any(), any())).thenReturn(1);
+
+        assertDoesNotThrow(() -> interceptor.preSend(message(accessor), null));
+        verify(jdbc).queryForObject(anyString(), eq(Integer.class), any(), eq("user@example.com"),
+                eq("user@example.com"), eq("user@example.com"), eq("user@example.com"));
     }
 
     @Test

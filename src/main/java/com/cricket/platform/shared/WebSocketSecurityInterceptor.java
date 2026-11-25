@@ -7,7 +7,7 @@ import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.ChannelInterceptor;
-import org.springframework.messaging.support.MessageBuilder;
+import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -31,7 +31,10 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
 
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
-        StompHeaderAccessor accessor = StompHeaderAccessor.wrap(message);
+        StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
+        if (accessor == null) {
+            return message;
+        }
 
         if (StompCommand.CONNECT.equals(accessor.getCommand())) {
             Authentication authentication = authenticate(accessor.getFirstNativeHeader("Authorization"));
@@ -41,7 +44,9 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
                 return message;
             }
             accessor.setUser(authentication);
-            return MessageBuilder.createMessage(message.getPayload(), accessor.getMessageHeaders());
+            // Mutate the original STOMP accessor so StompSubProtocolHandler can
+            // retain the Principal for subsequent frames in this WebSocket session.
+            return message;
         }
 
         if (StompCommand.SUBSCRIBE.equals(accessor.getCommand())) {
@@ -55,7 +60,13 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
                 return message;
             }
 
+            // Some STOMP clients/brokers do not preserve the CONNECT Principal
+            // on subsequent SUBSCRIBE frames. Accept the same short-lived ticket
+            // on SUBSCRIBE as well, while preferring the authenticated session user.
             Authentication authentication = asAuthentication(accessor.getUser());
+            if (authentication == null) {
+                authentication = authenticate(accessor.getFirstNativeHeader("Authorization"));
+            }
             if (authentication == null || !authentication.isAuthenticated()) {
                 throw new IllegalArgumentException("WebSocket authentication is required");
             }
