@@ -12,12 +12,16 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.stereotype.Component;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 
 import java.util.List;
 import java.util.UUID;
 
 @Component
 public class WebSocketSecurityInterceptor implements ChannelInterceptor {
+    private static final Logger log = LoggerFactory.getLogger(WebSocketSecurityInterceptor.class);
     private static final String PRIVATE_TOPIC_PREFIX = "/topic/innings/";
     private static final String PUBLIC_TOPIC_PREFIX = "/topic/public/innings/";
 
@@ -34,7 +38,9 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
         StompHeaderAccessor accessor = StompHeaderAccessor.wrap(message);
 
         if (StompCommand.CONNECT.equals(accessor.getCommand())) {
-            Authentication authentication = authenticate(accessor.getFirstNativeHeader("Authorization"));
+            String authorization = accessor.getFirstNativeHeader("Authorization");
+            Authentication authentication = authenticate(authorization);
+            log.debug("STOMP CONNECT authorizationHeaderPresent={} authenticated={}", authorization != null, authentication != null);
             if (authentication == null) {
                 // Public match viewers do not need an account. Private topics
                 // remain protected at SUBSCRIBE time.
@@ -56,11 +62,14 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
             }
 
             Authentication authentication = asAuthentication(accessor.getUser());
+            log.debug("STOMP SUBSCRIBE destination={} authenticated={}", destination, authentication != null && authentication.isAuthenticated());
             if (authentication == null || !authentication.isAuthenticated()) {
                 throw new IllegalArgumentException("WebSocket authentication is required");
             }
 
-            if (!canViewInnings(authentication, inningsId)) {
+            boolean authorized = canViewInnings(authentication, inningsId);
+            log.debug("STOMP private subscription authorized={}", authorized);
+            if (!authorized) {
                 throw new IllegalArgumentException("You are not authorized to subscribe to this live match");
             }
         }
