@@ -4,7 +4,7 @@
 
 This workflow deploys only to the GitHub Environment named staging. It uses a dedicated remote application directory whose final path component must be staging, a separate Compose project name, a separate PostgreSQL volume, and loopback-only host ports. It does not call the production deployment workflow or use production environment secrets.
 
-The workflow is manual and requires immutable backend and frontend image tags plus a non-empty staging database backup created within the last 24 hours. Both image attestations are verified before SSH configuration or host contact. A failed verification blocks deployment.
+The workflow is manual and requires immutable backend and frontend image tags plus a non-empty staging database backup created within the last 24 hours. Both image attestations are verified before SSH configuration or host contact. A failed verification blocks deployment. All operator-supplied workflow inputs are passed to shell steps through environment variables; GitHub expressions are never expanded directly inside shell command text. CI enforces this boundary with a workflow regression test.
 
 ## Required GitHub Environment
 
