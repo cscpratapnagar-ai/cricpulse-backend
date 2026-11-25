@@ -20,12 +20,16 @@ Example webhook body:
   "eventType": "PAYMENT_SUCCESS",
   "orderId": "order-uuid",
   "status": "PAID",
-  "paymentId": "provider-payment-reference"
+  "paymentId": "provider-payment-reference",
+  "amountPaise": 19900,
+  "currency": "INR"
 }
 ```
 
+For `PAYMENT_SUCCESS` + `PAID`, the signed event must include the exact order `amountPaise`, `currency`, and a non-empty provider `paymentId`. The backend compares the amount and currency to the stored order before activating an entitlement. A mismatch is rejected with HTTP 409 and the webhook transaction is rolled back, so a corrected event can be retried. Replayed success events for an already-paid order must use the same provider payment reference. Refund events must also reference the payment recorded on the order.
+
 Supported transitions:
-- `PAYMENT_SUCCESS` + `PAID`: PENDING -> PAID and activate entitlement
+- `PAYMENT_SUCCESS` + `PAID`: PENDING -> PAID and activate entitlement only after amount/currency/reference validation
 - `PAYMENT_FAILED` + `FAILED`: PENDING -> FAILED
 - `REFUND_SUCCESS` + `REFUNDED`: PAID -> REFUNDED and revoke the related entitlement
 
