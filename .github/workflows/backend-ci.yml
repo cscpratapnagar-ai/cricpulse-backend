@@ -62,6 +62,7 @@ jobs:
           bash -n scripts/staging-deployment-smoke.sh
           bash -n scripts/staging-deploy-with-rollback.sh
           bash -n scripts/test-staging-deployment.sh
+          bash -n scripts/test-staging-deployment-workflow.sh
           bash -n scripts/write-staging-release-evidence.sh
           bash -n scripts/test-staging-release-evidence.sh
           bash -n scripts/verify-frontend-image-attestation.sh
@@ -91,6 +92,9 @@ jobs:
 
       - name: Verify frontend production image provenance enforcement
         run: bash scripts/test-frontend-image-attestation.sh
+
+      - name: Verify staging workflow input injection protection
+        run: bash scripts/test-staging-deployment-workflow.sh
 
       - name: Verify staging deployment and rollback paths
         run: bash scripts/test-staging-deployment.sh
