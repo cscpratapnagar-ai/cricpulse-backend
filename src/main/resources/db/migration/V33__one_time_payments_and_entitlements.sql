@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS payment_orders (
     provider_order_id VARCHAR(120),
     provider_payment_id VARCHAR(120),
     idempotency_key VARCHAR(120) NOT NULL,
+    manual_note VARCHAR(500),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     paid_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
