@@ -30,6 +30,11 @@ server:
   port: ${PORT:8080}
   shutdown: graceful
 
+payments:
+  webhook:
+    # Configure only after selecting and onboarding a real gateway.
+    secret: ${PAYMENT_WEBHOOK_SECRET:}
+
 security:
   jwt:
     # Local Maven runs can start without manually exporting a secret. Production

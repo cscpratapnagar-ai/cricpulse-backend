@@ -1,0 +1,51 @@
+# One-time payments API (backend foundation)
+
+All amounts are INR paise. The catalogue currently contains proposed launch prices:
+- Pro Tournament: INR 999 per event
+- Broadcast: INR 2,499 per event
+- Club / Academy: INR 9,999, manually renewed
+
+These are configuration/product hypotheses, not gateway-settled prices. Confirm pricing before enabling checkout.
+
+## Current operating mode
+
+Orders are created as `PENDING` with provider `MANUAL`. No checkout session is generated and no payment is represented as successful merely because an order was created. A platform administrator can activate an order after independently confirming an offline/manual payment; the activation note is retained on the order and the activating admin is recorded on the entitlement.
+
+A generic HMAC webhook adapter is available at `POST /api/public/payments/webhooks/HMAC`. It is deliberately not presented as a Razorpay or Cashfree integration. Configure `PAYMENT_WEBHOOK_SECRET` only when a trusted gateway adapter/proxy is ready to send the documented signed payload. The signature is lowercase or uppercase hex HMAC-SHA256 over the exact raw request body, supplied in `X-Payment-Signature`.
+
+Example webhook body:
+```json
+{
+  "eventId": "evt_unique_provider_event_id",
+  "eventType": "PAYMENT_SUCCESS",
+  "orderId": "order-uuid",
+  "status": "PAID",
+  "paymentId": "provider-payment-reference"
+}
+```
+
+Supported transitions:
+- `PAYMENT_SUCCESS` + `PAID`: PENDING -> PAID and activate entitlement
+- `PAYMENT_FAILED` + `FAILED`: PENDING -> FAILED
+- `REFUND_SUCCESS` + `REFUNDED`: PAID -> REFUNDED and revoke the related entitlement
+
+Webhook event IDs are unique per provider; repeated events are acknowledged as duplicates. No recurring billing or auto-renewal exists.
+
+## Endpoints
+
+- `GET /api/payments/packages` — public catalogue
+- `POST /api/payments/orders` — authenticated order creation; requires `packageCode` and client-generated `idempotencyKey`
+- `GET /api/payments/orders` — current user's orders
+- `GET /api/payments/entitlements` — current user's active entitlements
+- `POST /api/admin/payments/orders/{orderId}/activate` — platform admin manual activation; requires a reason/note
+- `POST /api/public/payments/webhooks/HMAC` — signed generic webhook adapter
+
+## Not enabled by this backend-only PR
+
+- A gateway-specific checkout SDK / order creation flow
+- Razorpay or Cashfree's provider-specific webhook signature and event mapping
+- Frontend purchase/checkout and admin payment screens
+- Feature-level entitlement enforcement across tournament/broadcast APIs
+- Automated refund initiation or financial reconciliation
+
+These must be implemented and tested before accepting online payments in production. The webhook secret must never be committed to source control.
