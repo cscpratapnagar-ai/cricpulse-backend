@@ -27,12 +27,18 @@ import java.util.UUID;
 @RequestMapping("/api")
 public class PaymentController {
     private static final Map<String, PackageDefinition> PACKAGES = Map.of(
-            "PRO_TOURNAMENT", new PackageDefinition("PRO_TOURNAMENT", "Pro Tournament", 99900L,
-                    "INR", "Tournament management tools for one event"),
-            "BROADCAST", new PackageDefinition("BROADCAST", "Broadcast", 249900L,
-                    "INR", "Live scoring and broadcast tools for one event"),
-            "CLUB_ACADEMY", new PackageDefinition("CLUB_ACADEMY", "Club / Academy", 999900L,
-                    "INR", "Club and academy workspace; manually renewed")
+            "FREE_TOURNAMENT", new PackageDefinition("FREE_TOURNAMENT", "Free Tournament", 0L,
+                    "INR", "Scoring, fixtures, registration and points table", "Free"),
+            "ORGANIZER_PLUS", new PackageDefinition("ORGANIZER_PLUS", "Organizer Plus", 9900L,
+                    "INR", "Additional tournament organizer tools", "Per tournament"),
+            "ORGANIZER_PRO", new PackageDefinition("ORGANIZER_PRO", "Organizer Pro", 19900L,
+                    "INR", "All Organizer Plus features plus Pro sponsor placement", "Per tournament"),
+            "BROADCAST_ADDON", new PackageDefinition("BROADCAST_ADDON", "Broadcast Add-on", 14900L,
+                    "INR", "Live broadcast tools; may be combined with Organizer Pro", "Per tournament"),
+            "CLUB_ACADEMY_PLUS", new PackageDefinition("CLUB_ACADEMY_PLUS", "Club / Academy Plus", 39900L,
+                    "INR", "Club and academy workspace access", "1 year"),
+            "ACADEMY_BRANDING", new PackageDefinition("ACADEMY_BRANDING", "Academy Branding", 79900L,
+                    "INR", "One-time academy branding setup", "One-time setup")
     );
 
     private final JdbcTemplate jdbc;
@@ -227,7 +233,8 @@ public class PaymentController {
                 rs.getString("provider"), rs.getObject("created_at", OffsetDateTime.class));
     }
 
-    public record PackageDefinition(String code, String name, long amountPaise, String currency, String description) {}
+    public record PackageDefinition(String code, String name, long amountPaise, String currency,
+                                    String description, String validity) {}
     public record CreateOrderRequest(@NotBlank String packageCode,
                                      @NotBlank @Size(max = 120) String idempotencyKey) {}
     public record ManualActivationRequest(@NotBlank @Size(max = 500) String note) {}
