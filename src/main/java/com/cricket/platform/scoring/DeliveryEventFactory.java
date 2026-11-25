@@ -12,7 +12,11 @@ public final class DeliveryEventFactory {
     private DeliveryEventFactory() {}
 
     public static DeliveryEvent create(DeliveryCommand command, long sequenceNo, int eventVersion, int overNumber, int ballNumber, boolean legalDelivery) {
-        String payload = "{\\"commandId\\":\\""+command.commandId()+"\\",\\"batRuns\\":"+command.batRuns()+",\\"extraRuns\\":"+command.extraRuns()+",\\"wicketFielderId\\":"+(command.wicketFielderId()==null?"null":"\\""+command.wicketFielderId()+"\\"")+",\\"commandFingerprint\\":\\""+fingerprint(command)+"\\"}";
+        String payload = """
+                {"commandId":"%s","batRuns":%d,"extraRuns":%d,"wicketFielderId":%s,"commandFingerprint":"%s"}
+                """.formatted(command.commandId(), command.batRuns(), command.extraRuns(),
+                command.wicketFielderId() == null ? "null" : "\"" + command.wicketFielderId() + "\"",
+                fingerprint(command)).trim();
         return new DeliveryEvent(
                 UUID.randomUUID(), command.inningsId(), sequenceNo, eventVersion,
                 "DELIVERY_RECORDED", overNumber, ballNumber,
@@ -40,29 +44,41 @@ public final class DeliveryEventFactory {
 
         // Older events remain retryable using all command fields persisted in columns.
         String payload = event.eventPayload();
-        if (payload == null || !payload.contains("\\"commandFingerprint\\"")) {
+        if (payload == null || !payload.contains("\"commandFingerprint\"")) {
             return true;
         }
-        return payload.contains("\\"commandFingerprint\\":\\""+fingerprint(command)+"\\"");
+        return payload.contains("\"commandFingerprint\":\"" + fingerprint(command) + "\"");
     }
 
     private static String fingerprint(DeliveryCommand command) {
-        String canonical = String.join("|",
-                value(command.commandId()), value(command.inningsId()),
-                value(command.strikerId()), value(command.nonStrikerId()), value(command.bowlerId()),
-                Integer.toString(command.batRuns()), Integer.toString(command.extraRuns()),
-                value(command.extraType()), value(command.wicketType()),
-                value(command.dismissedPlayerId()), value(command.newBatterId()),
-                value(command.wicketFielderId()), value(command.recordedBy()));
+        StringBuilder canonical = new StringBuilder();
+        append(canonical, command.commandId());
+        append(canonical, command.inningsId());
+        append(canonical, command.strikerId());
+        append(canonical, command.nonStrikerId());
+        append(canonical, command.bowlerId());
+        append(canonical, command.batRuns());
+        append(canonical, command.extraRuns());
+        append(canonical, command.extraType());
+        append(canonical, command.wicketType());
+        append(canonical, command.dismissedPlayerId());
+        append(canonical, command.newBatterId());
+        append(canonical, command.wicketFielderId());
+        append(canonical, command.recordedBy());
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                    .digest(canonical.getBytes(StandardCharsets.UTF_8)));
+                    .digest(canonical.toString().getBytes(StandardCharsets.UTF_8)));
         } catch (NoSuchAlgorithmException impossible) {
             throw new IllegalStateException("SHA-256 is unavailable", impossible);
         }
     }
 
-    private static String value(Object value) {
-        return value == null ? "<null>" : value.toString();
+    private static void append(StringBuilder target, Object value) {
+        if (value == null) {
+            target.append("-1:");
+            return;
+        }
+        String text = value.toString();
+        target.append(text.length()).append(':').append(text);
     }
 }
