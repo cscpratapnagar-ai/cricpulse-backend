@@ -15,7 +15,7 @@ This checklist separates repository/CI evidence from actions that require the re
 
 ## Gate 2 — staging deployment and application certification
 
-- [ ] Publish backend image from backend `main` and frontend image from frontend `develop`; record immutable tags and verified digests.
+- [ ] Publish backend image from backend `release` and frontend image from frontend `release`; record immutable tags and verified digests.
 - [ ] Run **Staging Deployment** with the two image tags and a verified staging backup path.
 - [ ] Save the 90-day staging release evidence artifact and verify API readiness, database-backed broadcast health, frontend HTML, and match snapshot.
 - [ ] Certify scorer and public viewer on two separate devices/browser profiles.

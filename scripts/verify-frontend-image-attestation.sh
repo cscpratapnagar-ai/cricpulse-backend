@@ -18,8 +18,8 @@ docker buildx version >/dev/null 2>&1 || fail "Docker Buildx is required to reso
 IMAGE_NAME="ghcr.io/cscpratapnagar-ai/cricpulse-ui"
 IMAGE_TAG_URI="${IMAGE_NAME}:${IMAGE_TAG}"
 SIGNER_WORKFLOW="cscpratapnagar-ai/cricpulse-ui/.github/workflows/publish-production-container.yml"
-# CricPulse's active UI build/release branch is develop; verify its signed image provenance exactly.
-SOURCE_REF="refs/heads/develop"
+# The UI production image workflow publishes only from the release branch.
+SOURCE_REF="refs/heads/release"
 
 # Resolve the tag once, then verify and deploy the immutable digest rather than
 # trusting the mutable registry tag for subsequent pulls.

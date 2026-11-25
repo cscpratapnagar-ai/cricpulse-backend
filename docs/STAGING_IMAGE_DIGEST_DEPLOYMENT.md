@@ -7,8 +7,8 @@ The staging workflow accepts immutable commit tags as operator-friendly inputs, 
 1. The operator supplies backend and frontend `sha-<commit>` tags to the `Staging Deployment` workflow.
 2. The workflow resolves each tag to the raw OCI registry manifest and computes its SHA-256 digest.
 3. GitHub CLI verifies the signed attestation against the digest reference, not the tag:
-   - Backend: `ghcr.io/cscpratapnagar-ai/cricpulse-backend@sha256:...`, signer workflow in the backend repository, source ref `refs/heads/main`.
-   - Frontend: `ghcr.io/cscpratapnagar-ai/cricpulse-ui@sha256:...`, signer workflow in the frontend repository, source ref `refs/heads/develop` (the active UI release branch).
+   - Backend: `ghcr.io/cscpratapnagar-ai/cricpulse-backend@sha256:...`, signer workflow in the backend repository, source ref `refs/heads/release`.
+   - Frontend: `ghcr.io/cscpratapnagar-ai/cricpulse-ui@sha256:...`, signer workflow in the frontend repository, source ref `refs/heads/release`.
 4. Only after both verifications pass are the exact digest values passed to the remote deployment script.
 5. Docker Compose pulls and runs image references containing `@sha256:`. It never re-resolves the input tags during deployment.
 6. The last-known-good state and automatic rollback both store and use digest-pinned image references.
