@@ -77,7 +77,9 @@ public class SecurityConfig {
                             boolean bearerRequest = authorization != null && authorization.startsWith("Bearer ");
                             boolean publicTeamRegistration = "POST".equals(request.getMethod())
                                     && request.getRequestURI().matches("^/api/public/tournaments/[^/]+/registrations$");
-                            return bearerRequest || publicTeamRegistration;
+                            boolean signedPaymentWebhook = "POST".equals(request.getMethod())
+                                    && request.getRequestURI().matches("^/api/public/payments/webhooks/HMAC$");
+                            return bearerRequest || publicTeamRegistration || signedPaymentWebhook;
                         }))
                 .cors(cors -> {})
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
