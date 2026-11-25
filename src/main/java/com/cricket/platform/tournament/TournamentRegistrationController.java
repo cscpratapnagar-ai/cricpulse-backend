@@ -33,11 +33,17 @@ public class TournamentRegistrationController {
     @Transactional
     public RegistrationView submit(@PathVariable UUID tournamentId,
                                    @Valid @RequestBody RegistrationRequest request) {
-        Boolean open = jdbc.query(
-                "SELECT registration_open FROM tournaments WHERE id = ? AND status IN ('DRAFT','ACTIVE')",
-                rs -> rs.next() ? rs.getBoolean(1) : null, tournamentId);
-        if (open == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tournament not found");
-        if (!open) throw new ResponseStatusException(HttpStatus.CONFLICT, "Team registration is closed");
+        Integer open = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM tournaments
+                WHERE id = ? AND status IN ('DRAFT','ACTIVE')
+                  AND registration_open = TRUE
+                  AND (registration_deadline IS NULL OR registration_deadline > now())
+                """, Integer.class, tournamentId);
+        if (open == null || open == 0) {
+            Integer exists = jdbc.queryForObject("SELECT COUNT(*) FROM tournaments WHERE id=?", Integer.class, tournamentId);
+            if (exists == null || exists == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tournament not found");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Team registration is closed or its deadline has passed");
+        }
         Integer rosterCount = request.players().size();
         if (rosterCount < 2 || rosterCount > 30)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Roster must contain between 2 and 30 players");
