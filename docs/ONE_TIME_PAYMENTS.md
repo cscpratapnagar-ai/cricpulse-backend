@@ -44,6 +44,12 @@ Webhook event IDs are unique per provider; repeated events are acknowledged as d
 - `POST /api/admin/payments/orders/{orderId}/activate` — platform admin manual activation; requires a reason/note
 - `POST /api/public/payments/webhooks/HMAC` — signed generic webhook adapter
 
+## E2E certification coverage
+
+`scripts/e2e-payment-order-admin-activation.sh` exercises the HTTP API and the CI PostgreSQL database using run-scoped disposable accounts/orders. It verifies that order creation grants no entitlement, matching idempotency retries return the same order, conflicting reuse is rejected, ordinary users cannot activate orders, manual admin activation records the admin and note, repeated activation does not duplicate an entitlement, order/entitlement history is owner-scoped, and refunded orders cannot be reactivated.
+
+The CI admin identity is registered through the normal API and promoted only by a direct SQL update against the disposable PostgreSQL service used by that workflow. No application endpoint or production identity is granted new privileges by the test.
+
 ## Not enabled by this backend-only PR
 
 - A gateway-specific checkout SDK / order creation flow
