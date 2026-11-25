@@ -139,9 +139,9 @@ public class PaymentController {
                                       @Valid @RequestBody ManualActivationRequest request,
                                       Authentication auth) {
         UUID adminId = authenticatedUserId(auth);
-        Integer isAdmin = jdbc.queryForObject("SELECT COUNT(*) FROM users WHERE id=? AND role='ADMIN' FOR UPDATE",
-                Integer.class, adminId);
-        if (isAdmin == null || isAdmin == 0) {
+        Boolean isAdmin = jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM users WHERE id=? AND role='ADMIN')",
+                Boolean.class, adminId);
+        if (!Boolean.TRUE.equals(isAdmin)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Platform administrator access required");
         }
         OrderView order = jdbc.queryForObject("""
