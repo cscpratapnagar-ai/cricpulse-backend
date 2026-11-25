@@ -23,7 +23,7 @@ request() {
   token="$(curl -fsS -b "$jar" -c "$jar" "$BASE_URL/auth/csrf" | jq -r '.token')"
   local args=(-sS -b "$jar" -c "$jar" -X "$method" "$BASE_URL$path" -H 'Content-Type: application/json' -H "X-XSRF-TOKEN: $token")
   [[ -z "$body" ]] || args+=(--data-binary "$body")
-  status="$(curl "${args[@]}" -o "$tmp/response.json" -w '%{http_code}' "${args[@]}")"
+  status="$(curl -o "$tmp/response.json" -w '%{http_code}' "${args[@]}")"
   printf '%s' "$status"
 }
 login() {
