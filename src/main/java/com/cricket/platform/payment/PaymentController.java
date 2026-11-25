@@ -206,7 +206,14 @@ public class PaymentController {
                 INSERT INTO payment_webhook_events(provider,event_id,event_type,payload_hash)
                 VALUES (?,?,?,?) ON CONFLICT (provider,event_id) DO NOTHING
                 """, normalizedProvider, event.eventId(), event.eventType(), hash);
-        if (inserted == 0) return Map.of("status", "duplicate");
+        if (inserted == 0) {
+            String storedHash = jdbc.queryForObject("""
+                    SELECT payload_hash FROM payment_webhook_events
+                    WHERE provider=? AND event_id=?
+                    """, String.class, normalizedProvider, event.eventId());
+            ensureSameWebhookPayload(storedHash, hash);
+            return Map.of("status", "duplicate");
+        }
 
         UUID orderId;
         try { orderId = UUID.fromString(event.orderId()); }
@@ -240,6 +247,16 @@ public class PaymentController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported payment event transition");
         }
         return Map.of("status", "processed");
+    }
+
+    static void ensureSameWebhookPayload(String storedHash, String incomingHash) {
+        if (storedHash == null || incomingHash == null
+                || !MessageDigest.isEqual(
+                        storedHash.getBytes(StandardCharsets.US_ASCII),
+                        incomingHash.getBytes(StandardCharsets.US_ASCII))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Webhook event ID was already used with a different payload");
+        }
     }
 
     private boolean validSignature(byte[] body, String supplied) throws Exception {
