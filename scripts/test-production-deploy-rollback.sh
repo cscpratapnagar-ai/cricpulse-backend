@@ -87,6 +87,12 @@ case "${MOCK_SMOKE_MODE:-success}" in
   flaky)
     [[ "$count" -ne 2 ]] || { echo "simulated intermittent production failure" >&2; exit 1; }
     ;;
+  interrupt)
+    if [[ "$count" -eq 1 ]]; then
+      touch "$MOCK_SMOKE_STARTED"
+      sleep 2
+    fi
+    ;;
 esac
 echo "simulated deployment smoke success"
 SMOKE
@@ -172,5 +178,34 @@ if MOCK_NO_REPODIGEST=backend bash "$ROOT/scripts/production-deploy-with-rollbac
   exit 1
 fi
 cmp "$TMP/no-digest.env.before" "$NO_DIGEST_APP/.env"
+
+echo "[6/6] Verify SIGTERM during production rollout restores exact previous image digests"
+INTERRUPT_APP="$(make_fixture interrupt interrupt)"
+printf 'known-good-before-interrupt\n' > "$INTERRUPT_APP/.last-known-good-release"
+cp "$INTERRUPT_APP/.last-known-good-release" "$TMP/interrupt.last-known-good.before"
+rm -f "$MOCK_SMOKE_COUNTER_PATH" "$TMP/production-smoke-started"
+export MOCK_SMOKE_STARTED="$TMP/production-smoke-started"
+MOCK_SMOKE_MODE=interrupt bash "$ROOT/scripts/production-deploy-with-rollback.sh" \
+  "$INTERRUPT_APP" sha-fffffff sha-9999999 "$NEW_BACKEND_DIGEST" "$NEW_FRONTEND_DIGEST" \
+  "$TMP/interrupt.dump" https://api.example.test https://app.example.test \
+  http://127.0.0.1:8081/actuator/health/readiness "" &
+DEPLOY_PID=$!
+for attempt in {1..100}; do
+  [[ -f "$MOCK_SMOKE_STARTED" ]] && break
+  kill -0 "$DEPLOY_PID" 2>/dev/null || { echo "Interrupted production fixture exited before smoke began" >&2; wait "$DEPLOY_PID" || true; exit 1; }
+  sleep 0.05
+done
+[[ -f "$MOCK_SMOKE_STARTED" ]] || { kill "$DEPLOY_PID" 2>/dev/null || true; echo "Timed out waiting for production smoke fixture" >&2; exit 1; }
+kill -TERM "$DEPLOY_PID"
+if wait "$DEPLOY_PID"; then
+  echo "Expected interrupted production deployment to exit unsuccessfully after rollback" >&2
+  exit 1
+fi
+grep -qx 'BACKEND_TAG=sha-abcdef1' "$INTERRUPT_APP/.env"
+grep -qx 'FRONTEND_TAG=sha-1234567' "$INTERRUPT_APP/.env"
+grep -qx 'BACKEND_IMAGE=ghcr.io/cscpratapnagar-ai/cricpulse-backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "$INTERRUPT_APP/.env"
+grep -qx 'FRONTEND_IMAGE=ghcr.io/cscpratapnagar-ai/cricpulse-ui@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' "$INTERRUPT_APP/.env"
+[[ "$(cat "$MOCK_SMOKE_COUNTER_PATH")" == "4" ]] || { echo "Expected one interrupted production smoke and three rollback smoke checks" >&2; exit 1; }
+cmp "$TMP/interrupt.last-known-good.before" "$INTERRUPT_APP/.last-known-good-release"
 
 echo "PASS: production sustained health gate, backup restore, digest pinning, exact rollback, and fail-closed rollback precondition are covered."
