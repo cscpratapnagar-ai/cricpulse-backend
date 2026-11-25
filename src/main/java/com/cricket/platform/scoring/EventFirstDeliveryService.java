@@ -21,11 +21,7 @@ public class EventFirstDeliveryService {
         if (existing == null) {
             return null;
         }
-        if (!command.inningsId().equals(existing.inningsId())) {
-            throw new IllegalArgumentException(
-                    "X-Command-Id has already been used for a different innings"
-            );
-        }
+        validateReplay(command, existing);
         return new Result(existing, false);
     }
 
@@ -35,33 +31,37 @@ public class EventFirstDeliveryService {
                          int ballNumber,
                          boolean legalDelivery) {
         // Serialize the complete allocation/projection path for this innings.
-        // Without the row lock, two simultaneous scorers can both calculate
-        // the same next sequence/version from MAX(...), creating ambiguous
-        // realtime ordering even though command idempotency is enabled.
         eventRepository.lockInnings(command.inningsId());
 
         DeliveryEvent existing = eventRepository.findByCommandId(command.commandId());
         if (existing != null) {
-            if (!command.inningsId().equals(existing.inningsId())) {
-                throw new IllegalArgumentException(
-                        "X-Command-Id has already been used for a different innings"
-                );
-            }
+            validateReplay(command, existing);
             return new Result(existing, false);
         }
 
         long sequenceNo = eventRepository.nextSequence(command.inningsId());
         int eventVersion = eventRepository.nextVersion(command.inningsId());
         RecordDeliveryEvent.Result result = recordDeliveryEvent.execute(
-                command,
-                sequenceNo,
-                eventVersion,
-                overNumber,
-                ballNumber,
-                legalDelivery
+                command, sequenceNo, eventVersion, overNumber, ballNumber, legalDelivery
         );
 
+        if (!result.created()) {
+            validateReplay(command, result.event());
+        }
         return new Result(result.event(), result.created());
+    }
+
+    private static void validateReplay(DeliveryCommand command, DeliveryEvent existing) {
+        if (!command.inningsId().equals(existing.inningsId())) {
+            throw new IllegalArgumentException(
+                    "X-Command-Id has already been used for a different innings"
+            );
+        }
+        if (!DeliveryEventFactory.matches(command, existing)) {
+            throw new IllegalArgumentException(
+                    "X-Command-Id has already been used with a different delivery payload"
+            );
+        }
     }
 
     public record Result(DeliveryEvent event, boolean created) {

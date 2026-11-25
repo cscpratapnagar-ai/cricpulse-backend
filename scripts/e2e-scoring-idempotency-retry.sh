@@ -245,8 +245,8 @@ echo "[7/8] Verify conflicting payload under the same command ID cannot mutate s
 conflicting_delivery="$(jq -c '.batRuns = 2' <<<"$delivery")"
 conflict_status="$(curl -sS -o "$tmp/conflict-response.json" -w '%{http_code}' -X POST "$BASE_URL/scoring/innings/$innings_id/deliveries" "${auth[@]}" "${lease[@]}" -H "X-Command-Id: $command_id" --data "$conflicting_delivery")"
 conflict_response="$(cat "$tmp/conflict-response.json")"
-if [[ ! "$conflict_status" =~ ^[24][0-9][0-9]$ ]]; then
-  echo "FAIL: conflicting command ID returned unexpected HTTP $conflict_status" >&2
+if [[ ! "$conflict_status" =~ ^4[0-9][0-9]$ ]]; then
+  echo "FAIL: conflicting command ID must be rejected with HTTP 4xx, received $conflict_status" >&2
   echo "Response: $conflict_response" >&2
   exit 1
 fi
