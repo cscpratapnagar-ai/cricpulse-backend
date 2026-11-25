@@ -7,20 +7,17 @@ import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.ChannelInterceptor;
-import org.springframework.messaging.support.MessageBuilder;
+import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.stereotype.Component;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.UUID;
 
 @Component
 public class WebSocketSecurityInterceptor implements ChannelInterceptor {
-    private static final Logger log = LoggerFactory.getLogger(WebSocketSecurityInterceptor.class);
     private static final String PRIVATE_TOPIC_PREFIX = "/topic/innings/";
     private static final String PUBLIC_TOPIC_PREFIX = "/topic/public/innings/";
 
@@ -34,19 +31,22 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
 
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
-        StompHeaderAccessor accessor = StompHeaderAccessor.wrap(message);
+        StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
+        if (accessor == null) {
+            return message;
+        }
 
         if (StompCommand.CONNECT.equals(accessor.getCommand())) {
-            String authorization = accessor.getFirstNativeHeader("Authorization");
-            Authentication authentication = authenticate(authorization);
-            log.debug("STOMP CONNECT authorizationHeaderPresent={} authenticated={}", authorization != null, authentication != null);
+            Authentication authentication = authenticate(accessor.getFirstNativeHeader("Authorization"));
             if (authentication == null) {
                 // Public match viewers do not need an account. Private topics
                 // remain protected at SUBSCRIBE time.
                 return message;
             }
             accessor.setUser(authentication);
-            return MessageBuilder.createMessage(message.getPayload(), accessor.getMessageHeaders());
+            // Mutate the original STOMP accessor so StompSubProtocolHandler can
+            // retain the Principal for subsequent frames in this WebSocket session.
+            return message;
         }
 
         if (StompCommand.SUBSCRIBE.equals(accessor.getCommand())) {
@@ -61,14 +61,11 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
             }
 
             Authentication authentication = asAuthentication(accessor.getUser());
-            log.debug("STOMP SUBSCRIBE destination={} authenticated={}", destination, authentication != null && authentication.isAuthenticated());
             if (authentication == null || !authentication.isAuthenticated()) {
                 throw new IllegalArgumentException("WebSocket authentication is required");
             }
 
-            boolean authorized = canViewInnings(authentication, inningsId);
-            log.debug("STOMP private subscription authorized={}", authorized);
-            if (!authorized) {
+            if (!canViewInnings(authentication, inningsId)) {
                 throw new IllegalArgumentException("You are not authorized to subscribe to this live match");
             }
         }
