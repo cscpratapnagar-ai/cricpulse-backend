@@ -27,12 +27,18 @@ import java.util.UUID;
 @RequestMapping("/api")
 public class PaymentController {
     private static final Map<String, PackageDefinition> PACKAGES = Map.of(
-            "PRO_TOURNAMENT", new PackageDefinition("PRO_TOURNAMENT", "Pro Tournament", 99900L,
-                    "INR", "Tournament management tools for one event"),
-            "BROADCAST", new PackageDefinition("BROADCAST", "Broadcast", 249900L,
-                    "INR", "Live scoring and broadcast tools for one event"),
-            "CLUB_ACADEMY", new PackageDefinition("CLUB_ACADEMY", "Club / Academy", 999900L,
-                    "INR", "Club and academy workspace; manually renewed")
+            "FREE_TOURNAMENT", new PackageDefinition("FREE_TOURNAMENT", "Free Tournament", 0L,
+                    "INR", "Scoring, fixtures, registration and points table", "Free"),
+            "ORGANIZER_PLUS", new PackageDefinition("ORGANIZER_PLUS", "Organizer Plus", 9900L,
+                    "INR", "Additional tournament organizer tools", "Per tournament"),
+            "ORGANIZER_PRO", new PackageDefinition("ORGANIZER_PRO", "Organizer Pro", 19900L,
+                    "INR", "All Organizer Plus features plus Pro sponsor placement", "Per tournament"),
+            "BROADCAST_ADDON", new PackageDefinition("BROADCAST_ADDON", "Broadcast Add-on", 14900L,
+                    "INR", "Live broadcast tools; may be combined with Organizer Pro", "Per tournament"),
+            "CLUB_ACADEMY_PLUS", new PackageDefinition("CLUB_ACADEMY_PLUS", "Club / Academy Plus", 39900L,
+                    "INR", "Club and academy workspace access", "1 year"),
+            "ACADEMY_BRANDING", new PackageDefinition("ACADEMY_BRANDING", "Academy Branding", 79900L,
+                    "INR", "One-time academy branding setup", "One-time setup")
     );
 
     private final JdbcTemplate jdbc;
@@ -58,19 +64,48 @@ public class PaymentController {
         UUID userId = authenticatedUserId(auth);
         PackageDefinition pack = PACKAGES.get(request.packageCode().trim().toUpperCase(Locale.ROOT));
         if (pack == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown package");
+        if (pack.amountPaise() == 0L) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Free Tournament is the default access tier; no payment order is required");
+        }
+        boolean tournamentPackage = isTournamentPackage(pack.code());
+        UUID tournamentId = request.tournamentId();
+        if (tournamentPackage) {
+            if (tournamentId == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Select a tournament for this package");
+            }
+            Integer owned = jdbc.queryForObject("""
+                    SELECT COUNT(*) FROM tournaments t
+                    WHERE t.id=? AND (t.owner_id=? OR EXISTS (
+                        SELECT 1 FROM tournament_staff ts
+                        WHERE ts.tournament_id=t.id AND ts.user_id=? AND ts.role='MANAGER'
+                    ))
+                    """, Integer.class, tournamentId, userId, userId);
+            if (owned == null || owned == 0) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not manage this tournament");
+            }
+        } else if (tournamentId != null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "This package is account-level and must not reference a tournament");
+        }
+
         String key = request.idempotencyKey().trim();
         List<OrderView> existing = jdbc.query("""
-                SELECT id, package_code, amount_paise, currency, status, provider, created_at
+                SELECT id, tournament_id, package_code, amount_paise, currency, status, provider, created_at
                 FROM payment_orders WHERE user_id=? AND idempotency_key=?
                 """, (rs, row) -> orderView(rs), userId, key);
-        if (!existing.isEmpty()) return existing.getFirst();
+        if (!existing.isEmpty()) {
+            OrderView prior = existing.getFirst();
+            if (!prior.packageCode().equals(pack.code()) || !java.util.Objects.equals(prior.tournamentId(), tournamentId)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Idempotency key was already used for a different purchase");
+            }
+            return prior;
+        }
 
         UUID id = UUID.randomUUID();
         jdbc.update("""
                 INSERT INTO payment_orders
-                (id,user_id,package_code,amount_paise,currency,status,provider,idempotency_key)
-                VALUES (?,?,?,?,?,'PENDING','MANUAL',?)
-                """, id, userId, pack.code(), pack.amountPaise(), pack.currency(), key);
+                (id,user_id,tournament_id,package_code,amount_paise,currency,status,provider,idempotency_key)
+                VALUES (?,?,?,?,?,?,'PENDING','MANUAL',?)
+                """, id, userId, tournamentId, pack.code(), pack.amountPaise(), pack.currency(), key);
         return getOrder(id, userId);
     }
 
@@ -78,7 +113,7 @@ public class PaymentController {
     public List<OrderView> myOrders(Authentication auth) {
         UUID userId = authenticatedUserId(auth);
         return jdbc.query("""
-                SELECT id, package_code, amount_paise, currency, status, provider, created_at
+                SELECT id, tournament_id, package_code, amount_paise, currency, status, provider, created_at
                 FROM payment_orders WHERE user_id=? ORDER BY created_at DESC LIMIT 100
                 """, (rs, row) -> orderView(rs), userId);
     }
@@ -87,13 +122,14 @@ public class PaymentController {
     public List<EntitlementView> myEntitlements(Authentication auth) {
         UUID userId = authenticatedUserId(auth);
         return jdbc.query("""
-                SELECT package_code, activation_source, activated_at, expires_at
+                SELECT tournament_id, package_code, activation_source, activated_at, expires_at
                 FROM user_entitlements
                 WHERE user_id=? AND revoked_at IS NULL
                   AND (expires_at IS NULL OR expires_at > now())
                 ORDER BY activated_at DESC
-                """, (rs, row) -> new EntitlementView(rs.getString("package_code"),
-                rs.getString("activation_source"), rs.getObject("activated_at", OffsetDateTime.class),
+                """, (rs, row) -> new EntitlementView(rs.getObject("tournament_id", UUID.class),
+                rs.getString("package_code"), rs.getString("activation_source"),
+                rs.getObject("activated_at", OffsetDateTime.class),
                 rs.getObject("expires_at", OffsetDateTime.class)), userId);
     }
 
@@ -103,20 +139,20 @@ public class PaymentController {
                                       @Valid @RequestBody ManualActivationRequest request,
                                       Authentication auth) {
         UUID adminId = authenticatedUserId(auth);
-        Integer isAdmin = jdbc.queryForObject("SELECT COUNT(*) FROM users WHERE id=? AND role='ADMIN' FOR UPDATE",
-                Integer.class, adminId);
-        if (isAdmin == null || isAdmin == 0) {
+        Boolean isAdmin = jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM users WHERE id=? AND role='ADMIN')",
+                Boolean.class, adminId);
+        if (!Boolean.TRUE.equals(isAdmin)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Platform administrator access required");
         }
         OrderView order = jdbc.queryForObject("""
-                SELECT id, package_code, amount_paise, currency, status, provider, created_at
+                SELECT id, tournament_id, package_code, amount_paise, currency, status, provider, created_at
                 FROM payment_orders WHERE id=? FOR UPDATE
                 """, (rs, row) -> orderView(rs), orderId);
         if ("REFUNDED".equals(order.status()) || "CANCELLED".equals(order.status())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Cancelled or refunded orders cannot be activated");
         }
         UUID ownerId = jdbc.queryForObject("SELECT user_id FROM payment_orders WHERE id=?", UUID.class, orderId);
-        activateEntitlement(ownerId, order.packageCode(), orderId, adminId, "MANUAL");
+        activateEntitlement(ownerId, order.tournamentId(), order.packageCode(), orderId, adminId, "MANUAL");
         jdbc.update("UPDATE payment_orders SET status='PAID', manual_note=?, updated_at=now(), paid_at=COALESCE(paid_at,now()) WHERE id=?",
                 request.note() == null ? null : request.note().trim(), orderId);
         return getOrder(orderId, ownerId);
@@ -156,16 +192,17 @@ public class PaymentController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid order ID");
         }
         PaymentOrderRow order = jdbc.queryForObject("""
-                SELECT id,user_id,package_code,status FROM payment_orders WHERE id=? FOR UPDATE
+                SELECT id,user_id,tournament_id,package_code,status FROM payment_orders WHERE id=? FOR UPDATE
                 """, (rs, row) -> new PaymentOrderRow(rs.getObject("id", UUID.class),
-                rs.getObject("user_id", UUID.class), rs.getString("package_code"), rs.getString("status")), orderId);
+                rs.getObject("user_id", UUID.class), rs.getObject("tournament_id", UUID.class),
+                rs.getString("package_code"), rs.getString("status")), orderId);
         if ("PAYMENT_SUCCESS".equalsIgnoreCase(event.eventType()) && "PAID".equalsIgnoreCase(event.status())) {
             if ("PENDING".equals(order.status())) {
                 jdbc.update("""
                         UPDATE payment_orders SET status='PAID', provider=?, provider_payment_id=?,
                             paid_at=now(), updated_at=now() WHERE id=?
                         """, normalizedProvider, event.paymentId(), orderId);
-                activateEntitlement(order.userId(), order.packageCode(), orderId, null, "PAYMENT");
+                activateEntitlement(order.userId(), order.tournamentId(), order.packageCode(), orderId, null, "PAYMENT");
             } else if (!"PAID".equals(order.status())) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "Order is not payable in its current state");
             }
@@ -194,12 +231,21 @@ public class PaymentController {
         return MessageDigest.isEqual(expected, actual);
     }
 
-    private void activateEntitlement(UUID userId, String packageCode, UUID orderId, UUID adminId, String source) {
+    private boolean isTournamentPackage(String packageCode) {
+        return switch (packageCode) {
+            case "ORGANIZER_PLUS", "ORGANIZER_PRO", "BROADCAST_ADDON" -> true;
+            default -> false;
+        };
+    }
+
+    private void activateEntitlement(UUID userId, UUID tournamentId, String packageCode,
+                                     UUID orderId, UUID adminId, String source) {
         jdbc.update("""
-                INSERT INTO user_entitlements(user_id,package_code,source_order_id,activation_source,activated_by,expires_at)
-                VALUES (?,?,?,?,?, CASE WHEN ?='CLUB_ACADEMY' THEN now() + interval '1 year' ELSE NULL END)
+                INSERT INTO user_entitlements(user_id,tournament_id,package_code,source_order_id,
+                    activation_source,activated_by,expires_at)
+                VALUES (?,?,?,?,?,?, CASE WHEN ?='CLUB_ACADEMY_PLUS' THEN now() + interval '1 year' ELSE NULL END)
                 ON CONFLICT (source_order_id) DO NOTHING
-                """, userId, packageCode, orderId, source, adminId, packageCode);
+                """, userId, tournamentId, packageCode, orderId, source, adminId, packageCode);
     }
 
     private UUID authenticatedUserId(Authentication auth) {
@@ -216,26 +262,29 @@ public class PaymentController {
 
     private OrderView getOrder(UUID id, UUID userId) {
         return jdbc.queryForObject("""
-                SELECT id, package_code, amount_paise, currency, status, provider, created_at
+                SELECT id, tournament_id, package_code, amount_paise, currency, status, provider, created_at
                 FROM payment_orders WHERE id=? AND user_id=?
                 """, (rs, row) -> orderView(rs), id, userId);
     }
 
     private OrderView orderView(java.sql.ResultSet rs) throws java.sql.SQLException {
-        return new OrderView(rs.getObject("id", UUID.class), rs.getString("package_code"),
-                rs.getLong("amount_paise"), rs.getString("currency"), rs.getString("status"),
-                rs.getString("provider"), rs.getObject("created_at", OffsetDateTime.class));
+        return new OrderView(rs.getObject("id", UUID.class), rs.getObject("tournament_id", UUID.class),
+                rs.getString("package_code"), rs.getLong("amount_paise"), rs.getString("currency"),
+                rs.getString("status"), rs.getString("provider"),
+                rs.getObject("created_at", OffsetDateTime.class));
     }
 
-    public record PackageDefinition(String code, String name, long amountPaise, String currency, String description) {}
+    public record PackageDefinition(String code, String name, long amountPaise, String currency,
+                                    String description, String validity) {}
     public record CreateOrderRequest(@NotBlank String packageCode,
-                                     @NotBlank @Size(max = 120) String idempotencyKey) {}
+                                     @NotBlank @Size(max = 120) String idempotencyKey,
+                                     UUID tournamentId) {}
     public record ManualActivationRequest(@NotBlank @Size(max = 500) String note) {}
-    public record OrderView(UUID id, String packageCode, long amountPaise, String currency,
-                            String status, String provider, OffsetDateTime createdAt) {}
-    public record EntitlementView(String packageCode, String activationSource,
+    public record OrderView(UUID id, UUID tournamentId, String packageCode, long amountPaise,
+                            String currency, String status, String provider, OffsetDateTime createdAt) {}
+    public record EntitlementView(UUID tournamentId, String packageCode, String activationSource,
                                   OffsetDateTime activatedAt, OffsetDateTime expiresAt) {}
     public record WebhookEvent(String eventId, String eventType, String orderId,
                                String status, String paymentId) {}
-    private record PaymentOrderRow(UUID id, UUID userId, String packageCode, String status) {}
+    private record PaymentOrderRow(UUID id, UUID userId, UUID tournamentId, String packageCode, String status) {}
 }
