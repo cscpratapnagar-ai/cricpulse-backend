@@ -129,25 +129,60 @@ wait_and_smoke() {
   done
 }
 
+rollback_previous_release() {
+  # Once rollback starts, ignore a second interrupt so recovery can finish.
+  trap '' INT TERM
+  update_images "$OLD_BACKEND_IMAGE" "$OLD_FRONTEND_IMAGE"
+  if compose pull backend frontend && wait_and_smoke; then
+    echo "ROLLBACK PASS: previous staging release is healthy again" >&2
+    return 0
+  fi
+  echo "CRITICAL: staging rollback could not restore a healthy previous release" >&2
+  return 1
+}
+
+handle_deploy_signal() {
+  local signal="$1" exit_code=143
+  [[ "$signal" == "INT" ]] && exit_code=130
+  trap - INT TERM
+  if [[ "${DEPLOYMENT_IN_PROGRESS:-false}" == true ]]; then
+    echo "Received $signal during staging deployment; restoring previous digest-pinned release." >&2
+    if rollback_previous_release; then
+      echo "INTERRUPTED DEPLOYMENT ROLLED BACK: previous staging release is healthy" >&2
+    else
+      echo "CRITICAL: interrupted deployment rollback failed; manual operator intervention is required" >&2
+    fi
+  fi
+  exit "$exit_code"
+}
+
+DEPLOYMENT_IN_PROGRESS=false
+trap 'handle_deploy_signal INT' INT
+trap 'handle_deploy_signal TERM' TERM
+
 echo "Applying digest-pinned staging release:"
 echo "  backend: $NEW_BACKEND_IMAGE"
 echo "  frontend: $NEW_FRONTEND_IMAGE"
+DEPLOYMENT_IN_PROGRESS=true
 update_images "$NEW_BACKEND_IMAGE" "$NEW_FRONTEND_IMAGE"
 if ! run_preflight "$NEW_BACKEND_IMAGE" "$NEW_FRONTEND_IMAGE"; then
+  DEPLOYMENT_IN_PROGRESS=false
+  trap - INT TERM
   update_images "$OLD_BACKEND_IMAGE" "$OLD_FRONTEND_IMAGE"
   fail "Staging preflight failed; previous digest-pinned images restored"
 fi
 if compose pull backend frontend && wait_and_smoke; then
   printf 'BACKEND_IMAGE=%s\nFRONTEND_IMAGE=%s\nDEPLOYED_AT=%s\n' "$NEW_BACKEND_IMAGE" "$NEW_FRONTEND_IMAGE" "$(date -u +%FT%TZ)" > "$APP_DIR/.last-known-good-staging.tmp"
   chmod 600 "$APP_DIR/.last-known-good-staging.tmp"; mv "$APP_DIR/.last-known-good-staging.tmp" "$APP_DIR/.last-known-good-staging"
+  DEPLOYMENT_IN_PROGRESS=false
+  trap - INT TERM
   echo "PASS: staging deployment and all required health checks succeeded"; exit 0
 fi
 
 echo "Staging release failed; rolling back to previous digest-pinned images." >&2
-update_images "$OLD_BACKEND_IMAGE" "$OLD_FRONTEND_IMAGE"
-if compose pull backend frontend && wait_and_smoke; then
-  echo "ROLLBACK PASS: previous staging release is healthy again" >&2
+if rollback_previous_release; then
+  DEPLOYMENT_IN_PROGRESS=false
   fail "New staging release was rolled back; inspect logs before retrying"
 fi
-echo "CRITICAL: staging rollback could not restore a healthy previous release" >&2
+DEPLOYMENT_IN_PROGRESS=false
 fail "Manual staging operator intervention is required"
