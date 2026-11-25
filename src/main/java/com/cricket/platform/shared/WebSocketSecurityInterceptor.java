@@ -60,7 +60,13 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
                 return message;
             }
 
+            // Some STOMP clients/brokers do not preserve the CONNECT Principal
+            // on subsequent SUBSCRIBE frames. Accept the same short-lived ticket
+            // on SUBSCRIBE as well, while preferring the authenticated session user.
             Authentication authentication = asAuthentication(accessor.getUser());
+            if (authentication == null) {
+                authentication = authenticate(accessor.getFirstNativeHeader("Authorization"));
+            }
             if (authentication == null || !authentication.isAuthenticated()) {
                 throw new IllegalArgumentException("WebSocket authentication is required");
             }
