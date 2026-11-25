@@ -30,9 +30,9 @@ public class PaymentController {
             "PRO_TOURNAMENT", new PackageDefinition("PRO_TOURNAMENT", "Pro Tournament", 99900L,
                     "INR", "Tournament management tools for one event"),
             "BROADCAST", new PackageDefinition("BROADCAST", "Broadcast", 249900L,
-                    "Live scoring and broadcast tools for one event"),
+                    "INR", "Live scoring and broadcast tools for one event"),
             "CLUB_ACADEMY", new PackageDefinition("CLUB_ACADEMY", "Club / Academy", 999900L,
-                    "Club and academy workspace; manually renewed")
+                    "INR", "Club and academy workspace; manually renewed")
     );
 
     private final JdbcTemplate jdbc;
