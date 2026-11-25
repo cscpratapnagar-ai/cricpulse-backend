@@ -11,9 +11,11 @@ psql_db() { psql "$psql_conn" -v ON_ERROR_STOP=1 -X -qAt "$@"; }
 escaped_email="$(printf "%s" "$E2E_EMAIL" | sed "s/'/''/g")"
 user_id="$(psql_db -c "SELECT id FROM users WHERE lower(email)=lower('$escaped_email') LIMIT 1")"
 [[ -n "$user_id" ]] || { echo "FAIL: CI E2E user was not found" >&2; exit 1; }
+team_id="$(psql_db -c "SELECT id FROM teams WHERE owner_id=\x27$user_id\x27 ORDER BY created_at LIMIT 1")"
+[[ -n "$team_id" ]] || { echo "FAIL: CI E2E owner team was not found" >&2; exit 1; }
 order_id="$(cat /proc/sys/kernel/random/uuid)"
 idempotency_key="payment-webhook-e2e-$order_id"
-psql_db -c "INSERT INTO payment_orders(id,user_id,team_id,package_code,amount_paise,currency,status,provider,idempotency_key) VALUES ('$order_id','$user_id',(SELECT id FROM teams ORDER BY created_at LIMIT 1),'ACADEMY_BRANDING',79900,'INR','PENDING','MANUAL','$idempotency_key')"
+psql_db -c "INSERT INTO payment_orders(id,user_id,team_id,package_code,amount_paise,currency,status,provider,idempotency_key) VALUES ('$order_id','$user_id','$team_id','ACADEMY_BRANDING',79900,'INR','PENDING','MANUAL','$idempotency_key')"
 make_event() {
   local event_id="$1" event_type="$2" status="$3" payment_id="$4" amount="$5" currency="$6"
   jq -nc --arg eventId "$event_id" --arg eventType "$event_type" --arg orderId "$order_id" --arg status "$status" --arg paymentId "$payment_id" --argjson amountPaise "$amount" --arg currency "$currency" '{eventId:$eventId,eventType:$eventType,orderId:$orderId,status:$status,paymentId:$paymentId,amountPaise:$amountPaise,currency:$currency}'
