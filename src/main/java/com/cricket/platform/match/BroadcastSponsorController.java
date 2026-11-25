@@ -1,6 +1,7 @@
 package com.cricket.platform.match;
 
 import com.cricket.platform.scoring.ScoringAccess;
+import com.cricket.platform.payment.TournamentEntitlementAccess;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -31,10 +32,12 @@ public class BroadcastSponsorController {
 
     private final JdbcTemplate jdbc;
     private final ScoringAccess access;
+    private final TournamentEntitlementAccess entitlements;
 
-    public BroadcastSponsorController(JdbcTemplate jdbc, ScoringAccess access) {
+    public BroadcastSponsorController(JdbcTemplate jdbc, ScoringAccess access, TournamentEntitlementAccess entitlements) {
         this.jdbc = jdbc;
         this.access = access;
+        this.entitlements = entitlements;
     }
 
     @GetMapping("/api/matches/{matchId}/sponsors")
@@ -112,6 +115,7 @@ public class BroadcastSponsorController {
     @GetMapping("/api/public/matches/{matchId}/sponsors")
     public List<PublicSponsorView> publicSponsors(@PathVariable UUID matchId,
                                                    @RequestParam(defaultValue = "MATCH_START") String eventType) {
+        entitlements.requireOrganizerProForMatch(matchId);
         String event = normalize(eventType);
         if (!EVENTS.contains(event)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported sponsor event type.");
@@ -133,6 +137,7 @@ public class BroadcastSponsorController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void recordPublicImpression(@PathVariable UUID matchId, @PathVariable UUID sponsorId,
                                         @Valid @RequestBody ImpressionRequest request) {
+        entitlements.requireOrganizerProForMatch(matchId);
         String event = normalize(request.eventType());
         if (!EVENTS.contains(event)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported sponsor event type.");
