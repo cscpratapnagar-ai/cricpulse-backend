@@ -135,6 +135,20 @@ class WebSocketSecurityInterceptorTest {
     }
 
     @Test
+    void subscribeAuthenticatesShortLivedBearerTicketWhenSessionPrincipalIsMissing() {
+        UUID inningsId = UUID.randomUUID();
+        String token = jwt.create("user@example.com", "PLAYER", 60);
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
+        accessor.addNativeHeader("Authorization", "Bearer " + token);
+        accessor.setDestination("/topic/innings/" + inningsId);
+        when(jdbc.queryForObject(anyString(), eq(Integer.class), any(), any(), any(), any(), any())).thenReturn(1);
+
+        assertDoesNotThrow(() -> interceptor.preSend(message(accessor), null));
+        verify(jdbc).queryForObject(anyString(), eq(Integer.class), any(), eq("user@example.com"),
+                eq("user@example.com"), eq("user@example.com"), eq("user@example.com"));
+    }
+
+    @Test
     void adminCanSubscribeWithoutMatchMembershipLookup() {
         UUID inningsId = UUID.randomUUID();
         var user = new UsernamePasswordAuthenticationToken("admin@example.com", null,
