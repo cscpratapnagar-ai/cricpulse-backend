@@ -31,5 +31,14 @@ class DeliveryEventFactoryTest {
 
         assertEquals(fielderId, event.wicketFielderId());
         assertTrue(event.eventPayload().contains(fielderId.toString()));
+        assertTrue(event.eventPayload().contains("\"commandFingerprint\""));
+        assertTrue(DeliveryEventFactory.matches(command, event));
+
+        DeliveryCommand changedReplacement = new DeliveryCommand(
+                command.commandId(), command.inningsId(), command.strikerId(), command.nonStrikerId(),
+                command.bowlerId(), command.batRuns(), command.extraRuns(), command.extraType(),
+                command.wicketType(), command.dismissedPlayerId(), UUID.randomUUID(),
+                command.wicketFielderId(), command.recordedBy());
+        assertTrue(!DeliveryEventFactory.matches(changedReplacement, event));
     }
 }
