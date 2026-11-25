@@ -3,8 +3,12 @@ name: Publish Production Container
 on:
   push:
     branches:
-      - main
+      - release
   workflow_dispatch:
+
+concurrency:
+  group: publish-production-container-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -19,6 +23,7 @@ env:
 jobs:
   publish:
     name: Build, publish, and attest backend image
+    if: github.ref == 'refs/heads/release'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -48,8 +53,8 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=sha
-            type=raw,value=latest
-            type=raw,value=main
+            type=ref,event=branch
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/release' }}
 
       - name: Build and push production image with SBOM and provenance
         id: build
