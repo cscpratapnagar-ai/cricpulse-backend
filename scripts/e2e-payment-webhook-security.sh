@@ -11,7 +11,7 @@ psql_db() { psql "$psql_conn" -v ON_ERROR_STOP=1 -X -qAt "$@"; }
 escaped_email="$(printf "%s" "$E2E_EMAIL" | sed "s/'/''/g")"
 user_id="$(psql_db -c "SELECT id FROM users WHERE lower(email)=lower('$escaped_email') LIMIT 1")"
 [[ -n "$user_id" ]] || { echo "FAIL: CI E2E user was not found" >&2; exit 1; }
-team_id="$(psql_db -c "SELECT id FROM teams WHERE owner_id=\x27$user_id\x27 ORDER BY created_at LIMIT 1")"
+team_id="$(psql_db -c "SELECT id FROM teams WHERE owner_id='$user_id' ORDER BY created_at LIMIT 1")"
 [[ -n "$team_id" ]] || { echo "FAIL: CI E2E owner team was not found" >&2; exit 1; }
 order_id="$(cat /proc/sys/kernel/random/uuid)"
 idempotency_key="payment-webhook-e2e-$order_id"
