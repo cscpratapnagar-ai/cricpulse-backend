@@ -63,6 +63,20 @@ class WebSocketSecurityInterceptorTest {
     }
 
     @Test
+    void connectPreservesPrincipalOnOriginalAccessorForSessionPropagation() {
+        String token = jwt.create("owner@example.com", "PLAYER");
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.CONNECT);
+        accessor.addNativeHeader("Authorization", "Bearer " + token);
+        Message<byte[]> connectMessage = message(accessor);
+
+        Message<?> result = interceptor.preSend(connectMessage, null);
+
+        assertSame(connectMessage, result);
+        assertNotNull(accessor.getUser());
+        assertEquals("owner@example.com", accessor.getUser().getName());
+    }
+
+    @Test
     void subscribeRejectsUnauthenticatedPrivateUser() {
         UUID inningsId = UUID.randomUUID();
         StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
