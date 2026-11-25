@@ -1,6 +1,7 @@
 package com.cricket.platform.match;
 
 import jakarta.validation.Valid;
+import com.cricket.platform.payment.TournamentEntitlementAccess;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.Authentication;
@@ -17,12 +18,15 @@ public class MatchController {
     private final GetMatch getMatch;
     private final RecordToss recordToss;
     private final JdbcTemplate jdbc;
+    private final TournamentEntitlementAccess entitlements;
 
-    public MatchController(CreateMatch createMatch, GetMatch getMatch, RecordToss recordToss, JdbcTemplate jdbc) {
+    public MatchController(CreateMatch createMatch, GetMatch getMatch, RecordToss recordToss, JdbcTemplate jdbc,
+                           TournamentEntitlementAccess entitlements) {
         this.createMatch = createMatch;
         this.getMatch = getMatch;
         this.recordToss = recordToss;
         this.jdbc = jdbc;
+        this.entitlements = entitlements;
     }
 
     @PostMapping
@@ -51,6 +55,7 @@ public class MatchController {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Only a team manager or assigned broadcast operator can open broadcast control.");
         }
+        entitlements.requireBroadcastAddonForMatch(id);
         return new BroadcastAccessResponse(id, true);
     }
 
