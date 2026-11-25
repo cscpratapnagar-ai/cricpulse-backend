@@ -258,7 +258,6 @@ jobs:
           DATABASE_URL: ${{ env.DATABASE_URL }}
           PGUSER: ${{ env.DATABASE_USERNAME }}
           PGPASSWORD: ${{ env.DATABASE_PASSWORD }}
-          E2E_EMAIL: ${{ env.E2E_EMAIL }}
           PAYMENT_WEBHOOK_SECRET: ci-payment-webhook-hmac-secret-for-e2e-only
           BASE_URL: http://localhost:8080/api
         run: bash scripts/e2e-payment-webhook-security.sh
