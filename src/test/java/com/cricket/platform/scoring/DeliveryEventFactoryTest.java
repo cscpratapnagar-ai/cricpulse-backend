@@ -34,7 +34,7 @@ class DeliveryEventFactoryTest {
         assertTrue(event.eventPayload().contains("\"commandFingerprint\""));
         assertTrue(DeliveryEventFactory.matches(command, event));
 
-        String postgresJsonbPayload = event.eventPayload().replace("\\":\\"", "\\": \\"");
+        String postgresJsonbPayload = event.eventPayload().replace("\":\"", "\": \"");
         DeliveryEvent normalizedEvent = new DeliveryEvent(
                 event.eventId(), event.inningsId(), event.sequenceNo(), event.eventVersion(),
                 event.eventType(), event.overNumber(), event.ballNumber(), event.strikerId(),
