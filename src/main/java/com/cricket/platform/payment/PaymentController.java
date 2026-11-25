@@ -126,8 +126,8 @@ public class PaymentController {
                                        @RequestHeader(value = "X-Payment-Signature", required = false) String signature,
                                        @RequestBody byte[] rawBody) throws Exception {
         String normalizedProvider = provider.trim().toUpperCase(Locale.ROOT);
-        if (!"RAZORPAY".equals(normalizedProvider) && !"CASHFREE".equals(normalizedProvider)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unsupported payment provider");
+        if (!"HMAC".equals(normalizedProvider)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Only the generic HMAC adapter is enabled; provider-specific adapters are not configured");
         }
         if (webhookSecret.isBlank()) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Payment webhook is not configured");
