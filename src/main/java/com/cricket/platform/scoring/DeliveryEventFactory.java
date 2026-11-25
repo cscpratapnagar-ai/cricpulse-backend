@@ -47,7 +47,9 @@ public final class DeliveryEventFactory {
         if (payload == null || !payload.contains("\"commandFingerprint\"")) {
             return true;
         }
-        return payload.contains("\"commandFingerprint\":\"" + fingerprint(command) + "\"");
+        // PostgreSQL jsonb returns normalized JSON with whitespace around separators.
+        // Match the dedicated 64-character digest independently of JSON formatting.
+        return payload.contains("\"commandFingerprint\"") && payload.contains(fingerprint(command));
     }
 
     private static String fingerprint(DeliveryCommand command) {
