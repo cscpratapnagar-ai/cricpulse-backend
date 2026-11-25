@@ -1,6 +1,6 @@
 package com.cricket.platform.payment;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -36,10 +36,10 @@ public class PaymentController {
     );
 
     private final JdbcTemplate jdbc;
-    private final ObjectMapper objectMapper;
+    private final JsonMapper objectMapper;
     private final String webhookSecret;
 
-    public PaymentController(JdbcTemplate jdbc, ObjectMapper objectMapper,
+    public PaymentController(JdbcTemplate jdbc, JsonMapper objectMapper,
                              @Value("${payments.webhook.secret:}") String webhookSecret) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
