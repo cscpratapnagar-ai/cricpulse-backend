@@ -34,6 +34,16 @@ class DeliveryEventFactoryTest {
         assertTrue(event.eventPayload().contains("\"commandFingerprint\""));
         assertTrue(DeliveryEventFactory.matches(command, event));
 
+        String postgresJsonbPayload = event.eventPayload().replace("\\":\\"", "\\": \\"");
+        DeliveryEvent normalizedEvent = new DeliveryEvent(
+                event.eventId(), event.inningsId(), event.sequenceNo(), event.eventVersion(),
+                event.eventType(), event.overNumber(), event.ballNumber(), event.strikerId(),
+                event.nonStrikerId(), event.bowlerId(), event.batRuns(), event.extraRuns(),
+                event.extraType(), event.wicketType(), event.dismissedPlayerId(),
+                event.wicketFielderId(), event.legalDelivery(), postgresJsonbPayload,
+                event.commandId(), event.recordedBy(), event.createdAt());
+        assertTrue(DeliveryEventFactory.matches(command, normalizedEvent));
+
         DeliveryCommand changedReplacement = new DeliveryCommand(
                 command.commandId(), command.inningsId(), command.strikerId(), command.nonStrikerId(),
                 command.bowlerId(), command.batRuns(), command.extraRuns(), command.extraType(),
