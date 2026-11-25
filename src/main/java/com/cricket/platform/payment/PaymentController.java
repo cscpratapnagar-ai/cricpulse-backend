@@ -221,18 +221,27 @@ public class PaymentController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid order ID");
         }
         PaymentOrderRow order = jdbc.queryForObject("""
-                SELECT id,user_id,tournament_id,team_id,package_code,status FROM payment_orders WHERE id=? FOR UPDATE
+                SELECT id,user_id,tournament_id,team_id,package_code,status,amount_paise,currency,provider_payment_id
+                FROM payment_orders WHERE id=? FOR UPDATE
                 """, (rs, row) -> new PaymentOrderRow(rs.getObject("id", UUID.class),
                 rs.getObject("user_id", UUID.class), rs.getObject("tournament_id", UUID.class),
-                rs.getObject("team_id", UUID.class), rs.getString("package_code"), rs.getString("status")), orderId);
+                rs.getObject("team_id", UUID.class), rs.getString("package_code"), rs.getString("status"),
+                rs.getLong("amount_paise"), rs.getString("currency"), rs.getString("provider_payment_id")), orderId);
         if ("PAYMENT_SUCCESS".equalsIgnoreCase(event.eventType()) && "PAID".equalsIgnoreCase(event.status())) {
+            validateSuccessfulPayment(order.amountPaise(), order.currency(), event.amountPaise(),
+                    event.currency(), event.paymentId());
             if ("PENDING".equals(order.status())) {
                 jdbc.update("""
                         UPDATE payment_orders SET status='PAID', provider=?, provider_payment_id=?,
                             paid_at=now(), updated_at=now() WHERE id=?
                         """, normalizedProvider, event.paymentId(), orderId);
                 activateEntitlement(order.userId(), order.tournamentId(), order.teamId(), order.packageCode(), orderId, null, "PAYMENT");
-            } else if (!"PAID".equals(order.status())) {
+            } else if ("PAID".equals(order.status())) {
+                if (order.providerPaymentId() == null || !order.providerPaymentId().equals(event.paymentId())) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT,
+                            "Payment reference does not match the payment already recorded for this order");
+                }
+            } else {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "Order is not payable in its current state");
             }
         } else if ("PAYMENT_FAILED".equalsIgnoreCase(event.eventType())
@@ -241,6 +250,10 @@ public class PaymentController {
                     normalizedProvider, orderId);
         } else if ("REFUND_SUCCESS".equalsIgnoreCase(event.eventType())
                 && "REFUNDED".equalsIgnoreCase(event.status()) && "PAID".equals(order.status())) {
+            if (order.providerPaymentId() == null || !order.providerPaymentId().equals(event.paymentId())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Refund payment reference does not match the payment recorded for this order");
+            }
             jdbc.update("UPDATE payment_orders SET status='REFUNDED', updated_at=now() WHERE id=?", orderId);
             jdbc.update("UPDATE user_entitlements SET revoked_at=now() WHERE source_order_id=?", orderId);
         } else {
@@ -256,6 +269,17 @@ public class PaymentController {
                         incomingHash.getBytes(StandardCharsets.US_ASCII))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Webhook event ID was already used with a different payload");
+        }
+    }
+
+    static void validateSuccessfulPayment(long expectedAmountPaise, String expectedCurrency,
+                                          Long receivedAmountPaise, String receivedCurrency,
+                                          String paymentId) {
+        if (receivedAmountPaise == null || receivedAmountPaise != expectedAmountPaise
+                || receivedCurrency == null || !expectedCurrency.equalsIgnoreCase(receivedCurrency.trim())
+                || paymentId == null || paymentId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Payment amount, currency or provider payment reference does not match the order");
         }
     }
 
@@ -328,6 +352,7 @@ public class PaymentController {
     public record EntitlementView(UUID tournamentId, UUID teamId, String packageCode, String activationSource,
                                   OffsetDateTime activatedAt, OffsetDateTime expiresAt) {}
     public record WebhookEvent(String eventId, String eventType, String orderId,
-                               String status, String paymentId) {}
-    private record PaymentOrderRow(UUID id, UUID userId, UUID tournamentId, UUID teamId, String packageCode, String status) {}
+                               String status, String paymentId, Long amountPaise, String currency) {}
+    private record PaymentOrderRow(UUID id, UUID userId, UUID tournamentId, UUID teamId, String packageCode,
+                                   String status, long amountPaise, String currency, String providerPaymentId) {}
 }
