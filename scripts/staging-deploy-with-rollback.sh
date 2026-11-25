@@ -163,14 +163,19 @@ trap 'handle_deploy_signal TERM' TERM
 echo "Applying digest-pinned staging release:"
 echo "  backend: $NEW_BACKEND_IMAGE"
 echo "  frontend: $NEW_FRONTEND_IMAGE"
+DEPLOYMENT_IN_PROGRESS=true
 update_images "$NEW_BACKEND_IMAGE" "$NEW_FRONTEND_IMAGE"
 if ! run_preflight "$NEW_BACKEND_IMAGE" "$NEW_FRONTEND_IMAGE"; then
+  DEPLOYMENT_IN_PROGRESS=false
+  trap - INT TERM
   update_images "$OLD_BACKEND_IMAGE" "$OLD_FRONTEND_IMAGE"
   fail "Staging preflight failed; previous digest-pinned images restored"
 fi
 if compose pull backend frontend && wait_and_smoke; then
   printf 'BACKEND_IMAGE=%s\nFRONTEND_IMAGE=%s\nDEPLOYED_AT=%s\n' "$NEW_BACKEND_IMAGE" "$NEW_FRONTEND_IMAGE" "$(date -u +%FT%TZ)" > "$APP_DIR/.last-known-good-staging.tmp"
   chmod 600 "$APP_DIR/.last-known-good-staging.tmp"; mv "$APP_DIR/.last-known-good-staging.tmp" "$APP_DIR/.last-known-good-staging"
+  DEPLOYMENT_IN_PROGRESS=false
+  trap - INT TERM
   echo "PASS: staging deployment and all required health checks succeeded"; exit 0
 fi
 
