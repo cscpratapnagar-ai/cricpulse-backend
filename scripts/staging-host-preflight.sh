@@ -56,6 +56,24 @@ done
 docker info >/dev/null 2>&1 || fail "Docker daemon is unavailable to the deployment user"
 docker compose version >/dev/null 2>&1 || fail "Docker Compose plugin is unavailable"
 docker buildx version >/dev/null 2>&1 || fail "Docker Buildx is unavailable"
+
+# Validate the fully resolved Compose model, not only YAML syntax. No database port may
+# be published, and every backend/frontend published port must bind to loopback only.
+COMPOSE_CONFIG="$(BACKEND_IMAGE="$BACKEND_IMAGE" FRONTEND_IMAGE="$FRONTEND_IMAGE" \
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config --format json)" \
+  || fail "Unable to resolve staging Compose configuration"
+jq -e '
+  .services as $services
+  | ($services.postgres != null)
+  and (($services.postgres.ports // []) | length == 0)
+  and (["backend", "frontend"] | all(.[]; . as $service |
+    (($services[$service].ports // []) |
+      (length > 0 and all(.[]; .host_ip == "127.0.0.1")))))
+  and (.volumes.cricpulse_staging_postgres_data != null)
+' <<< "$COMPOSE_CONFIG" >/dev/null \
+  || fail "Staging network isolation violation: database ports must remain unpublished and backend/frontend ports must bind only to 127.0.0.1"
+unset COMPOSE_CONFIG
+
 pg_restore --list "$BACKUP_FILE" >/dev/null 2>&1 || fail "Backup is not a readable PostgreSQL custom-format archive"
 
 # Verify the backup by restoring it into a disposable PostgreSQL container with no network before any release change.
@@ -69,7 +87,4 @@ AVAILABLE_KB="$(df -Pk "$APP_DIR" | awk 'NR == 2 {print $4}')"
 docker buildx imagetools inspect "$BACKEND_IMAGE" >/dev/null 2>&1 || fail "Staging host cannot access the verified backend digest in GHCR"
 docker buildx imagetools inspect "$FRONTEND_IMAGE" >/dev/null 2>&1 || fail "Staging host cannot access the verified frontend digest in GHCR"
 
-BACKEND_IMAGE="$BACKEND_IMAGE" FRONTEND_IMAGE="$FRONTEND_IMAGE" \
-  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config --quiet || fail "Staging Compose configuration is invalid"
-
-echo "PASS: staging host, secret-file permissions, backup, Docker, disk, GHCR digest access, and Compose configuration are ready"
+echo "PASS: staging host, secret-file permissions, backup, Docker, disk, GHCR digest access, Compose validity, and loopback-only network isolation are ready"

@@ -18,7 +18,7 @@ Create a GitHub Environment named staging in the backend repository and add thes
 - STAGING_APP_URL (HTTPS origin)
 - STAGING_ACTUATOR_URL (HTTPS readiness endpoint)
 
-The staging host must have Docker Engine and the Docker Compose plugin. Provision an operator-managed .env in the staging app directory containing POSTGRES_PASSWORD, JWT_SECRET, and the currently deployed immutable BACKEND_TAG and FRONTEND_TAG. Keep this file mode 0600. Never copy production secrets or production database data into staging.
+The staging host must have Docker Engine, the Docker Compose plugin, and jq. Before any backup restore rehearsal or image pull, host preflight validates the fully resolved Compose model: PostgreSQL must publish no host ports, backend and frontend published ports must bind only to 127.0.0.1, and the dedicated staging PostgreSQL volume must exist. CI includes negative tests for public database, backend, and frontend port exposure. Provision an operator-managed .env in the staging app directory containing POSTGRES_PASSWORD, JWT_SECRET, and the currently deployed immutable BACKEND_TAG and FRONTEND_TAG. Keep this file mode 0600. Never copy production secrets or production database data into staging.
 
 ## Prepare and run
 
