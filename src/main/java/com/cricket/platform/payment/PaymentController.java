@@ -103,8 +103,11 @@ public class PaymentController {
                                       @Valid @RequestBody ManualActivationRequest request,
                                       Authentication auth) {
         UUID adminId = authenticatedUserId(auth);
-        jdbc.queryForObject("SELECT id FROM users WHERE id=? AND role='ADMIN' FOR UPDATE",
-                UUID.class, adminId);
+        Integer isAdmin = jdbc.queryForObject("SELECT COUNT(*) FROM users WHERE id=? AND role='ADMIN' FOR UPDATE",
+                Integer.class, adminId);
+        if (isAdmin == null || isAdmin == 0) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Platform administrator access required");
+        }
         OrderView order = jdbc.queryForObject("""
                 SELECT id, package_code, amount_paise, currency, status, provider, created_at
                 FROM payment_orders WHERE id=? FOR UPDATE
@@ -114,8 +117,8 @@ public class PaymentController {
         }
         UUID ownerId = jdbc.queryForObject("SELECT user_id FROM payment_orders WHERE id=?", UUID.class, orderId);
         activateEntitlement(ownerId, order.packageCode(), orderId, adminId, "MANUAL");
-        jdbc.update("UPDATE payment_orders SET status='PAID', updated_at=now(), paid_at=COALESCE(paid_at,now()) WHERE id=?",
-                orderId);
+        jdbc.update("UPDATE payment_orders SET status='PAID', manual_note=?, updated_at=now(), paid_at=COALESCE(paid_at,now()) WHERE id=?",
+                request.note() == null ? null : request.note().trim(), orderId);
         return getOrder(orderId, ownerId);
     }
 
