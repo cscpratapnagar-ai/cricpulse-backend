@@ -74,7 +74,10 @@ public class SecurityConfig {
                         // Keep CSRF protection enabled for cookie-authenticated browser requests.
                         .ignoringRequestMatchers(request -> {
                             String authorization = request.getHeader("Authorization");
-                            return authorization != null && authorization.startsWith("Bearer ");
+                            boolean bearerRequest = authorization != null && authorization.startsWith("Bearer ");
+                            boolean publicTeamRegistration = "POST".equals(request.getMethod())
+                                    && request.getRequestURI().matches("^/api/public/tournaments/[^/]+/registrations$");
+                            return bearerRequest || publicTeamRegistration;
                         }))
                 .cors(cors -> {})
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
