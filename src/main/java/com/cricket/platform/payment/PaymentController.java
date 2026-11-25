@@ -196,10 +196,10 @@ public class PaymentController {
 
     private void activateEntitlement(UUID userId, String packageCode, UUID orderId, UUID adminId, String source) {
         jdbc.update("""
-                INSERT INTO user_entitlements(user_id,package_code,source_order_id,activation_source,activated_by)
-                VALUES (?,?,?,?,?)
+                INSERT INTO user_entitlements(user_id,package_code,source_order_id,activation_source,activated_by,expires_at)
+                VALUES (?,?,?,?,?, CASE WHEN ?='CLUB_ACADEMY' THEN now() + interval '1 year' ELSE NULL END)
                 ON CONFLICT (source_order_id) DO NOTHING
-                """, userId, packageCode, orderId, source, adminId);
+                """, userId, packageCode, orderId, source, adminId, packageCode);
     }
 
     private UUID authenticatedUserId(Authentication auth) {
@@ -230,7 +230,7 @@ public class PaymentController {
     public record PackageDefinition(String code, String name, long amountPaise, String currency, String description) {}
     public record CreateOrderRequest(@NotBlank String packageCode,
                                      @NotBlank @Size(max = 120) String idempotencyKey) {}
-    public record ManualActivationRequest(@Size(max = 500) String note) {}
+    public record ManualActivationRequest(@NotBlank @Size(max = 500) String note) {}
     public record OrderView(UUID id, String packageCode, long amountPaise, String currency,
                             String status, String provider, OffsetDateTime createdAt) {}
     public record EntitlementView(String packageCode, String activationSource,
