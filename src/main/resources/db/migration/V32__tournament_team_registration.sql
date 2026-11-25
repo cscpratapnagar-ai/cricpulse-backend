@@ -33,3 +33,6 @@ CREATE TABLE IF NOT EXISTS tournament_team_registration_players (
 
 CREATE INDEX IF NOT EXISTS ix_tournament_registration_review
     ON tournament_team_registrations(tournament_id, status, created_at);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_tournament_registration_team_name_ci
+    ON tournament_team_registrations(tournament_id, lower(team_name));
