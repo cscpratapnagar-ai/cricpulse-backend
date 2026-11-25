@@ -87,6 +87,15 @@ public class TournamentRegistrationController {
         return rows.stream().map(row -> withPlayers(row)).toList();
     }
 
+    @GetMapping("/api/tournaments/{tournamentId}/registration")
+    public RegistrationSettings getRegistrationSettings(@PathVariable UUID tournamentId, Authentication auth) {
+        requireOrganizer(tournamentId, auth);
+        return jdbc.queryForObject(
+                "SELECT registration_open, registration_deadline FROM tournaments WHERE id=?",
+                (rs, row) -> new RegistrationSettings(tournamentId, rs.getBoolean("registration_open"),
+                        rs.getObject("registration_deadline", OffsetDateTime.class)), tournamentId);
+    }
+
     @PatchMapping("/api/tournaments/{tournamentId}/registration")
     @Transactional
     public RegistrationSettings setRegistration(@PathVariable UUID tournamentId,
