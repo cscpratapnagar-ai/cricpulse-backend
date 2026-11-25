@@ -91,14 +91,24 @@ if [[ "$lease_conflict_status" != "409" ]]; then
   exit 1
 fi
 
-echo "[3/8] Connect two independent public live-score WebSocket viewers"
+echo "[3/8] Authenticate two independent accounts and connect to the private live-score WebSocket topic"
 export WS_URL="${WS_URL:-${BASE_URL%/api}/ws}"
 export WS_URL="${WS_URL/http:\/\//ws:\/\/}"
 export WS_URL="${WS_URL/https:\/\//wss:\/\/}"
 export INNINGS_ID="$innings_id"
-WS_READY_FILE="$tmp/ws-viewer-one-ready" WS_DONE_FILE="$tmp/ws-viewers-done" WS_OUTPUT_FILE="$tmp/ws-viewer-one.json" WS_EXPECTED_FILE="$tmp/ws-expected.json" node scripts/e2e-scoring-websocket.mjs >"$tmp/ws-viewer-one.log" 2>&1 &
+unauth_ticket_status="$(curl -sS -o "$tmp/ws-ticket-unauth.json" -w '%{http_code}' "$BASE_URL/auth/ws-ticket")"
+if [[ "$unauth_ticket_status" != "403" ]]; then
+  echo "FAIL: unauthenticated WebSocket ticket request must be rejected with HTTP 403, got $unauth_ticket_status" >&2
+  cat "$tmp/ws-ticket-unauth.json" >&2
+  exit 1
+fi
+ws_ticket_a="$(curl -fsS "$BASE_URL/auth/ws-ticket" "${auth[@]}" | jq -r '.token // empty')"
+ws_ticket_b="$(curl -fsS "$BASE_URL/auth/ws-ticket" "${auth_b[@]}" | jq -r '.token // empty')"
+[[ -n "$ws_ticket_a" && -n "$ws_ticket_b" ]] || { echo "FAIL: both authenticated accounts must receive short-lived WebSocket tickets" >&2; exit 1; }
+private_destination="/topic/innings/$innings_id"
+WS_AUTH_TOKEN="$ws_ticket_a" WS_DESTINATION="$private_destination" WS_READY_FILE="$tmp/ws-viewer-one-ready" WS_DONE_FILE="$tmp/ws-viewers-done" WS_OUTPUT_FILE="$tmp/ws-viewer-one.json" WS_EXPECTED_FILE="$tmp/ws-expected.json" node scripts/e2e-scoring-websocket.mjs >"$tmp/ws-viewer-one.log" 2>&1 &
 ws_monitor_pid=$!
-WS_READY_FILE="$tmp/ws-viewer-two-ready" WS_DONE_FILE="$tmp/ws-viewers-done" WS_OUTPUT_FILE="$tmp/ws-viewer-two.json" WS_EXPECTED_FILE="$tmp/ws-expected.json" node scripts/e2e-scoring-websocket.mjs >"$tmp/ws-viewer-two.log" 2>&1 &
+WS_AUTH_TOKEN="$ws_ticket_b" WS_DESTINATION="$private_destination" WS_READY_FILE="$tmp/ws-viewer-two-ready" WS_DONE_FILE="$tmp/ws-viewers-done" WS_OUTPUT_FILE="$tmp/ws-viewer-two.json" WS_EXPECTED_FILE="$tmp/ws-expected.json" node scripts/e2e-scoring-websocket.mjs >"$tmp/ws-viewer-two.log" 2>&1 &
 ws_viewer_two_pid=$!
 for attempt in {1..150}; do
   if [[ -f "$tmp/ws-viewer-one-ready" && -f "$tmp/ws-viewer-two-ready" ]]; then break; fi
@@ -113,7 +123,7 @@ if [[ ! -f "$tmp/ws-viewer-one-ready" || ! -f "$tmp/ws-viewer-two-ready" ]]; the
   cat "$tmp/ws-viewer-one.log" "$tmp/ws-viewer-two.log" >&2
   exit 1
 fi
-echo "PASS: two independent public viewers subscribed before the first scoring command"
+echo "PASS: two different authenticated team owners received WS tickets and subscribed to the private innings topic before scoring"
 
 # Baseline snapshot: undo must restore all authoritative scoring state, not only totals.
 baseline_score="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "${auth[@]}")"
@@ -340,4 +350,4 @@ if ! cmp -s "$tmp/ws-viewer-one.json" "$tmp/ws-viewer-two.json"; then
   diff -u "$tmp/ws-viewer-one.json" "$tmp/ws-viewer-two.json" >&2 || true
   exit 1
 fi
-echo "PASS: two independent viewers received identical ordered authoritative updates"
+echo "PASS: two authenticated team owners on independent clients received identical ordered authoritative private-topic updates"
