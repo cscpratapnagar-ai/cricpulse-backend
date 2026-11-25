@@ -87,6 +87,10 @@ for violation in database backend frontend; do
 done
 unset MOCK_NETWORK_VIOLATION
 
+# Re-run the valid configuration so restore-rehearsal assertions inspect a successful preflight.
+: > "$MOCK_DOCKER_LOG"
+bash "$ROOT/scripts/staging-host-preflight.sh" "$APP" "$TMP/backup.dump" "$BACKEND" "$FRONTEND"
+
 # The host preflight must run a disposable, network-isolated PostgreSQL restore and clean it up.
 grep -q '^run .*--network none' "$MOCK_DOCKER_LOG"
 grep -q '^exec .* pg_restore ' "$MOCK_DOCKER_LOG"
