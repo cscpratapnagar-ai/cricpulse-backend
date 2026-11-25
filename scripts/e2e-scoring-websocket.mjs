@@ -51,11 +51,11 @@ function parseFrames() {
     }
     const body = buffer.slice(separator + 2, bodyEnd);
     buffer = buffer.slice(bodyEnd + 1);
-    handleFrame(command, body);
+    handleFrame(command, body, headers);
   }
 }
 
-function handleFrame(command, body) {
+function handleFrame(command, body, headers = {}) {
   if (command === "CONNECTED") {
     console.log("WebSocket STOMP CONNECTED frame received");
     sendFrame("SUBSCRIBE", {
@@ -81,7 +81,7 @@ function handleFrame(command, body) {
     frames.push(payload);
     console.log(`WebSocket update #${frames.length}: runs=${payload.runs} legalBalls=${payload.legalBalls} eventType=${payload.eventType ?? "n/a"} version=${payload.eventVersion ?? "n/a"}`);
   } else if (command === "ERROR") {
-    throw new Error(`STOMP broker ERROR: ${body}`);
+    throw new Error(`STOMP broker ERROR: ${JSON.stringify(headers)} ${body}`);
   }
 }
 
