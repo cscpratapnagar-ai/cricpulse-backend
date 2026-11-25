@@ -24,8 +24,10 @@ Commercial rules for the launch:
 
 Implementation status and boundaries:
 - Organizer Plus, Organizer Pro and Broadcast Add-on order requests must include a tournament ID. The backend verifies the authenticated user owns the tournament or is its assigned MANAGER; order and resulting entitlement retain that tournament association.
-- Club / Academy Plus and Academy Branding are account-level requests because this repository does not yet contain a first-class club/academy workspace entity.
+- Club / Academy Plus and Academy Branding are scoped to an existing team workspace (`team_id`). Only the team owner or a team MANAGER may request activation; the order and resulting entitlement retain that workspace association.
 - Organizer Pro and Broadcast Add-on are independently recorded, so both can be active for the same tournament. Feature-level enforcement that makes Pro inherit every Organizer Plus capability still requires integration into the relevant feature authorization paths.
 - Free Tournament remains the default and is not represented by a paid entitlement or payment order.
 - This is a manual/request-based purchase flow. No provider checkout is enabled; premium access begins only after an authorized admin manually activates the order or a verified configured webhook confirms payment.
+- Team workspace package scope is enforced at order creation and preserved through manual activation, verified webhook activation, order history and entitlement history. The current Team entity is the workspace boundary; this does not create a separate club/academy tenant model.
+- Organizer Plus feature-level authorization still requires an explicit product capability map before individual features can safely be gated.
 - A production launch still requires feature-level authorization integration and end-to-end verification of admin activation/refund behavior.
