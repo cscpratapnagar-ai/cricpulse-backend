@@ -64,6 +64,9 @@ public class PaymentController {
         UUID userId = authenticatedUserId(auth);
         PackageDefinition pack = PACKAGES.get(request.packageCode().trim().toUpperCase(Locale.ROOT));
         if (pack == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown package");
+        if (pack.amountPaise() == 0L) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Free Tournament is the default access tier; no payment order is required");
+        }
         String key = request.idempotencyKey().trim();
         List<OrderView> existing = jdbc.query("""
                 SELECT id, package_code, amount_paise, currency, status, provider, created_at
@@ -203,7 +206,7 @@ public class PaymentController {
     private void activateEntitlement(UUID userId, String packageCode, UUID orderId, UUID adminId, String source) {
         jdbc.update("""
                 INSERT INTO user_entitlements(user_id,package_code,source_order_id,activation_source,activated_by,expires_at)
-                VALUES (?,?,?,?,?, CASE WHEN ?='CLUB_ACADEMY' THEN now() + interval '1 year' ELSE NULL END)
+                VALUES (?,?,?,?,?, CASE WHEN ?='CLUB_ACADEMY_PLUS' THEN now() + interval '1 year' ELSE NULL END)
                 ON CONFLICT (source_order_id) DO NOTHING
                 """, userId, packageCode, orderId, source, adminId, packageCode);
     }
