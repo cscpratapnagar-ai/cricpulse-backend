@@ -28,6 +28,8 @@ concurrency:
 jobs:
   deploy:
     name: Verify, deploy, smoke-test, and rollback staging
+    # Staging environment secrets are exposed only to the trusted release branch.
+    if: github.ref == 'refs/heads/release'
     runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 30

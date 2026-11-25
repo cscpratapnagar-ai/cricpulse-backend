@@ -39,6 +39,8 @@ if awk '
 fi
 
 # Preserve the manual-only staging boundary and explicit approval environment.
+# The job-level ref guard must run before the staging environment is assigned.
+grep -Fq "    if: github.ref == 'refs/heads/release'" "$WORKFLOW"
 grep -Fq 'workflow_dispatch:' "$WORKFLOW"
 ! grep -Eq '^  (push|pull_request|schedule):' "$WORKFLOW"
 grep -Fq 'environment: staging' "$WORKFLOW"
