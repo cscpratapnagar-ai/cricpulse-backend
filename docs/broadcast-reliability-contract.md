@@ -16,7 +16,7 @@ This backend PR consolidates the backend portion of the six broadcast workstream
 - Public live score events are published to `/topic/public/innings/{inningsId}`.
 - Authenticated scoring events are published to `/topic/innings/{inningsId}`.
 - Both destinations receive the same post-commit score projection and event version; the event version is read from the same authoritative score snapshot.
-- Public subscriptions remain read-only. Private subscriptions continue to pass through the WebSocket authorization interceptor.
+- Public subscriptions remain read-only and can connect anonymously. Private subscriptions continue to pass through the WebSocket authorization interceptor.
 - STOMP broker heartbeats remain enabled.
 
 ## Six-workstream mapping
@@ -24,7 +24,7 @@ This backend PR consolidates the backend portion of the six broadcast workstream
 1. OBS automatic recovery — backend supplies the authoritative state and public event stream used after client reconnect.
 2. Broadcast Studio reliability — readiness endpoint provides a minimal dependency-health signal without leaking infrastructure details.
 3. Overlay synchronization — atomic score/event-version publication prevents mismatched revisions.
-4. Live broadcast E2E — validate initial REST snapshot followed by public/private STOMP events.
+4. Live broadcast E2E — CI connects two independent authenticated clients to the private topic and one anonymous client to the public topic, then asserts all three receive the same four committed score transitions in identical order, with no duplicate or missing events. REST snapshot versions are also checked against the scorer projection.
 5. Multi-device certification — verify separate scorer and viewer clients observe the same committed version; manual device execution remains an operator responsibility.
 6. Performance/network failure — CI now issues 64 concurrent public broadcast-state reads (8 clients × 8 requests), validates every response against the seeded match, records p95/max latency, and applies a coarse 5,000ms p95 regression ceiling. It then terminates the API process, verifies the public readiness probe becomes unavailable, restarts the packaged application, and confirms readiness plus the same public broadcast-state snapshot recover. This is an API-process interruption test, not a packet-loss/Toxiproxy simulation or a production SLO.
 
@@ -52,3 +52,16 @@ The backend CI runs `scripts/e2e-broadcast-performance-recovery.sh` after the di
 - Latency and recovery observations are appended to the GitHub Actions step summary.
 
 The shared GitHub runner is not a production-like load environment. Do not interpret these timings as a published SLO. Packet loss, bandwidth throttling, device/browser diversity, OBS/vMix rendering, and a sustained live-match soak still require a staging rehearsal and operator sign-off.
+
+
+## Anonymous public and authenticated private event parity
+
+The scoring idempotency E2E starts three independent STOMP clients before any scoring mutation:
+
+- Two separately authenticated team owners obtain short-lived WebSocket tickets and subscribe to the protected `/topic/innings/{inningsId}` destination.
+- A third client connects with no Authorization header or ticket and subscribes to the read-only `/topic/public/innings/{inningsId}` destination, matching an anonymous public viewer or OBS browser source.
+- The test commits a delivery, races two competing commands, retries an idempotent command, performs undo operations, and verifies that only the four authoritative state transitions are broadcast.
+- Each client must receive exactly the same ordered event payloads, with unique event IDs and strictly increasing event versions. The public and private stream output files are compared byte-for-byte.
+- Existing unit tests separately assert that anonymous public subscriptions do not require a membership lookup and unauthenticated private subscriptions are rejected.
+
+This CI check certifies server-side public/private topic parity and anonymous subscription behavior. It does not replace staging verification on real browsers, mobile devices, OBS, or vMix.
