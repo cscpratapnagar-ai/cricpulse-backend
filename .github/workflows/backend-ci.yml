@@ -46,6 +46,7 @@ jobs:
           bash -n scripts/seed-qualification-test-data.sh
           bash -n scripts/e2e-double-round-robin-regression.sh
           bash -n scripts/e2e-scoring-idempotency-retry.sh
+          bash -n scripts/e2e-payment-webhook-security.sh
           bash -n scripts/e2e-broadcast-performance-recovery.sh
           bash -n scripts/production-release-preflight.sh
           bash -n scripts/production-deployment-smoke.sh
@@ -209,6 +210,8 @@ jobs:
           echo "PASS: mutable production image tags are rejected"
 
       - name: Start application
+        env:
+          PAYMENT_WEBHOOK_SECRET: ci-payment-webhook-hmac-secret-for-e2e-only
         run: |
           nohup java -jar target/*.jar > "$RUNNER_TEMP/cricpulse-api.log" 2>&1 &
           echo $! > "$RUNNER_TEMP/cricpulse-api.pid"
@@ -249,6 +252,16 @@ jobs:
         env:
           E2E_PASSWORD: ${{ secrets.CRICPULSE_E2E_PASSWORD }}
         run: bash scripts/ci-http-lifecycle-setup.sh
+
+      - name: Certify payment webhook lifecycle, replay safety and entitlement rollback
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          PGUSER: ${{ env.DATABASE_USERNAME }}
+          PGPASSWORD: ${{ env.DATABASE_PASSWORD }}
+          PAYMENT_WEBHOOK_SECRET: ci-payment-webhook-hmac-secret-for-e2e-only
+          BASE_URL: http://localhost:8080/api
+        run: bash scripts/e2e-payment-webhook-security.sh
+
 
       - name: Verify owner data isolation
         env:
