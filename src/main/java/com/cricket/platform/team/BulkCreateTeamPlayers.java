@@ -28,6 +28,7 @@ public class BulkCreateTeamPlayers {
     @Transactional
     public Result execute(UUID teamId, Request request, Authentication authentication) {
         requireManager(teamId, authentication);
+        requireActiveClubAcademyPlus(teamId);
         if (request.players() == null || request.players().isEmpty()) {
             throw new TeamController.TeamMembershipException("PLAYERS_REQUIRED", "Add at least one player.");
         }
@@ -84,6 +85,20 @@ public class BulkCreateTeamPlayers {
         }
 
         return new Result(created, skipped, created.size(), skipped.size());
+    }
+
+    private void requireActiveClubAcademyPlus(UUID teamId) {
+        Integer active = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM user_entitlements
+                WHERE team_id = ? AND package_code = 'CLUB_ACADEMY_PLUS'
+                  AND revoked_at IS NULL
+                  AND (expires_at IS NULL OR expires_at > now())
+                """, Integer.class, teamId);
+        if (active == null || active == 0) {
+            throw new TeamController.TeamMembershipException(
+                    "CLUB_ACADEMY_PLUS_REQUIRED",
+                    "Bulk squad creation requires an active Club / Academy Plus subscription for this workspace.");
+        }
     }
 
     private void requireManager(UUID teamId, Authentication authentication) {
