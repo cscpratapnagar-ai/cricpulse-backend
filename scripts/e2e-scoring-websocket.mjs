@@ -7,6 +7,8 @@ const readyFile = process.env.WS_READY_FILE;
 const doneFile = process.env.WS_DONE_FILE;
 const outputFile = process.env.WS_OUTPUT_FILE;
 const expectedFile = process.env.WS_EXPECTED_FILE;
+const authToken = process.env.WS_AUTH_TOKEN;
+const destination = process.env.WS_DESTINATION || `/topic/public/innings/${inningsId}`;
 if (![wsUrl, inningsId, readyFile, doneFile, outputFile, expectedFile].every(Boolean)) {
   throw new Error("WS_URL, INNINGS_ID, WS_READY_FILE, WS_DONE_FILE, WS_OUTPUT_FILE and WS_EXPECTED_FILE are required");
 }
@@ -58,7 +60,7 @@ function handleFrame(command, body) {
     console.log("WebSocket STOMP CONNECTED frame received");
     sendFrame("SUBSCRIBE", {
       id: "live-score-e2e",
-      destination: `/topic/public/innings/${inningsId}`,
+      destination,
       ack: "auto"
     });
     // Spring SimpleBroker has no SUBSCRIBE receipt. The subsequent score
@@ -87,7 +89,8 @@ socket.addEventListener("open", () => {
   console.log(`WebSocket transport opened: ${wsUrl}`);
   sendFrame("CONNECT", {
     "accept-version": "1.2",
-    "heart-beat": "0,0"
+    "heart-beat": "0,0",
+    ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
   });
 });
 socket.addEventListener("message", async event => {
