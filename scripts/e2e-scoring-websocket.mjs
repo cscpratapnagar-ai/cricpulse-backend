@@ -61,6 +61,7 @@ function handleFrame(command, body, headers = {}) {
     sendFrame("SUBSCRIBE", {
       id: "live-score-e2e",
       destination,
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
       ack: "auto"
     });
     // Spring SimpleBroker has no SUBSCRIBE receipt. The subsequent score
