@@ -6,7 +6,8 @@ set -euo pipefail
 BASE_URL="\${BASE_URL:-http://localhost:8080/api}"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-psql_db() { psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -X -qAt "$@"; }
+psql_conn="${DATABASE_URL#jdbc:}"
+psql_db() { psql "$psql_conn" -v ON_ERROR_STOP=1 -X -qAt "$@"; }
 escaped_email="$(printf "%s" "$E2E_EMAIL" | sed "s/'/''/g")"
 user_id="$(psql_db -c "SELECT id FROM users WHERE lower(email)=lower('$escaped_email') LIMIT 1")"
 [[ -n "$user_id" ]] || { echo "FAIL: CI E2E user was not found" >&2; exit 1; }
