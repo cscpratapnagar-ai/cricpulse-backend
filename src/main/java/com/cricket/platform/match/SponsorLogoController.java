@@ -1,6 +1,7 @@
 package com.cricket.platform.match;
 
 import com.cricket.platform.scoring.ScoringAccess;
+import com.cricket.platform.payment.TournamentEntitlementAccess;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -26,10 +27,12 @@ public class SponsorLogoController {
     private static final int MAX_DIMENSION = 2048;
     private final JdbcTemplate jdbc;
     private final ScoringAccess access;
+    private final TournamentEntitlementAccess entitlements;
 
-    public SponsorLogoController(JdbcTemplate jdbc, ScoringAccess access) {
+    public SponsorLogoController(JdbcTemplate jdbc, ScoringAccess access, TournamentEntitlementAccess entitlements) {
         this.jdbc = jdbc;
         this.access = access;
+        this.entitlements = entitlements;
     }
 
     @PostMapping(value = "/api/matches/{matchId}/sponsors/{sponsorId}/logo",
@@ -37,6 +40,7 @@ public class SponsorLogoController {
     public LogoUploadView upload(@PathVariable UUID matchId, @PathVariable UUID sponsorId,
                                  @RequestPart("logo") MultipartFile logo, Authentication authentication) {
         access.requireMatchManager(matchId, authentication);
+        entitlements.requireOrganizerProForMatch(matchId);
         Integer exists = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM broadcast_sponsors WHERE id = ? AND match_id = ?",
                 Integer.class, sponsorId, matchId);
