@@ -3,7 +3,7 @@ set -euo pipefail
 : "$E2E_EMAIL"
 : "$PAYMENT_WEBHOOK_SECRET"
 : "$DATABASE_URL"
-BASE_URL="\${BASE_URL:-http://localhost:8080/api}"
+BASE_URL="${BASE_URL:-http://localhost:8080/api}"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 psql_conn="${DATABASE_URL#jdbc:}"
