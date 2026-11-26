@@ -52,25 +52,28 @@ assert_order_state() {
 
 echo "[1/8] Verify package catalogue and create ordinary requester session"
 login "$cookie_a" "$E2E_EMAIL"
+user_id="$(psql_db -c "SELECT id FROM users WHERE lower(email)=lower('$E2E_EMAIL') LIMIT 1")"
+team_id="$(psql_db -c "SELECT id FROM teams WHERE owner_id='$user_id' ORDER BY created_at LIMIT 1")"
+[[ -n "$user_id" && -n "$team_id" ]] || { echo "FAIL: CI user/team fixture missing" >&2; exit 1; }
 status="$(request "$cookie_a" GET /payments/packages)"
 assert_eq "package catalogue" 200 "$status"
-jq -e 'any(.[]; .code=="ACADEMY_BRANDING" and .amountPaise==79900 and .currency=="INR")' "$tmp/response.json" >/dev/null
+jq -e 'any(.[]; .code=="CLUB_ACADEMY_PLUS" and .amountPaise==39900 and .currency=="INR")' "$tmp/response.json" >/dev/null
 
 echo "[2/8] Create paid order without granting an entitlement"
 key="payment-order-e2e-$RUN_KEY-$(cat /proc/sys/kernel/random/uuid)"
-create_body="$(jq -nc --arg key "$key" '{packageCode:"ACADEMY_BRANDING",idempotencyKey:$key}')"
+create_body="$(jq -nc --arg team "$team_id" --arg key "$key" '{packageCode:"CLUB_ACADEMY_PLUS",idempotencyKey:$key,teamId:$team}')"
 status="$(request "$cookie_a" POST /payments/orders "$create_body")"
 assert_eq "order creation" 201 "$status"
 order_id="$(jq -r '.id' "$tmp/response.json")"
 [[ -n "$order_id" && "$order_id" != null ]] || { echo "FAIL: create response omitted order id" >&2; exit 1; }
-jq -e '.status=="PENDING" and .provider=="MANUAL" and .amountPaise==79900 and .currency=="INR"' "$tmp/response.json" >/dev/null
+jq -e '.status=="PENDING" and .provider=="MANUAL" and .amountPaise==39900 and .currency=="INR"' "$tmp/response.json" >/dev/null
 assert_order_state "$order_id" PENDING 0 false "" ""
 
 echo "[3/8] Verify idempotency replay and conflicting key reuse"
 status="$(request "$cookie_a" POST /payments/orders "$create_body")"
 assert_eq "idempotent order retry" 200 "$status"
 assert_eq "idempotent order ID" "$order_id" "$(jq -r '.id' "$tmp/response.json")"
-conflict_body="$(jq -nc --arg key "$key" '{packageCode:"CLUB_ACADEMY_PLUS",idempotencyKey:$key}')"
+conflict_body="$(jq -nc --arg team "$team_id" --arg key "$key" '{packageCode:"ACADEMY_BRANDING",idempotencyKey:$key,teamId:$team}')"
 status="$(request "$cookie_a" POST /payments/orders "$conflict_body")"
 assert_eq "conflicting idempotency reuse" 409 "$status"
 assert_order_state "$order_id" PENDING 0 false "" ""
@@ -116,7 +119,7 @@ assert_eq "owner order history" 200 "$status"
 jq -e --arg id "$order_id" 'any(.[]; .id==$id and .status=="PAID")' "$tmp/response.json" >/dev/null
 status="$(request "$cookie_a" GET /payments/entitlements)"
 assert_eq "owner entitlement history" 200 "$status"
-jq -e 'any(.[]; .packageCode=="ACADEMY_BRANDING" and .activationSource=="MANUAL")' "$tmp/response.json" >/dev/null
+jq -e 'any(.[]; .packageCode=="CLUB_ACADEMY_PLUS" and .activationSource=="MANUAL")' "$tmp/response.json" >/dev/null
 status="$(request "$cookie_b" GET /payments/orders)"
 assert_eq "other user order history status" 200 "$status"
 jq -e --arg id "$order_id" 'all(.[]; .id!=$id)' "$tmp/response.json" >/dev/null
@@ -129,7 +132,7 @@ user_id="$(psql_db -c "SELECT id FROM users WHERE lower(email)=lower('$(printf '
 team_id="$(psql_db -c "SELECT id FROM teams WHERE owner_id='$user_id' ORDER BY created_at LIMIT 1")"
 [[ -n "$user_id" && -n "$team_id" ]] || { echo "FAIL: CI user's team fixture missing" >&2; exit 1; }
 refund_order_id="$(cat /proc/sys/kernel/random/uuid)"
-psql_db -c "INSERT INTO payment_orders(id,user_id,team_id,package_code,amount_paise,currency,status,provider,idempotency_key) VALUES ('$refund_order_id','$user_id','$team_id','ACADEMY_BRANDING',79900,'INR','REFUNDED','MANUAL','refund-fixture-$refund_order_id')"
+psql_db -c "INSERT INTO payment_orders(id,user_id,team_id,package_code,amount_paise,currency,status,provider,idempotency_key) VALUES ('$refund_order_id','$user_id','$team_id','CLUB_ACADEMY_PLUS',39900,'INR','REFUNDED','MANUAL','refund-fixture-$refund_order_id')"
 status="$(request "$cookie_admin" POST "/admin/payments/orders/$refund_order_id/activate" '{"note":"must not reactivate refunded order"}')"
 assert_eq "refunded order activation denial" 409 "$status"
 assert_order_state "$refund_order_id" REFUNDED 0 false "" ""
