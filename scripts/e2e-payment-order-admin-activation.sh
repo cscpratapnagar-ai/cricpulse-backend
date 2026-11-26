@@ -125,7 +125,7 @@ assert_eq "other user order history status" 200 "$status"
 jq -e --arg id "$order_id" 'all(.[]; .id!=$id)' "$tmp/response.json" >/dev/null
 status="$(request "$cookie_b" GET /payments/entitlements)"
 assert_eq "other user entitlement history status" 200 "$status"
-jq -e 'all(.[]; .packageCode!="ACADEMY_BRANDING")' "$tmp/response.json" >/dev/null
+jq -e 'all(.[]; .packageCode!="CLUB_ACADEMY_PLUS")' "$tmp/response.json" >/dev/null
 
 echo "[8/8] Refunded orders cannot be manually reactivated"
 user_id="$(psql_db -c "SELECT id FROM users WHERE lower(email)=lower('$(printf '%s' "$E2E_EMAIL" | sed "s/'/''/g")') LIMIT 1")"
