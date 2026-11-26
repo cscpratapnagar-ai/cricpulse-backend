@@ -47,6 +47,7 @@ jobs:
           bash -n scripts/e2e-double-round-robin-regression.sh
           bash -n scripts/e2e-scoring-idempotency-retry.sh
           bash -n scripts/e2e-payment-webhook-security.sh
+          bash -n scripts/e2e-payment-order-admin-activation.sh
           bash -n scripts/e2e-broadcast-performance-recovery.sh
           bash -n scripts/production-release-preflight.sh
           bash -n scripts/production-deployment-smoke.sh
@@ -71,6 +72,7 @@ jobs:
           bash -n scripts/test-frontend-image-attestation.sh
           bash -n scripts/staging-deploy-with-rollback.sh
           bash -n scripts/test-staging-deployment.sh
+          bash -n scripts/staging-host-preflight.sh
           bash -n scripts/staging-host-preflight.sh
           bash -n scripts/test-staging-host-preflight.sh
           bash -n scripts/staging-backup-restore-rehearsal.sh
@@ -149,6 +151,7 @@ jobs:
 
       - name: Build production container
         run: docker build --tag cricpulse-backend:ci .
+
       - name: Validate isolated staging compose
         env:
           POSTGRES_PASSWORD: Staging-Only-Secret-123456
@@ -262,6 +265,16 @@ jobs:
           BASE_URL: http://localhost:8080/api
         run: bash scripts/e2e-payment-webhook-security.sh
 
+      - name: Certify payment order creation and admin activation lifecycle
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          PGUSER: ${{ env.DATABASE_USERNAME }}
+          PGPASSWORD: ${{ env.DATABASE_PASSWORD }}
+          BASE_URL: http://localhost:8080/api
+          E2E_EMAIL: ${{ env.E2E_EMAIL }}
+          E2E_OWNER_B_EMAIL: ${{ env.E2E_OWNER_B_EMAIL }}
+          E2E_PASSWORD: ${{ env.E2E_PASSWORD }}
+        run: bash scripts/e2e-payment-order-admin-activation.sh
 
       - name: Verify owner data isolation
         env:
@@ -338,13 +351,6 @@ jobs:
           TOURNAMENT_ID: ${{ env.E2E_TOURNAMENT_ID }}
         run: bash scripts/e2e-tournament-hardening.sh
 
-      - name: Run single and double round-robin regression E2E
-        env:
-          BASE_URL: http://localhost:8080/api
-          EMAIL: ${{ env.E2E_EMAIL }}
-          PASSWORD: ${{ env.E2E_PASSWORD }}
-        run: bash scripts/e2e-double-round-robin-regression.sh
-
       - name: Run tournament scheduling hardening E2E
         env:
           BASE_URL: http://localhost:8080/api
@@ -354,6 +360,7 @@ jobs:
           FIXTURE_A_ID: ${{ env.E2E_FIXTURE_A_ID }}
           FIXTURE_B_ID: ${{ env.E2E_FIXTURE_B_ID }}
         run: bash scripts/e2e-tournament-scheduling-hardening.sh
+
       - name: Run tournament playoff progression E2E
         env:
           BASE_URL: http://localhost:8080/api

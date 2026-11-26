@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
@@ -58,9 +59,8 @@ public class PaymentController {
     }
 
     @PostMapping("/payments/orders")
-    @ResponseStatus(HttpStatus.CREATED)
     @Transactional
-    public OrderView createOrder(@Valid @RequestBody CreateOrderRequest request, Authentication auth) {
+    public ResponseEntity<OrderView> createOrder(@Valid @RequestBody CreateOrderRequest request, Authentication auth) {
         UUID userId = authenticatedUserId(auth);
         PackageDefinition pack = PACKAGES.get(request.packageCode().trim().toUpperCase(Locale.ROOT));
         if (pack == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown package");
@@ -119,7 +119,7 @@ public class PaymentController {
                     || !java.util.Objects.equals(prior.teamId(), teamId)) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "Idempotency key was already used for a different purchase");
             }
-            return prior;
+            return ResponseEntity.ok(prior);
         }
 
         UUID id = UUID.randomUUID();
@@ -128,7 +128,7 @@ public class PaymentController {
                 (id,user_id,tournament_id,team_id,package_code,amount_paise,currency,status,provider,idempotency_key)
                 VALUES (?,?,?,?,?,?,?,'PENDING','MANUAL',?)
                 """, id, userId, tournamentId, teamId, pack.code(), pack.amountPaise(), pack.currency(), key);
-        return getOrder(id, userId);
+        return ResponseEntity.status(HttpStatus.CREATED).body(getOrder(id, userId));
     }
 
     @GetMapping("/payments/orders")
