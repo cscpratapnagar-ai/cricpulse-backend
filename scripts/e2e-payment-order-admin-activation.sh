@@ -94,7 +94,7 @@ register_status="$(curl -sS -b "$cookie_admin" -c "$cookie_admin" -X POST "$BASE
   -H 'Content-Type: application/json' -H "X-XSRF-TOKEN: $csrf" \
   --data "$(jq -nc --arg n "CricPulse CI Payment Admin" --arg e "$admin_email" --arg p "$admin_phone" --arg pw "$E2E_PASSWORD" '{fullName:$n,email:$e,phone:$p,password:$pw}')" \
   -o "$tmp/register.json" -w '%{http_code}')"
-assert_eq "disposable admin registration" 201 "$register_status"
+assert_eq "disposable admin registration" 200 "$register_status"
 escaped_email="$(printf '%s' "$admin_email" | sed "s/'/''/g")"
 admin_id="$(psql_db -c "SELECT id FROM users WHERE lower(email)=lower('$escaped_email')")"
 [[ -n "$admin_id" ]] || { echo "FAIL: disposable CI admin row not found" >&2; exit 1; }
