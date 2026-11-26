@@ -268,6 +268,8 @@ jobs:
       - name: Certify payment order creation and admin activation lifecycle
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
+          PGUSER: ${{ env.DATABASE_USERNAME }}
+          PGPASSWORD: ${{ env.DATABASE_PASSWORD }}
           BASE_URL: http://localhost:8080/api
           E2E_EMAIL: ${{ env.E2E_EMAIL }}
           E2E_OWNER_B_EMAIL: ${{ env.E2E_OWNER_B_EMAIL }}
