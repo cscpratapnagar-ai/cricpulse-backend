@@ -19,6 +19,7 @@ public class LiveScoreBroadcastPublicationGuard {
     private final GetLiveScore getLiveScore;
     private final boolean relayEnabled;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public LiveScoreBroadcastPublicationGuard(JdbcTemplate jdbc,
                                               SimpMessagingTemplate messagingTemplate,
                                               GetLiveScore getLiveScore,
@@ -27,6 +28,10 @@ public class LiveScoreBroadcastPublicationGuard {
         this.messagingTemplate = messagingTemplate;
         this.getLiveScore = getLiveScore;
         this.relayEnabled = relayEnabled;
+    }
+
+    LiveScoreBroadcastPublicationGuard(JdbcTemplate jdbc, SimpMessagingTemplate messagingTemplate, GetLiveScore getLiveScore) {
+        this(jdbc, messagingTemplate, getLiveScore, false);
     }
 
     /**
