@@ -94,14 +94,63 @@ If Docker Desktop is already open, check that it is using Linux containers and t
     Write-Host "Docker Engine is available." -ForegroundColor Green
 
     Write-Host "Starting the local PostgreSQL service..." -ForegroundColor Cyan
-    $composeExitCode = Invoke-Docker -DockerArgs @("compose", "up", "-d", "postgres")
-    if ($composeExitCode -ne 0) {
-        throw "Could not start PostgreSQL. Check 'docker compose logs postgres'."
+
+    # docker-compose.yml uses a fixed container_name. Reuse an existing
+    # container instead of trying to create a second container with that name.
+    $previousPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        $existingContainerId = & docker ps -a --filter "name=^/cricketpulse-postgres$" --format "{{.ID}}" 2>$null
+        $listExitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousPreference
+    }
+
+    if ($listExitCode -ne 0) {
+        throw "Could not inspect existing Docker containers. Run 'docker ps -a' and check Docker Engine."
+    }
+
+    $existingContainerId = ($existingContainerId | Select-Object -First 1)
+    if ($existingContainerId) {
+        Write-Host "Found existing PostgreSQL container ($existingContainerId); reusing it without deleting data." -ForegroundColor Yellow
+        $runningState = Invoke-Docker -DockerArgs @("inspect", "--format", "{{.State.Running}}", "cricketpulse-postgres") -Quiet
+        if ($LASTEXITCODE -ne 0) {
+            throw "Found cricketpulse-postgres but could not inspect its state. No container was removed."
+        }
+
+        # Read the state directly; docker inspect's formatted output is captured
+        # separately so the helper's exit-code return does not hide it.
+        $previousPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = "Continue"
+            $runningState = & docker inspect --format "{{.State.Running}}" cricketpulse-postgres 2>$null
+            $inspectExitCode = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $previousPreference
+        }
+
+        if ($inspectExitCode -ne 0) {
+            throw "Could not inspect cricketpulse-postgres. No container was removed."
+        }
+        if ("$runningState".Trim() -ne "true") {
+            $startExitCode = Invoke-Docker -DockerArgs @("start", "cricketpulse-postgres")
+            if ($startExitCode -ne 0) {
+                throw "Could not start the existing cricketpulse-postgres container. Its data was left untouched."
+            }
+        }
+    }
+    else {
+        $composeExitCode = Invoke-Docker -DockerArgs @("compose", "up", "-d", "postgres")
+        if ($composeExitCode -ne 0) {
+            throw "Could not create PostgreSQL. Check 'docker compose logs postgres'."
+        }
     }
 
     $ready = $false
     for ($attempt = 1; $attempt -le 30; $attempt++) {
-        $readyExitCode = Invoke-Docker -DockerArgs @("compose", "exec", "-T", "postgres", "pg_isready", "-U", "cricket_app", "-d", "cricket") -Quiet
+        $readyExitCode = Invoke-Docker -DockerArgs @("exec", "cricketpulse-postgres", "pg_isready", "-U", "cricket_app", "-d", "cricket") -Quiet
         if ($readyExitCode -eq 0) {
             $ready = $true
             break
@@ -110,8 +159,8 @@ If Docker Desktop is already open, check that it is using Linux containers and t
     }
 
     if (-not $ready) {
-        Invoke-Docker -DockerArgs @("compose", "logs", "--tail", "80", "postgres")
-        throw "PostgreSQL did not become ready on localhost:5432 within 60 seconds."
+        Invoke-Docker -DockerArgs @("logs", "--tail", "80", "cricketpulse-postgres")
+        throw "PostgreSQL did not become ready in the existing/new container within 60 seconds. Container data was not deleted."
     }
 
     Write-Host "PostgreSQL is healthy: localhost:5432/cricket" -ForegroundColor Green
