@@ -11,14 +11,33 @@ import static org.mockito.Mockito.*;
 
 class DistributedWebSocketRevocationListenerTest {
     @Test
+    void replaysExistingOutboxEventsOnStartupToAvoidSkippingLateCommits() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        ActiveWebSocketSessions sockets = mock(ActiveWebSocketSessions.class);
+        DistributedWebSocketRevocationListener listener =
+                new DistributedWebSocketRevocationListener(jdbc, sockets);
+
+        listener.initialize();
+
+        // A row whose identity was allocated before startup may commit afterwards.
+        // Starting at zero ensures the next poll still discovers this lower ID.
+        when(jdbc.query(anyString(), any(RowMapper.class), eq(0L))).thenReturn(List.of(
+                new DistributedWebSocketRevocationListener.Revocation(7L, "late-commit-session")));
+
+        listener.poll();
+
+        verify(sockets).closeByUserSession("late-commit-session");
+        verify(jdbc).query(anyString(), any(RowMapper.class), eq(0L));
+    }
+
+    @Test
     void closesSessionsFromSharedOutboxAndAdvancesCursor() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         ActiveWebSocketSessions sockets = mock(ActiveWebSocketSessions.class);
         DistributedWebSocketRevocationListener listener =
                 new DistributedWebSocketRevocationListener(jdbc, sockets);
-        when(jdbc.queryForObject(anyString(), eq(Long.class))).thenReturn(11L);
         listener.initialize();
-        when(jdbc.query(anyString(), any(RowMapper.class), eq(11L))).thenReturn(List.of(
+        when(jdbc.query(anyString(), any(RowMapper.class), eq(0L))).thenReturn(List.of(
                 new DistributedWebSocketRevocationListener.Revocation(12L, "session-a"),
                 new DistributedWebSocketRevocationListener.Revocation(13L, "session-b")));
 
@@ -27,7 +46,7 @@ class DistributedWebSocketRevocationListenerTest {
         verify(sockets).closeByUserSession("session-a");
         verify(sockets).closeByUserSession("session-b");
         listener.poll();
-        verify(jdbc).query(anyString(), any(RowMapper.class), eq(11L));
+        verify(jdbc).query(anyString(), any(RowMapper.class), eq(0L));
         verify(jdbc).query(anyString(), any(RowMapper.class), eq(13L));
     }
 
@@ -37,15 +56,14 @@ class DistributedWebSocketRevocationListenerTest {
         ActiveWebSocketSessions sockets = mock(ActiveWebSocketSessions.class);
         DistributedWebSocketRevocationListener listener =
                 new DistributedWebSocketRevocationListener(jdbc, sockets);
-        when(jdbc.queryForObject(anyString(), eq(Long.class))).thenReturn(20L);
         listener.initialize();
-        when(jdbc.query(anyString(), any(RowMapper.class), eq(20L)))
+        when(jdbc.query(anyString(), any(RowMapper.class), eq(0L)))
                 .thenThrow(new IllegalStateException("database unavailable"));
 
         listener.poll();
         listener.poll();
 
-        verify(jdbc, times(2)).query(anyString(), any(RowMapper.class), eq(20L));
+        verify(jdbc, times(2)).query(anyString(), any(RowMapper.class), eq(0L));
         verifyNoInteractions(sockets);
     }
 }
