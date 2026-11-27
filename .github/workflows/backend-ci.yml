@@ -46,6 +46,8 @@ jobs:
           bash -n scripts/seed-qualification-test-data.sh
           bash -n scripts/e2e-double-round-robin-regression.sh
           bash -n scripts/e2e-scoring-idempotency-retry.sh
+          bash -n scripts/e2e-real-scoring-match.sh
+          bash -n scripts/cricpulse-missing-wicket-e2e.sh
           bash -n scripts/e2e-payment-webhook-security.sh
           bash -n scripts/e2e-payment-order-admin-activation.sh
           bash -n scripts/e2e-broadcast-performance-recovery.sh
