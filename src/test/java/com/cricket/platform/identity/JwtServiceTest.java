@@ -33,4 +33,12 @@ class JwtServiceTest {
         assertThrows(IllegalArgumentException.class,
                 () -> jwt.create("scorer@example.com", "SCORER", 0));
     }
+ 
+    @Test
+    void createsDistinctTokensForSeparateSessionsEvenWithinSameSecond() {
+        String first = jwt.create("scorer@example.com", "PLAYER");
+        String second = jwt.create("scorer@example.com", "PLAYER");
+
+        assertNotEquals(first, second);
+    }
 }
