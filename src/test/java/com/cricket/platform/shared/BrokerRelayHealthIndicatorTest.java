@@ -1,6 +1,6 @@
 package com.cricket.platform.shared;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.actuate.health.Status;
+import org.springframework.boot.health.contributor.Status;
 import org.springframework.messaging.simp.broker.BrokerAvailabilityEvent;
 import static org.assertj.core.api.Assertions.assertThat;
 class BrokerRelayHealthIndicatorTest {
