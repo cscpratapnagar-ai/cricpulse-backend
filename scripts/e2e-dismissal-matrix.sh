@@ -37,10 +37,12 @@ login_token() {
 }
 
 request() {
-  local token="$1" method="$2" url="$3" body="${4:-}" status
-  status="$(curl -sS -o "$tmp/response.json" -w '%{http_code}' -X "$method" "$url" \
-    -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
-    ${body:+--data "$body"})"
+  local token="$1" method="$2" url="$3" body="${4:-}" extra_header="${5:-}" status
+  local -a args=(-sS -o "$tmp/response.json" -w '%{http_code}' -X "$method" "$url"
+    -H "Authorization: Bearer $token" -H 'Content-Type: application/json')
+  [[ -n "$extra_header" ]] && args+=(-H "$extra_header")
+  [[ -n "$body" ]] && args+=(--data "$body")
+  status="$(curl "${args[@]}")"
   if [[ ! "$status" =~ ^2[0-9][0-9]$ ]]; then
     echo "FAIL: $method $url returned HTTP $status" >&2
     cat "$tmp/response.json" >&2
