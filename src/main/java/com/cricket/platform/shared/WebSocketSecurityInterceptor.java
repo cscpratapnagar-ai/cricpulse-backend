@@ -97,7 +97,15 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
             var authentication = new UsernamePasswordAuthenticationToken(subject, null,
                     List.of(new SimpleGrantedAuthority("ROLE_" + role)));
             if (sessionId != null) authentication.setDetails(sessionId);
-            if (activeSockets != null) activeSockets.bind(sessionId, socketId);
+            if (activeSockets != null) {
+                activeSockets.bind(sessionId, socketId);
+                // Close the CONNECT/revoke race: revocation may commit between the first
+                // active-session check and local socket registration.
+                if (sessions != null && !sessions.isActive(sessionId, subject)) {
+                    activeSockets.closeByUserSession(sessionId);
+                    return null;
+                }
+            }
             return authentication;
         } catch (RuntimeException ex) {
             return null;

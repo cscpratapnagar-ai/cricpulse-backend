@@ -97,6 +97,7 @@ public class SessionRegistryService {
                 """, id);
         if (changed > 0) {
             audit(userId, sessionId, "SESSION_REVOKED", null, null);
+            publishRevocation(sessionId, "SESSION_REVOKED");
             activeSockets.closeByUserSession(sessionId);
         }
         return changed > 0;
@@ -122,6 +123,7 @@ public class SessionRegistryService {
             targets.forEach(target -> {
                 audit(target.userId(), target.sessionId().toString(), "LOGOUT_ALL",
                         target.ipAddress(), target.userAgent());
+                publishRevocation(target.sessionId().toString(), "LOGOUT_ALL");
                 activeSockets.closeByUserSession(target.sessionId().toString());
             });
         }
@@ -143,6 +145,7 @@ public class SessionRegistryService {
                 """, id);
         if (changed > 0) {
             if (target != null) audit(target.userId(), sessionId, "LOGOUT", target.ipAddress(), target.userAgent());
+            publishRevocation(sessionId, "LOGOUT");
             activeSockets.closeByUserSession(sessionId);
         }
     }
@@ -155,6 +158,14 @@ public class SessionRegistryService {
                 WHERE expires_at <= now()
                    OR revoked_at < now() - INTERVAL '30 days'
                 """);
+    }
+
+    /** Persist the close event in the same transaction as the session revocation. */
+    private void publishRevocation(String sessionId, String reason) {
+        jdbc.update("""
+                INSERT INTO websocket_session_revocations(session_id, reason)
+                VALUES (?, ?)
+                """, UUID.fromString(sessionId), reason);
     }
 
     private void audit(UUID userId, String sessionId, String eventType, String ipAddress, String userAgent) {
