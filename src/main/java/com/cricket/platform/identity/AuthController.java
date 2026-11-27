@@ -1,5 +1,8 @@
 package com.cricket.platform.identity;
 
+import io.jsonwebtoken.JwtException;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Value;
@@ -11,12 +14,14 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.web.csrf.CsrfToken;
 
 import java.time.Duration;
+import java.util.Arrays;
 
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
     private final LoginUser loginUser;
     private final JwtService jwtService;
+    private final AccessTokenRevocationService tokenRevocations;
     private final boolean cookieSecure;
     private final String cookieSameSite;
     private final long tokenExpirationSeconds;
@@ -24,11 +29,13 @@ public class AuthController {
     public AuthController(
             LoginUser loginUser,
             JwtService jwtService,
+            AccessTokenRevocationService tokenRevocations,
             @Value("${security.auth.cookie-secure:true}") boolean cookieSecure,
             @Value("${security.auth.cookie-same-site:Lax}") String cookieSameSite,
             @Value("${security.jwt.expiration-seconds:86400}") long tokenExpirationSeconds) {
         this.loginUser = loginUser;
         this.jwtService = jwtService;
+        this.tokenRevocations = tokenRevocations;
         this.cookieSecure = cookieSecure;
         this.cookieSameSite = cookieSameSite;
         this.tokenExpirationSeconds = tokenExpirationSeconds;
@@ -42,7 +49,16 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
-    ResponseEntity<Void> logout() {
+    ResponseEntity<Void> logout(HttpServletRequest request) {
+        String token = bearerToken(request);
+        if (token == null) token = cookieToken(request);
+        if (token != null) {
+            try {
+                tokenRevocations.revoke(token);
+            } catch (JwtException | IllegalArgumentException ignored) {
+                // Expired or malformed credentials are already unusable; clear the browser cookie.
+            }
+        }
         ResponseCookie expiredCookie = accessCookie("", Duration.ZERO);
         return ResponseEntity.noContent()
                 .header(HttpHeaders.SET_COOKIE, expiredCookie.toString())
@@ -62,8 +78,6 @@ public class AuthController {
                 .map(authority -> authority.substring("ROLE_".length()))
                 .findFirst()
                 .orElse("PLAYER");
-        // A ticket is intentionally short-lived and only exposed after the HttpOnly
-        // browser session has been validated by Spring Security.
         return java.util.Map.of("token", jwtService.create(authentication.getName(), role, 60));
     }
 
@@ -74,6 +88,20 @@ public class AuthController {
     }
 
     public record SessionResponse(String userId, String fullName, String email, String role) {}
+
+    private String bearerToken(HttpServletRequest request) {
+        String header = request.getHeader(HttpHeaders.AUTHORIZATION);
+        return header != null && header.startsWith("Bearer ") ? header.substring(7) : null;
+    }
+
+    private String cookieToken(HttpServletRequest request) {
+        Cookie[] cookies = request.getCookies();
+        if (cookies == null) return null;
+        return Arrays.stream(cookies)
+                .filter(cookie -> JwtService.ACCESS_COOKIE_NAME.equals(cookie.getName()))
+                .map(Cookie::getValue)
+                .findFirst().orElse(null);
+    }
 
     private ResponseCookie accessCookie(String value, Duration maxAge) {
         return ResponseCookie.from(JwtService.ACCESS_COOKIE_NAME, value)
