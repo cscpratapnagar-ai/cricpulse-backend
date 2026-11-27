@@ -159,6 +159,38 @@ expect_rejection "cannot score after match completion" POST "$BASE_URL/scoring/i
 
 echo "[8/10] Verify scorecard, result and idempotency"
 SCORECARD="$(request GET "$BASE_URL/matches/$MATCH_ID/scorecard")"; SCORECARD_INNINGS="$(jq 'length' <<<"$SCORECARD")"; SCORECARD1_RUNS="$(jq -r '.[0].runs // -1' <<<"$SCORECARD")"; SCORECARD1_BALLS="$(jq -r '.[0].legalBalls // -1' <<<"$SCORECARD")"; SCORECARD2_RUNS="$(jq -r '.[1].runs // -1' <<<"$SCORECARD")"; SCORECARD2_BALLS="$(jq -r '.[1].legalBalls // -1' <<<"$SCORECARD")"; [[ "$SCORECARD_INNINGS" == "2" && "$SCORECARD1_RUNS" == "0" && "$SCORECARD1_BALLS" == "24" && "$SCORECARD2_RUNS" == "1" && "$SCORECARD2_BALLS" == "1" ]] || { echo "ERROR: scorecard mismatch innings=$SCORECARD_INNINGS first=$SCORECARD1_RUNS/$SCORECARD1_BALLS second=$SCORECARD2_RUNS/$SCORECARD2_BALLS" >&2; exit 1; }
+# Certify the persisted player-level scorecard and delivery-ledger partnerships.
+# This is deliberately checked through the authenticated HTTP API, not SQL fixtures.
+SCORECARD1_BAT_RUNS="$(jq '[.[0].batting[]? | .runs] | add // 0' <<<"$SCORECARD")"
+SCORECARD1_BAT_BALLS="$(jq '[.[0].batting[]? | .balls] | add // 0' <<<"$SCORECARD")"
+SCORECARD1_BOWL_BALLS="$(jq '[.[0].bowling[]? | .legalBalls] | add // 0' <<<"$SCORECARD")"
+SCORECARD1_FOW="$(jq '.[0].fallOfWickets | length' <<<"$SCORECARD")"
+SCORECARD2_BAT_RUNS="$(jq '[.[1].batting[]? | .runs] | add // 0' <<<"$SCORECARD")"
+SCORECARD2_BAT_BALLS="$(jq '[.[1].batting[]? | .balls] | add // 0' <<<"$SCORECARD")"
+SCORECARD2_BOWL_BALLS="$(jq '[.[1].bowling[]? | .legalBalls] | add // 0' <<<"$SCORECARD")"
+SCORECARD2_BOWL_RUNS="$(jq '[.[1].bowling[]? | .runs] | add // 0' <<<"$SCORECARD")"
+SCORECARD2_BATTER_ID="$(jq -r --arg player "$B_STRIKER_ID" '.[] | select(.inningsNumber == 2) | .batting[]? | select(.playerId == $player) | .playerId' <<<"$SCORECARD" | head -n1)"
+SCORECARD2_BOWLER_ID="$(jq -r --arg player "$A_BOWLER_ID" '.[] | select(.inningsNumber == 2) | .bowling[]? | select(.playerId == $player) | .playerId' <<<"$SCORECARD" | head -n1)"
+[[ "$SCORECARD1_BAT_RUNS" == "0" && "$SCORECARD1_BAT_BALLS" == "24" && "$SCORECARD1_BOWL_BALLS" == "24" && "$SCORECARD1_FOW" == "0" ]] || {
+  echo "ERROR: innings 1 player scorecard mismatch batRuns=$SCORECARD1_BAT_RUNS batBalls=$SCORECARD1_BAT_BALLS bowlBalls=$SCORECARD1_BOWL_BALLS fow=$SCORECARD1_FOW" >&2; exit 1;
+}
+[[ "$SCORECARD2_BAT_RUNS" == "1" && "$SCORECARD2_BAT_BALLS" == "1" && "$SCORECARD2_BOWL_BALLS" == "1" && "$SCORECARD2_BOWL_RUNS" == "1" && "$SCORECARD2_BATTER_ID" == "$B_STRIKER_ID" && "$SCORECARD2_BOWLER_ID" == "$A_BOWLER_ID" ]] || {
+  echo "ERROR: innings 2 batter/bowler figures mismatch bat=$SCORECARD2_BAT_RUNS/$SCORECARD2_BAT_BALLS bowl=$SCORECARD2_BOWL_RUNS/$SCORECARD2_BOWL_BALLS batter=$SCORECARD2_BATTER_ID bowler=$SCORECARD2_BOWLER_ID" >&2; exit 1;
+}
+echo "    PASS: persisted batter runs/balls and bowler runs/legal balls match the delivery ledger"
+echo "    PASS: Fall of Wickets is empty for the wicket-free innings"
+
+PARTNERSHIPS="$(request GET "$BASE_URL/matches/$MATCH_ID/partnerships")"
+PARTNERSHIP_COUNT="$(jq 'length' <<<"$PARTNERSHIPS")"
+PARTNERSHIP1_RUNS="$(jq '[.[] | select(.inningsNumber == 1) | .runs] | add // 0' <<<"$PARTNERSHIPS")"
+PARTNERSHIP1_BALLS="$(jq '[.[] | select(.inningsNumber == 1) | .balls] | add // 0' <<<"$PARTNERSHIPS")"
+PARTNERSHIP2_RUNS="$(jq '[.[] | select(.inningsNumber == 2) | .runs] | add // 0' <<<"$PARTNERSHIPS")"
+PARTNERSHIP2_BALLS="$(jq '[.[] | select(.inningsNumber == 2) | .balls] | add // 0' <<<"$PARTNERSHIPS")"
+[[ "$PARTNERSHIP_COUNT" == "2" && "$PARTNERSHIP1_RUNS" == "0" && "$PARTNERSHIP1_BALLS" == "24" && "$PARTNERSHIP2_RUNS" == "1" && "$PARTNERSHIP2_BALLS" == "1" ]] || {
+  echo "ERROR: partnership reconstruction mismatch count=$PARTNERSHIP_COUNT innings1=$PARTNERSHIP1_RUNS/$PARTNERSHIP1_BALLS innings2=$PARTNERSHIP2_RUNS/$PARTNERSHIP2_BALLS" >&2; exit 1;
+}
+echo "    PASS: authenticated partnership API reconciles both innings to persisted deliveries"
+
 RESULT1="$(request GET "$BASE_URL/matches/$MATCH_ID/result")"; RESULT2="$(request GET "$BASE_URL/matches/$MATCH_ID/result")"; [[ "$(jq -S -c . <<<"$RESULT1")" == "$(jq -S -c . <<<"$RESULT2")" ]] || { echo "ERROR: result is not idempotent" >&2; exit 1; }; RESULT_STATUS="$(jq -r '.matchStatus // .status // empty' <<<"$RESULT1")"; RESULT_TYPE="$(jq -r '.detailedResultType // .resultType // empty' <<<"$RESULT1")"; WINNER_TEAM_ID="$(jq -r '.winningTeamId // .winnerTeamId // empty' <<<"$RESULT1")"; [[ "$RESULT_STATUS" == "COMPLETED" ]] || { echo "ERROR: result status=$RESULT_STATUS" >&2; exit 1; }; [[ "$RESULT_TYPE" == "WIN_BY_WICKETS" || "$RESULT_TYPE" == "WIN_BY_RUNS" || "$RESULT_TYPE" == "TIE" ]] || { echo "ERROR: unexpected result type=$RESULT_TYPE" >&2; exit 1; }; [[ "$WINNER_TEAM_ID" == "$TEAM_B_ID" ]] || { echo "ERROR: expected Team B winner=$WINNER_TEAM_ID" >&2; exit 1; }
 
 echo "[9/10] Verify final match and tournament state"
