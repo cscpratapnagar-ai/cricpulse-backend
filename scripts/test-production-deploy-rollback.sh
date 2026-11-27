@@ -61,6 +61,8 @@ make_fixture() {
   cat > "$app/.env" <<'ENV'
 POSTGRES_PASSWORD=Preflight-Only-Secret-7c29a4b6
 JWT_SECRET=ci-jwt-secret-at-least-32-bytes-long
+RABBITMQ_USERNAME=ci_broker
+RABBITMQ_PASSWORD=Production-Broker-Only-Secret-123456
 BACKEND_TAG=sha-abcdef1
 FRONTEND_TAG=sha-1234567
 ENV
