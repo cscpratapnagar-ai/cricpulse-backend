@@ -25,3 +25,7 @@ Use dedicated strong RABBITMQ_USERNAME and RABBITMQ_PASSWORD deployment secrets.
 - No production deployment or release tag is performed by this change.
 ## Local relay mode
 Start docker compose up -d postgres rabbitmq, then run the API with relay enabled and host localhost, port 61613, client/system login cricpulse and passcode local-cricpulse-broker-password. The readiness endpoint reports brokerRelay UP only after the relay system connection is established.
+
+## Deployment environment file additions
+
+Before a staging or production deployment, add exactly one RABBITMQ_USERNAME and RABBITMQ_PASSWORD entry to the host-owned mode-0600 .env file. Use a dedicated non-guest account name and a randomly generated password of at least 20 characters. Host preflight rejects missing, duplicate, guest, short, and development-placeholder credentials before compose validation or deployment.

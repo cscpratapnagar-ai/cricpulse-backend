@@ -45,8 +45,13 @@ read_env_value() {
 }
 POSTGRES_PASSWORD="$(read_env_value POSTGRES_PASSWORD)" || fail "POSTGRES_PASSWORD must appear exactly once in .env"
 JWT_SECRET="$(read_env_value JWT_SECRET)" || fail "JWT_SECRET must appear exactly once in .env"
+RABBITMQ_USERNAME="$(read_env_value RABBITMQ_USERNAME)" || fail "RABBITMQ_USERNAME must appear exactly once in .env"
+RABBITMQ_PASSWORD="$(read_env_value RABBITMQ_PASSWORD)" || fail "RABBITMQ_PASSWORD must appear exactly once in .env"
 [[ "${#POSTGRES_PASSWORD}" -ge 20 ]] || fail "POSTGRES_PASSWORD must contain at least 20 characters"
 [[ "${#JWT_SECRET}" -ge 32 ]] || fail "JWT_SECRET must contain at least 32 characters"
+[[ "${#RABBITMQ_USERNAME}" -ge 3 && "$RABBITMQ_USERNAME" != "guest" ]] || fail "RABBITMQ_USERNAME must be a non-guest service account"
+[[ "${#RABBITMQ_PASSWORD}" -ge 20 ]] || fail "RABBITMQ_PASSWORD must contain at least 20 characters"
+[[ "$RABBITMQ_PASSWORD" != *"change-me"* && "$RABBITMQ_PASSWORD" != *"local-cricpulse"* ]] || fail "RABBITMQ_PASSWORD contains a development placeholder"
 [[ "$POSTGRES_PASSWORD" != *"cricket_dev_password"* && "$POSTGRES_PASSWORD" != *"ci-postgres-password"* ]] || fail "CI/development database password is forbidden"
 [[ "$JWT_SECRET" != *"change-me"* && "$JWT_SECRET" != *"local-only"* && "$JWT_SECRET" != *"ci-only"* ]] || fail "Placeholder JWT secret is forbidden"
 
