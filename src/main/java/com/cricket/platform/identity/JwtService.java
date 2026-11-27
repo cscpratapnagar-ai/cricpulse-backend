@@ -9,6 +9,7 @@ import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Date;
+import java.util.UUID;
 
 @Component
 public class JwtService {
@@ -36,17 +37,27 @@ public class JwtService {
             throw new IllegalArgumentException("JWT lifetime must be greater than 0");
         }
         Instant now = Instant.now();
-        return Jwts.builder().subject(subject).claim("role", role)
+        return Jwts.builder().subject(subject).id(UUID.randomUUID().toString()).claim("role", role)
                 .issuedAt(Date.from(now)).expiration(Date.from(now.plusSeconds(lifetimeSeconds)))
                 .signWith(key).compact();
     }
 
     public String subject(String token) {
-        return Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload().getSubject();
+        return claims(token).getSubject();
     }
 
     public String role(String token) {
-        Object role = Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload().get("role");
+        Object role = claims(token).get("role");
         return role == null ? "PLAYER" : role.toString();
+    }
+
+    public Instant expiresAt(String token) {
+        Date expiration = claims(token).getExpiration();
+        if (expiration == null) throw new IllegalArgumentException("JWT expiration is required");
+        return expiration.toInstant();
+    }
+
+    private io.jsonwebtoken.Claims claims(String token) {
+        return Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
     }
 }
