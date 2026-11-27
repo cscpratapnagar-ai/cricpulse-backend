@@ -104,6 +104,50 @@ class CricketDeliveryRuleValidatorTest {
     }
 
     @Test
+    void rejectsDismissalsThatAreNotPermittedFromNoBalls() {
+        for (String wicketType : new String[] {
+                WicketType.BOWLED.name(), WicketType.CAUGHT.name(), WicketType.LBW.name(),
+                WicketType.STUMPED.name(), WicketType.HIT_WICKET.name()}) {
+            assertThrows(IllegalArgumentException.class,
+                    () -> CricketDeliveryRuleValidator.validate(
+                            command(0, 1, "NO_BALL", wicketType, DISMISSED)),
+                    wicketType + " must not be allowed from a no-ball");
+        }
+    }
+
+    @Test
+    void allowsDismissalsPermittedFromNoBalls() {
+        for (String wicketType : new String[] {
+                WicketType.RUN_OUT.name(), WicketType.OBSTRUCTING_THE_FIELD.name(),
+                WicketType.HIT_BALL_TWICE.name()}) {
+            assertDoesNotThrow(() -> CricketDeliveryRuleValidator.validate(
+                    command(0, 1, "NO_BALL", wicketType, DISMISSED)));
+        }
+    }
+
+    @Test
+    void rejectsDismissalsThatAreNotPermittedFromWides() {
+        for (String wicketType : new String[] {
+                WicketType.BOWLED.name(), WicketType.CAUGHT.name(), WicketType.LBW.name(),
+                WicketType.HIT_BALL_TWICE.name()}) {
+            assertThrows(IllegalArgumentException.class,
+                    () -> CricketDeliveryRuleValidator.validate(
+                            command(0, 1, "WIDE", wicketType, DISMISSED)),
+                    wicketType + " must not be allowed from a wide");
+        }
+    }
+
+    @Test
+    void allowsDismissalsPermittedFromWides() {
+        for (String wicketType : new String[] {
+                WicketType.HIT_WICKET.name(), WicketType.OBSTRUCTING_THE_FIELD.name(),
+                WicketType.RUN_OUT.name(), WicketType.STUMPED.name()}) {
+            assertDoesNotThrow(() -> CricketDeliveryRuleValidator.validate(
+                    command(0, 1, "WIDE", wicketType, DISMISSED)));
+        }
+    }
+
+    @Test
     void rejectsLifecycleDismissalsFromDeliveryPath() {
         assertThrows(IllegalArgumentException.class,
                 () -> CricketDeliveryRuleValidator.validate(
