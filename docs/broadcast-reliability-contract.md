@@ -77,3 +77,16 @@ The backend CI also runs `scripts/e2e-real-wicket-broadcast.sh` against the disp
 - Connects an anonymous public STOMP client before scoring, verifies the ordered Run Out and Bowled snapshots, disconnects, reconnects, and recovers the latest committed version through the public REST snapshot.
 
 This is a real API/PostgreSQL/STOMP CI integration test. It does not certify physical mobile devices, browser rendering, OBS/vMix capture, network packet loss, or a production-host soak; those remain staging/operator acceptance checks.
+
+
+## Complete dismissal matrix integration certification
+
+The backend CI also runs `scripts/e2e-dismissal-matrix.sh` against two isolated matches backed by the disposable PostgreSQL service.
+
+- Records Caught, LBW, Stumped and Hit Wicket through the authenticated scoring API, with a replacement batter after each dismissal.
+- Uses the bowling-side player as the caught-and-bowled fielder and selected wicketkeeper for Stumped, then checks persisted `deliveries.wicket_fielder_id` attribution. LBW and Hit Wicket are checked without a fielder.
+- Verifies wicket count, legal-ball count, batter dismissal types, fall-of-wicket rows, replacement batter state, scorecard rows, bowler wicket credits and economy.
+- Compares scorer REST, anonymous public innings REST and public Match Centre broadcast-state score/event version after each two-wicket scenario.
+- The existing Task #169 STOMP test continues to verify ordered Run Out/Bowled messages, unique event IDs, increasing versions and reconnect snapshot recovery. This new matrix does not yet assert each of Caught/LBW/Stumped/Hit Wicket over a live STOMP subscription; that remains an explicit follow-up rather than an assumed guarantee.
+
+The CI matrix uses API-created matches and PostgreSQL assertions. Browser/device rendering, OBS/vMix capture, packet-loss simulation and production-host soak remain staging/operator acceptance checks.
