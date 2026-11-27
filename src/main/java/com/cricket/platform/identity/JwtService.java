@@ -33,23 +33,29 @@ public class JwtService {
     }
 
     public String create(String subject, String role, long lifetimeSeconds) {
-        if (lifetimeSeconds <= 0) {
-            throw new IllegalArgumentException("JWT lifetime must be greater than 0");
-        }
-        Instant now = Instant.now();
-        return Jwts.builder().subject(subject).id(UUID.randomUUID().toString()).claim("role", role)
-                .issuedAt(Date.from(now)).expiration(Date.from(now.plusSeconds(lifetimeSeconds)))
-                .signWith(key).compact();
+        return create(subject, role, lifetimeSeconds, null);
     }
 
-    public String subject(String token) {
-        return claims(token).getSubject();
+    public String create(String subject, String role, long lifetimeSeconds, String sessionId) {
+        if (lifetimeSeconds <= 0) throw new IllegalArgumentException("JWT lifetime must be greater than 0");
+        Instant now = Instant.now();
+        var builder = Jwts.builder().subject(subject).id(UUID.randomUUID().toString())
+                .claim("role", role).issuedAt(Date.from(now))
+                .expiration(Date.from(now.plusSeconds(lifetimeSeconds)));
+        if (sessionId != null && !sessionId.isBlank()) builder.claim("sid", sessionId);
+        return builder.signWith(key).compact();
     }
+
+    public long expirationSeconds() { return expirationSeconds; }
+
+    public String subject(String token) { return claims(token).getSubject(); }
 
     public String role(String token) {
         Object role = claims(token).get("role");
         return role == null ? "PLAYER" : role.toString();
     }
+
+    public String sessionId(String token) { return claims(token).get("sid", String.class); }
 
     public Instant expiresAt(String token) {
         Date expiration = claims(token).getExpiration();

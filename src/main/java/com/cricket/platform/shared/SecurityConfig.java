@@ -2,6 +2,7 @@ package com.cricket.platform.shared;
 
 import com.cricket.platform.identity.AccessTokenRevocationService;
 import com.cricket.platform.identity.JwtService;
+import com.cricket.platform.identity.SessionRegistryService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.Cookie;
@@ -61,17 +62,13 @@ public class SecurityConfig {
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http, JwtService jwtService,
-                                             AccessTokenRevocationService tokenRevocations) throws Exception {
+            AccessTokenRevocationService tokenRevocations, SessionRegistryService sessions) throws Exception {
         CookieCsrfTokenRepository csrfRepository = CookieCsrfTokenRepository.withHttpOnlyFalse();
         csrfRepository.setCookiePath("/api");
-        csrfRepository.setCookieCustomizer(cookie -> cookie
-                .secure(cookieSecure)
-                .sameSite(cookieSameSite));
+        csrfRepository.setCookieCustomizer(cookie -> cookie.secure(cookieSecure).sameSite(cookieSameSite));
         CsrfTokenRequestAttributeHandler csrfHandler = new CsrfTokenRequestAttributeHandler();
 
-        http.csrf(csrf -> csrf
-                        .csrfTokenRepository(csrfRepository)
-                        .csrfTokenRequestHandler(csrfHandler)
+        http.csrf(csrf -> csrf.csrfTokenRepository(csrfRepository).csrfTokenRequestHandler(csrfHandler)
                         .ignoringRequestMatchers(request -> {
                             String authorization = request.getHeader("Authorization");
                             boolean bearerRequest = authorization != null && authorization.startsWith("Bearer ");
@@ -83,32 +80,36 @@ public class SecurityConfig {
                         }))
                 .cors(cors -> {})
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .exceptionHandling(exceptions -> exceptions
-                        .authenticationEntryPoint((request, response, exception) -> {
-                            String authorization = request.getHeader("Authorization");
-                            boolean bearerRequest = authorization != null && authorization.startsWith("Bearer ");
-                            // Preserve the established cookie-session 403 contract while
-                            // reporting rejected explicit API bearer credentials as 401.
-                            response.sendError(bearerRequest
-                                    ? HttpServletResponse.SC_UNAUTHORIZED
-                                    : HttpServletResponse.SC_FORBIDDEN);
-                        }))
+                .exceptionHandling(exceptions -> exceptions.authenticationEntryPoint((request, response, exception) -> {
+                    String authorization = request.getHeader("Authorization");
+                    boolean bearerRequest = authorization != null && authorization.startsWith("Bearer ");
+                    response.sendError(bearerRequest ? HttpServletResponse.SC_UNAUTHORIZED : HttpServletResponse.SC_FORBIDDEN);
+                }))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/login", "/api/auth/logout", "/api/auth/csrf", "/api/users", "/api/public/**", "/ws/**", "/actuator/health", "/actuator/health/liveness", "/actuator/health/readiness", "/error").permitAll()
+                        .requestMatchers("/api/auth/login", "/api/auth/logout", "/api/auth/csrf", "/api/users",
+                                "/api/public/**", "/ws/**", "/actuator/health", "/actuator/health/liveness",
+                                "/actuator/health/readiness", "/error").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/scoring/**").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/matches/**").hasAnyRole("ADMIN", "CAPTAIN", "PLAYER")
                         .anyRequest().authenticated())
-                .addFilterBefore(new JwtFilter(jwtService, tokenRevocations), UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(new JwtFilter(jwtService, tokenRevocations, sessions), UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 
     static class JwtFilter extends OncePerRequestFilter {
         private final JwtService jwt;
         private final AccessTokenRevocationService tokenRevocations;
+        private final SessionRegistryService sessions;
+
         JwtFilter(JwtService jwt, AccessTokenRevocationService tokenRevocations) {
+            this(jwt, tokenRevocations, null);
+        }
+
+        JwtFilter(JwtService jwt, AccessTokenRevocationService tokenRevocations, SessionRegistryService sessions) {
             this.jwt = jwt;
             this.tokenRevocations = tokenRevocations;
+            this.sessions = sessions;
         }
 
         @Override
@@ -119,20 +120,22 @@ public class SecurityConfig {
             if (token != null) {
                 String subject;
                 String role;
+                String sessionId = null;
                 try {
                     subject = jwt.subject(token);
                     role = jwt.role(token).toUpperCase();
+                    sessionId = jwt.sessionId(token);
                 } catch (RuntimeException ignored) {
                     org.springframework.security.core.context.SecurityContextHolder.clearContext();
                     chain.doFilter(request, response);
                     return;
                 }
 
-                // Check revocation only after signature/expiry validation. A database
-                // failure deliberately fails closed instead of silently accepting a token.
-                if (!tokenRevocations.isRevoked(token)) {
+                boolean activeSession = sessions == null || (sessionId != null && sessions.isActive(sessionId, subject));
+                if (activeSession && !tokenRevocations.isRevoked(token)) {
                     var authentication = new UsernamePasswordAuthenticationToken(
                             subject, null, List.of(new SimpleGrantedAuthority("ROLE_" + role)));
+                    if (sessionId != null) authentication.setDetails(sessionId);
                     org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(authentication);
                 } else {
                     org.springframework.security.core.context.SecurityContextHolder.clearContext();
@@ -149,10 +152,8 @@ public class SecurityConfig {
         private String cookieToken(HttpServletRequest request) {
             Cookie[] cookies = request.getCookies();
             if (cookies == null) return null;
-            return Arrays.stream(cookies)
-                    .filter(cookie -> JwtService.ACCESS_COOKIE_NAME.equals(cookie.getName()))
-                    .map(Cookie::getValue)
-                    .findFirst().orElse(null);
+            return Arrays.stream(cookies).filter(cookie -> JwtService.ACCESS_COOKIE_NAME.equals(cookie.getName()))
+                    .map(Cookie::getValue).findFirst().orElse(null);
         }
     }
 }
