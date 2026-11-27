@@ -114,13 +114,8 @@ If Docker Desktop is already open, check that it is using Linux containers and t
     $existingContainerId = ($existingContainerId | Select-Object -First 1)
     if ($existingContainerId) {
         Write-Host "Found existing PostgreSQL container ($existingContainerId); reusing it without deleting data." -ForegroundColor Yellow
-        $runningState = Invoke-Docker -DockerArgs @("inspect", "--format", "{{.State.Running}}", "cricketpulse-postgres") -Quiet
-        if ($LASTEXITCODE -ne 0) {
-            throw "Found cricketpulse-postgres but could not inspect its state. No container was removed."
-        }
-
-        # Read the state directly; docker inspect's formatted output is captured
-        # separately so the helper's exit-code return does not hide it.
+        # Capture the formatted state separately so the helper's exit-code
+        # return does not hide docker inspect's output.
         $previousPreference = $ErrorActionPreference
         try {
             $ErrorActionPreference = "Continue"
