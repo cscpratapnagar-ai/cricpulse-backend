@@ -1,6 +1,16 @@
 package com.cricket.platform.scoring;
 
 public final class CricketDeliveryRuleValidator {
+    private static final java.util.Set<String> NO_BALL_DISMISSALS = java.util.Set.of(
+            WicketType.RUN_OUT.name(),
+            WicketType.OBSTRUCTING_THE_FIELD.name(),
+            WicketType.HIT_BALL_TWICE.name());
+    private static final java.util.Set<String> WIDE_DISMISSALS = java.util.Set.of(
+            WicketType.HIT_WICKET.name(),
+            WicketType.OBSTRUCTING_THE_FIELD.name(),
+            WicketType.RUN_OUT.name(),
+            WicketType.STUMPED.name());
+
     private CricketDeliveryRuleValidator() {
     }
 
@@ -37,8 +47,23 @@ public final class CricketDeliveryRuleValidator {
         if ("NO_BALL".equals(command.extraType()) && command.extraRuns() < 1) {
             throw new IllegalArgumentException("No-ball must contain at least one extra run");
         }
+        validateWicketDelivery(command.wicketType(), command.extraType());
         if (command.wicketType() != null && command.dismissedPlayerId() == null) {
             throw new IllegalArgumentException("Dismissed player is required for a wicket");
+        }
+    }
+
+    public static void validateWicketDelivery(String wicketType, String extraType) {
+        if (wicketType == null) {
+            return;
+        }
+        if ("NO_BALL".equals(extraType) && !NO_BALL_DISMISSALS.contains(wicketType)) {
+            throw new IllegalArgumentException(
+                    "A batter cannot be dismissed as " + wicketType + " from a no-ball");
+        }
+        if ("WIDE".equals(extraType) && !WIDE_DISMISSALS.contains(wicketType)) {
+            throw new IllegalArgumentException(
+                    "A batter cannot be dismissed as " + wicketType + " from a wide");
         }
     }
 
