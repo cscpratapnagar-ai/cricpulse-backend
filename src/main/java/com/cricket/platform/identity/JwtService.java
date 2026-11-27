@@ -9,6 +9,7 @@ import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Date;
+import java.util.UUID;
 
 @Component
 public class JwtService {
@@ -36,7 +37,7 @@ public class JwtService {
             throw new IllegalArgumentException("JWT lifetime must be greater than 0");
         }
         Instant now = Instant.now();
-        return Jwts.builder().subject(subject).claim("role", role)
+        return Jwts.builder().subject(subject).id(UUID.randomUUID().toString()).claim("role", role)
                 .issuedAt(Date.from(now)).expiration(Date.from(now.plusSeconds(lifetimeSeconds)))
                 .signWith(key).compact();
     }
