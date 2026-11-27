@@ -1,64 +1,26 @@
 package com.cricket.platform.scoring;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
-import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 class LiveScoreBroadcastPublisherTest {
 
     @Test
-    void publishesOneAtomicScoreVersionToPrivateAndPublicTopics() {
+    void publishesEventAndDelegatesCommittedEventToVersionGuard() {
         ApplicationEventPublisher events = org.mockito.Mockito.mock(ApplicationEventPublisher.class);
-        SimpMessagingTemplate messaging = org.mockito.Mockito.mock(SimpMessagingTemplate.class);
-        GetLiveScore liveScore = org.mockito.Mockito.mock(GetLiveScore.class);
+        LiveScoreBroadcastPublicationGuard guard = org.mockito.Mockito.mock(LiveScoreBroadcastPublicationGuard.class);
+        LiveScoreBroadcastPublisher publisher = new LiveScoreBroadcastPublisher(events, guard);
+        LiveScoreCommittedEvent event = new LiveScoreCommittedEvent(
+                UUID.randomUUID(), UUID.randomUUID(), 9L, 9, "DELIVERY_RECORDED");
 
-        UUID inningsId = UUID.randomUUID();
-        UUID matchId = UUID.randomUUID();
-        UUID striker = UUID.randomUUID();
-        UUID nonStriker = UUID.randomUUID();
-        UUID bowler = UUID.randomUUID();
-        UUID eventId = UUID.randomUUID();
+        publisher.publishAfterCommit(event);
+        publisher.onCommitted(event);
 
-        GetLiveScore.Score score = new GetLiveScore.Score(
-                inningsId, matchId, 1, 42, 1, 30, 20, "LIVE", 0,
-                3, 2, striker, nonStriker, bowler,
-                List.of(), List.of(), List.of(), List.of(), null, List.of()
-        ).withEventVersion(7L);
-        when(liveScore.execute(inningsId)).thenReturn(score);
-
-        LiveScoreBroadcastPublisher publisher =
-                new LiveScoreBroadcastPublisher(events, messaging, liveScore);
-
-        publisher.onCommitted(new LiveScoreCommittedEvent(
-                inningsId, eventId, 9L, 6, "DELIVERY_RECORDED"));
-
-        verify(liveScore).execute(inningsId);
-        verify(messaging).convertAndSend(eq("/topic/innings/" + inningsId), any(Object.class));
-        verify(messaging).convertAndSend(eq("/topic/public/innings/" + inningsId), any(Object.class));
-
-        org.mockito.ArgumentCaptor<Object> captor = org.mockito.ArgumentCaptor.forClass(Object.class);
-        verify(messaging).convertAndSend(eq("/topic/public/innings/" + inningsId), captor.capture());
-        org.mockito.ArgumentCaptor<Object> privateCaptor = org.mockito.ArgumentCaptor.forClass(Object.class);
-        verify(messaging).convertAndSend(eq("/topic/innings/" + inningsId), privateCaptor.capture());
-        org.junit.jupiter.api.Assertions.assertEquals(captor.getValue(), privateCaptor.getValue(),
-                "Scorer and public broadcast consumers must receive the same committed snapshot");
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> payload = (Map<String, Object>) captor.getValue();
-        org.junit.jupiter.api.Assertions.assertEquals(eventId, payload.get("eventId"));
-        org.junit.jupiter.api.Assertions.assertEquals(9L, payload.get("sequenceNo"));
-        org.junit.jupiter.api.Assertions.assertEquals(7L, payload.get("eventVersion"));
-        org.junit.jupiter.api.Assertions.assertEquals("DELIVERY_RECORDED", payload.get("eventType"));
-        org.junit.jupiter.api.Assertions.assertEquals(matchId, payload.get("matchId"));
-        org.junit.jupiter.api.Assertions.assertEquals(42, payload.get("runs"));
+        verify(events).publishEvent(event);
+        verify(guard).publishIfNewer(event);
     }
 }
