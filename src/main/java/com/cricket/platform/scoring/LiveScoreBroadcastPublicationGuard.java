@@ -17,13 +17,16 @@ public class LiveScoreBroadcastPublicationGuard {
     private final JdbcTemplate jdbc;
     private final SimpMessagingTemplate messagingTemplate;
     private final GetLiveScore getLiveScore;
+    private final boolean relayEnabled;
 
     public LiveScoreBroadcastPublicationGuard(JdbcTemplate jdbc,
                                               SimpMessagingTemplate messagingTemplate,
-                                              GetLiveScore getLiveScore) {
+                                              GetLiveScore getLiveScore,
+                                              @org.springframework.beans.factory.annotation.Value("${app.websocket.broker-relay.enabled:false}") boolean relayEnabled) {
         this.jdbc = jdbc;
         this.messagingTemplate = messagingTemplate;
         this.getLiveScore = getLiveScore;
+        this.relayEnabled = relayEnabled;
     }
 
     /**
@@ -84,8 +87,10 @@ public class LiveScoreBroadcastPublicationGuard {
         payload.put("occurredAt", OffsetDateTime.now());
 
         String inningsId = event.inningsId().toString();
-        messagingTemplate.convertAndSend(PRIVATE_TOPIC_PREFIX + inningsId, (Object) payload);
-        messagingTemplate.convertAndSend(PUBLIC_TOPIC_PREFIX + inningsId, (Object) payload);
+        String privateDestination = relayEnabled ? "/topic/innings." + inningsId : PRIVATE_TOPIC_PREFIX + inningsId;
+        String publicDestination = relayEnabled ? "/topic/public.innings." + inningsId : PUBLIC_TOPIC_PREFIX + inningsId;
+        messagingTemplate.convertAndSend(privateDestination, (Object) payload);
+        messagingTemplate.convertAndSend(publicDestination, (Object) payload);
         jdbc.update("""
                 UPDATE broadcast_publication_cursors
                 SET published_version = ?, published_at = CURRENT_TIMESTAMP
