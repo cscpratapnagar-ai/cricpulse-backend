@@ -336,7 +336,7 @@ record_matrix_delivery() {
   local label="$1" bat_runs="$2" extra_runs="$3" extra_type="$4"
   local before striker non_striker bowler legal_balls over_number ball_number body command_id
   local response after actual_runs actual_balls last_ball
-  before="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "\${auth[@]}")"
+  before="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "${auth[@]}")"
   striker="$(jq -r '.strikerId // .striker_id // empty' <<<"$before")"
   non_striker="$(jq -r '.nonStrikerId // .non_striker_id // empty' <<<"$before")"
   bowler="$(jq -r '.currentBowlerId // .current_bowler_id // empty' <<<"$before")"
@@ -355,8 +355,8 @@ record_matrix_delivery() {
     '{inningsId:$innings,overNumber:$over,ballNumber:$ball,strikerId:$striker,nonStrikerId:$non,bowlerId:$bowler,batRuns:$batRuns,extraRuns:$extraRuns,extraType:(if $extraType == "" then null else $extraType end),wicketType:null,dismissedPlayerId:null,newBatterId:null}')"
   command_id="$(cat /proc/sys/kernel/random/uuid)"
   response="$(curl -fsS -X POST "$BASE_URL/scoring/innings/$innings_id/deliveries" \
-    "\${auth[@]}" "\${lease[@]}" -H "X-Command-Id: $command_id" --data "$body")"
-  after="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "\${auth[@]}")"
+    "${auth[@]}" "${lease[@]}" -H "X-Command-Id: $command_id" --data "$body")"
+  after="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "${auth[@]}")"
   actual_runs="$(jq -r '.runs // .totalRuns // .total_runs // -1' <<<"$after")"
   actual_balls="$(jq -r '.legalBalls // .legal_balls // -1' <<<"$after")"
   last_ball="$(jq -c '.recentBalls[-1] // {}' <<<"$after")"
@@ -387,7 +387,7 @@ record_matrix_delivery "NO_BALL" 0 1 "NO_BALL"
 record_matrix_delivery "BYE" 0 2 "BYE"
 record_matrix_delivery "LEG_BYE" 0 2 "LEG_BYE"
 
-matrix_score="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "\${auth[@]}")"
+matrix_score="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "${auth[@]}")"
 if ! jq -e '
   .runs == 16 and .legalBalls == 4 and
   ([.overs[] | select(.overNumber == 0)][0] |
@@ -403,7 +403,7 @@ echo "PASS: over summary records 16 runs, 4 legal balls, 1 wide, 1 no-ball, 2 by
 echo "PASS: undo restored score to 0/0 and empty undo was a no-op"
 echo "match=$match_id innings=$innings_id commandId=$command_id runsAfterUndo=$runs_undo legalBallsAfterUndo=$balls_undo"
 
-# Each viewer must observe the same four committed state transitions, with no
+# Each viewer must observe all ten committed state transitions, with no
 # duplicate from the idempotent retry, rejected race loser, or no-op undo.
 jq -nc --argjson raceRuns "$((1 + winning_race_runs))" '[{runs:1,legalBalls:1},{runs:$raceRuns,legalBalls:2},{runs:1,legalBalls:1},{runs:0,legalBalls:0},{runs:4,legalBalls:1},{runs:10,legalBalls:2},{runs:11,legalBalls:2},{runs:12,legalBalls:2},{runs:14,legalBalls:3},{runs:16,legalBalls:4}]' >"$tmp/ws-expected.json"
 touch "$tmp/ws-viewers-done"
