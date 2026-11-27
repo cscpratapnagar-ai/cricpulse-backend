@@ -42,11 +42,15 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
     }
 
     WebSocketSecurityInterceptor(JwtService jwtService, JdbcTemplate jdbc) {
+        this(jwtService, jdbc, false);
+    }
+
+    WebSocketSecurityInterceptor(JwtService jwtService, JdbcTemplate jdbc, boolean relayEnabled) {
         this.jwtService = jwtService;
         this.jdbc = jdbc;
         this.sessions = null;
         this.activeSockets = null;
-        this.relayEnabled = false;
+        this.relayEnabled = relayEnabled;
     }
 
     @Override
