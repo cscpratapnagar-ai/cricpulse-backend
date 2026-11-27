@@ -361,7 +361,9 @@ record_matrix_delivery() {
   actual_balls="$(jq -r '.legalBalls // .legal_balls // -1' <<<"$after")"
   last_ball="$(jq -c '.recentBalls[-1] // {}' <<<"$after")"
   local expected_runs="$((matrix_runs + bat_runs + extra_runs))"
-  local expected_balls="$((matrix_balls + (extra_type == "WIDE" || extra_type == "NO_BALL" ? 0 : 1)))"
+  local legal_increment=1
+  if [[ "$extra_type" == "WIDE" || "$extra_type" == "NO_BALL" ]]; then legal_increment=0; fi
+  local expected_balls="$((matrix_balls + legal_increment))"
   if [[ "$actual_runs" != "$expected_runs" || "$actual_balls" != "$expected_balls" ]] ||
      ! jq -e --argjson bat "$bat_runs" --argjson extra "$extra_runs" \
        --arg type "$extra_type" \
@@ -403,7 +405,7 @@ echo "match=$match_id innings=$innings_id commandId=$command_id runsAfterUndo=$r
 
 # Each viewer must observe the same four committed state transitions, with no
 # duplicate from the idempotent retry, rejected race loser, or no-op undo.
-jq -nc --argjson raceRuns "$((1 + winning_race_runs))" '[{runs:1,legalBalls:1},{runs:$raceRuns,legalBalls:2},{runs:1,legalBalls:1},{runs:0,legalBalls:0}]' >"$tmp/ws-expected.json"
+jq -nc --argjson raceRuns "$((1 + winning_race_runs))" '[{runs:1,legalBalls:1},{runs:$raceRuns,legalBalls:2},{runs:1,legalBalls:1},{runs:0,legalBalls:0},{runs:4,legalBalls:1},{runs:10,legalBalls:2},{runs:11,legalBalls:2},{runs:12,legalBalls:2},{runs:14,legalBalls:3},{runs:16,legalBalls:4}]' >"$tmp/ws-expected.json"
 touch "$tmp/ws-viewers-done"
 if ! wait "$ws_monitor_pid"; then
   cat "$tmp/ws-viewer-one.log" >&2
