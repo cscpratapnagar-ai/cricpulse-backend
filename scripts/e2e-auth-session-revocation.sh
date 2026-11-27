@@ -7,6 +7,7 @@ BASE_URL="${BASE_URL:-http://localhost:8080/api}"
 
 tmp="$(mktemp -d)"
 jar="$tmp/session.cookies"
+touch "$jar"
 response="$tmp/response.json"
 trap 'rm -rf "$tmp"' EXIT
 
