@@ -90,3 +90,14 @@ The backend CI also runs `scripts/e2e-dismissal-matrix.sh` against two isolated 
 - The existing Task #169 STOMP test continues to verify ordered Run Out/Bowled messages, unique event IDs, increasing versions and reconnect snapshot recovery. This new matrix does not yet assert each of Caught/LBW/Stumped/Hit Wicket over a live STOMP subscription; that remains an explicit follow-up rather than an assumed guarantee.
 
 The CI matrix uses API-created matches and PostgreSQL assertions. Browser/device rendering, OBS/vMix capture, packet-loss simulation and production-host soak remain staging/operator acceptance checks.
+
+
+## Task #171 — live dismissal STOMP and reconnect certification
+
+The backend CI dismissal matrix now attaches an anonymous public STOMP subscriber before each wicket sequence in three isolated matches.
+
+- Observes Caught, LBW, Stumped and Hit Wicket as committed live public STOMP snapshots, validating the matching recent-ball wicket type and dismissed player in Fall of Wickets.
+- Adds a striker Run Out scenario; existing Task #169 continues to cover non-striker Run Out and crossing/replacement behavior.
+- Requires exactly one event per committed wicket, unique event IDs and strictly increasing event versions; missing, duplicate or out-of-order messages fail the run.
+- Disconnects after the event sequence, reconnects to the public topic, and verifies the anonymous REST snapshot has the latest event version, wicket count and batter positions.
+- The test validates server-side event/state behavior. It does not simulate packet loss during an in-flight delivery or certify browser rendering, physical mobile devices, OBS/vMix capture, or a sustained production-host soak; those remain staging/operator acceptance checks.
