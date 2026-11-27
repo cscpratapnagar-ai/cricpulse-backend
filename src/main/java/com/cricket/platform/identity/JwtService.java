@@ -46,6 +46,8 @@ public class JwtService {
         return builder.signWith(key).compact();
     }
 
+    public long expirationSeconds() { return expirationSeconds; }
+
     public String subject(String token) { return claims(token).getSubject(); }
 
     public String role(String token) {
