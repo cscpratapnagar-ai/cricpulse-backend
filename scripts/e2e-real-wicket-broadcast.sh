@@ -37,8 +37,9 @@ login_token() {
 }
 
 request() {
-  local token="$1" method="$2" url="$3" body="${4:-}" status
+  local token="$1" method="$2" url="$3" body="${4:-}" extra_header="${5:-}" status
   local -a args=(-sS -o "$tmp/response.json" -w '%{http_code}' -X "$method" "$url" -H "Authorization: Bearer $token" -H 'Content-Type: application/json')
+  if [[ -n "$extra_header" ]]; then args+=(-H "$extra_header"); fi
   if [[ -n "$body" ]]; then args+=(--data "$body"); fi
   status="$(curl "${args[@]}")"
   if [[ ! "$status" =~ ^2[0-9][0-9]$ ]]; then
@@ -105,9 +106,9 @@ done
 
 echo "[5/7] Record RUN_OUT of the non-striker with one completed run, then a Bowled dismissal"
 delivery="$(jq -nc --arg innings "$innings_id" --arg striker "$STRIKER_ID" --arg non "$NON_STRIKER_ID" --arg bowler "$BOWLER_ID" --arg dismissed "$NON_STRIKER_ID" --arg newbat "$NEW_BATTER_ID" '{inningsId:$innings,strikerId:$striker,nonStrikerId:$non,bowlerId:$bowler,overNumber:0,ballNumber:1,batRuns:1,extraRuns:0,extraType:null,wicketType:"RUN_OUT",dismissedPlayerId:$dismissed,newBatterId:$newbat}')"
-request "$token_a" POST "$BASE_URL/scoring/innings/$innings_id/deliveries" "$delivery" >/dev/null
+request "$token_a" POST "$BASE_URL/scoring/innings/$innings_id/deliveries" "$delivery" "X-Scorer-Lease: $lease_token" >/dev/null
 bowled="$(jq -nc --arg innings "$innings_id" --arg striker "$NEW_BATTER_ID" --arg non "$STRIKER_ID" --arg bowler "$BOWLER_ID" --arg dismissed "$NEW_BATTER_ID" --arg newbat "$FINAL_BATTER_ID" '{inningsId:$innings,strikerId:$striker,nonStrikerId:$non,bowlerId:$bowler,overNumber:0,ballNumber:2,batRuns:0,extraRuns:0,extraType:null,wicketType:"BOWLED",dismissedPlayerId:$dismissed,newBatterId:$newbat}')"
-request "$token_a" POST "$BASE_URL/scoring/innings/$innings_id/deliveries" "$bowled" >/dev/null
+request "$token_a" POST "$BASE_URL/scoring/innings/$innings_id/deliveries" "$bowled" "X-Scorer-Lease: $lease_token" >/dev/null
 
 echo "[6/7] Verify authoritative PostgreSQL projection, scorecard, partnerships and public Match Centre"
 score="$(request "$token_a" GET "$BASE_URL/scoring/innings/$innings_id")"
