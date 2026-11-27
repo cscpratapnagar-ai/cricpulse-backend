@@ -11,6 +11,9 @@ The Spring simple broker stores subscriptions inside one JVM. With multiple API 
 ## Configuration
 Set WEBSOCKET_BROKER_RELAY_ENABLED=true, host, port (61613), client/system login and passcode, and virtual host. Staging and production compose provision a private RabbitMQ service, enable the STOMP plugin, and wait for broker health before starting the API. Broker ports are not published on those hosts.
 Use dedicated strong RABBITMQ_USERNAME and RABBITMQ_PASSWORD deployment secrets. Do not reuse database or JWT credentials. Local compose has development-only credentials and publishes STOMP/management ports on loopback only.
+## Cross-replica publication ordering
+Each API replica publishes committed score callbacks through `LiveScoreBroadcastPublicationGuard`. Before sending, it locks the innings row in PostgreSQL and compares the current authoritative `state_version` with the durable `broadcast_publication_cursors` value. Only a strictly newer snapshot is sent to both private and public topics, then the cursor is advanced in the same database transaction. This serializes publishers across replicas and suppresses delayed callbacks whose score version has already been broadcast. If a broker send fails, the transaction rolls back and the cursor is not advanced. A process crash after broker acceptance but before the cursor transaction commits can still produce a duplicate on retry; clients must treat `eventVersion` as the monotonic deduplication key. This is ordered latest-snapshot publication, not an exactly-once event log. REST snapshots remain authoritative.
+
 ## Availability and recovery
 - Spring's broker relay owns the STOMP system connection and reconnect lifecycle.
 - The brokerRelay actuator health indicator follows Spring BrokerAvailabilityEvent notifications.
