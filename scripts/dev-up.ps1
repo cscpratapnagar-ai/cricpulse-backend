@@ -38,6 +38,13 @@ try {
     Write-Host "PostgreSQL is healthy: localhost:5432/cricket" -ForegroundColor Green
 
     if (-not $DatabaseOnly) {
+        # Force the documented local container settings for this process only,
+        # so inherited staging/managed-database variables cannot redirect local startup.
+        $env:DATABASE_URL = "jdbc:postgresql://localhost:5432/cricket?sslmode=disable"
+        $env:DATABASE_USERNAME = "cricket_app"
+        $env:DATABASE_PASSWORD = "cricket_dev_password"
+        $env:AUTH_COOKIE_SECURE = "false"
+
         Write-Host "Starting CricPulse API. Press Ctrl+C to stop the API." -ForegroundColor Cyan
         mvn -B spring-boot:run
         if ($LASTEXITCODE -ne 0) {
