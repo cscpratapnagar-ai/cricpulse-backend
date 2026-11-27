@@ -1,5 +1,6 @@
 package com.cricket.platform.shared;
 
+import com.cricket.platform.identity.AccessTokenRevocationService;
 import com.cricket.platform.identity.JwtService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -59,7 +60,8 @@ public class SecurityConfig {
     }
 
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http, JwtService jwtService) throws Exception {
+    SecurityFilterChain securityFilterChain(HttpSecurity http, JwtService jwtService,
+                                             AccessTokenRevocationService tokenRevocations) throws Exception {
         CookieCsrfTokenRepository csrfRepository = CookieCsrfTokenRepository.withHttpOnlyFalse();
         csrfRepository.setCookiePath("/api");
         csrfRepository.setCookieCustomizer(cookie -> cookie
@@ -70,8 +72,6 @@ public class SecurityConfig {
         http.csrf(csrf -> csrf
                         .csrfTokenRepository(csrfRepository)
                         .csrfTokenRequestHandler(csrfHandler)
-                        // Bearer tokens are explicitly supplied by API clients and are not ambient browser credentials.
-                        // Keep CSRF protection enabled for cookie-authenticated browser requests.
                         .ignoringRequestMatchers(request -> {
                             String authorization = request.getHeader("Authorization");
                             boolean bearerRequest = authorization != null && authorization.startsWith("Bearer ");
@@ -89,20 +89,24 @@ public class SecurityConfig {
                         .requestMatchers("/api/scoring/**").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/matches/**").hasAnyRole("ADMIN", "CAPTAIN", "PLAYER")
                         .anyRequest().authenticated())
-                .addFilterBefore(new JwtFilter(jwtService), UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(new JwtFilter(jwtService, tokenRevocations), UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 
     static class JwtFilter extends OncePerRequestFilter {
         private final JwtService jwt;
-        JwtFilter(JwtService jwt) { this.jwt = jwt; }
+        private final AccessTokenRevocationService tokenRevocations;
+        JwtFilter(JwtService jwt, AccessTokenRevocationService tokenRevocations) {
+            this.jwt = jwt;
+            this.tokenRevocations = tokenRevocations;
+        }
 
         @Override
         protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
                 throws ServletException, IOException {
             String token = bearerToken(request);
             if (token == null) token = cookieToken(request);
-            if (token != null) {
+            if (token != null && !tokenRevocations.isRevoked(token)) {
                 try {
                     String subject = jwt.subject(token);
                     String role = jwt.role(token).toUpperCase();
