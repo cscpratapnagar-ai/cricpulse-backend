@@ -83,6 +83,7 @@ jobs:
           bash -n scripts/test-staging-backup-restore-rehearsal.sh
           node --check scripts/e2e-scoring-websocket.mjs
           node --check scripts/e2e-wicket-stomp-reconnect.mjs
+          node --check scripts/e2e-dismissal-stomp-monitor.mjs
 
       - name: Verify production deployment success and rollback paths
         run: bash scripts/test-production-deploy-rollback.sh
