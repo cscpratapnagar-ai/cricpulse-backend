@@ -106,14 +106,25 @@ public class SecurityConfig {
                 throws ServletException, IOException {
             String token = bearerToken(request);
             if (token == null) token = cookieToken(request);
-            if (token != null && !tokenRevocations.isRevoked(token)) {
+            if (token != null) {
+                String subject;
+                String role;
                 try {
-                    String subject = jwt.subject(token);
-                    String role = jwt.role(token).toUpperCase();
+                    subject = jwt.subject(token);
+                    role = jwt.role(token).toUpperCase();
+                } catch (RuntimeException ignored) {
+                    org.springframework.security.core.context.SecurityContextHolder.clearContext();
+                    chain.doFilter(request, response);
+                    return;
+                }
+
+                // Check revocation only after signature/expiry validation. A database
+                // failure deliberately fails closed instead of silently accepting a token.
+                if (!tokenRevocations.isRevoked(token)) {
                     var authentication = new UsernamePasswordAuthenticationToken(
                             subject, null, List.of(new SimpleGrantedAuthority("ROLE_" + role)));
                     org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(authentication);
-                } catch (RuntimeException ignored) {
+                } else {
                     org.springframework.security.core.context.SecurityContextHolder.clearContext();
                 }
             }
