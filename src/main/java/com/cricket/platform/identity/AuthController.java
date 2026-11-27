@@ -1,5 +1,6 @@
 package com.cricket.platform.identity;
 
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -54,8 +55,8 @@ public class AuthController {
         if (token != null) {
             try {
                 tokenRevocations.revoke(token);
-            } catch (RuntimeException ignored) {
-                // Expired or malformed credentials are already unusable; still clear the browser cookie.
+            } catch (JwtException | IllegalArgumentException ignored) {
+                // Expired or malformed credentials are already unusable; clear the browser cookie.
             }
         }
         ResponseCookie expiredCookie = accessCookie("", Duration.ZERO);
