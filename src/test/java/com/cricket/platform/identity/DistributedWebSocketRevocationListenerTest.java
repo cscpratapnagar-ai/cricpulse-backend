@@ -15,7 +15,7 @@ class DistributedWebSocketRevocationListenerTest {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         ActiveWebSocketSessions sockets = mock(ActiveWebSocketSessions.class);
         DistributedWebSocketRevocationListener listener =
-                new DistributedWebSocketRevocationListener(jdbc, sockets, 1000L);
+                new DistributedWebSocketRevocationListener(jdbc, sockets);
         when(jdbc.queryForObject(anyString(), eq(Long.class))).thenReturn(11L);
         listener.initialize();
         when(jdbc.query(anyString(), any(RowMapper.class), eq(11L))).thenReturn(List.of(
@@ -26,6 +26,8 @@ class DistributedWebSocketRevocationListenerTest {
 
         verify(sockets).closeByUserSession("session-a");
         verify(sockets).closeByUserSession("session-b");
+        listener.poll();
+        verify(jdbc).query(anyString(), any(RowMapper.class), eq(11L));
         verify(jdbc).query(anyString(), any(RowMapper.class), eq(13L));
     }
 
@@ -34,7 +36,7 @@ class DistributedWebSocketRevocationListenerTest {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         ActiveWebSocketSessions sockets = mock(ActiveWebSocketSessions.class);
         DistributedWebSocketRevocationListener listener =
-                new DistributedWebSocketRevocationListener(jdbc, sockets, 1000L);
+                new DistributedWebSocketRevocationListener(jdbc, sockets);
         when(jdbc.queryForObject(anyString(), eq(Long.class))).thenReturn(20L);
         listener.initialize();
         when(jdbc.query(anyString(), any(RowMapper.class), eq(20L)))

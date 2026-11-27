@@ -3,7 +3,6 @@ package com.cricket.platform.identity;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -25,8 +24,7 @@ public class DistributedWebSocketRevocationListener {
 
     public DistributedWebSocketRevocationListener(
             JdbcTemplate jdbc,
-            ActiveWebSocketSessions activeSockets,
-            @Value("${app.websocket.revocation-poll-interval:1000}") long pollInterval) {
+            ActiveWebSocketSessions activeSockets) {
         this.jdbc = jdbc;
         this.activeSockets = activeSockets;
     }
