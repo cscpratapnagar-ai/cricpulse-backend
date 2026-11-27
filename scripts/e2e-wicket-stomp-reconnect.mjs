@@ -9,6 +9,7 @@ const doneFile = process.env.WS_DONE_FILE;
 const outputFile = process.env.WS_OUTPUT_FILE;
 const expectedStriker = process.env.NEW_BATTER_ID;
 const expectedNonStriker = process.env.STRIKER_ID;
+const dismissedPlayerId = process.env.DISMISSED_PLAYER_ID;
 
 if (![wsUrl, inningsId, baseUrl, readyFile, doneFile, outputFile, expectedStriker, expectedNonStriker].every(Boolean)) {
   throw new Error("WS_URL, INNINGS_ID, BASE_URL, WS_READY_FILE, WS_DONE_FILE, WS_OUTPUT_FILE, NEW_BATTER_ID and STRIKER_ID are required");
@@ -117,7 +118,8 @@ try {
     })}`);
   }
   if (!Array.isArray(payload.fallOfWickets) || payload.fallOfWickets.length !== 1
-      || payload.fallOfWickets[0].wicketType && payload.fallOfWickets[0].wicketType !== "RUN_OUT") {
+      || payload.fallOfWickets[0].playerId !== dismissedPlayerId
+      || Number(payload.fallOfWickets[0].runs) !== 1) {
     throw new Error("STOMP snapshot did not include the committed fall-of-wicket projection");
   }
   if (typeof payload.eventVersion !== "number" || !payload.eventId) {
