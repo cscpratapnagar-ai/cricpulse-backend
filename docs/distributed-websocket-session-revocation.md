@@ -5,7 +5,7 @@
 - Every backend replica independently polls `websocket_session_revocations` using its own monotonically increasing cursor.
 - Each replica closes only sockets held by its local `ActiveWebSocketSessions` registry.
 - Events are retained in PostgreSQL; a replica that temporarily loses database connectivity does not advance its cursor and retries on the next poll.
-- New replicas initialize their cursor to the current maximum event ID. They cannot accept already-revoked sessions because STOMP CONNECT checks the shared `user_sessions` table.
+- Each replica starts its local cursor at zero and replays retained outbox events. This is intentional: PostgreSQL BIGSERIAL values are allocated before transaction commit and are not a commit-order cursor. Bootstrapping from `MAX(id)` could skip a lower ID whose transaction commits after the MAX query. Replaying old events is safe because closing an absent socket is a no-op.
 
 ## Race and security behavior
 - STOMP CONNECT checks the shared active-session row before binding a socket and checks it again immediately after binding, closing the check/register race.

@@ -13,6 +13,10 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * Each backend replica independently consumes the durable PostgreSQL revocation
  * outbox and closes only the WebSocket connections owned by that replica.
+ *
+ * The initial cursor intentionally starts at zero. BIGSERIAL allocation order is
+ * not commit order: a transaction can allocate an ID before startup, commit after
+ * startup, and otherwise be skipped by a MAX(id)-based bootstrap cursor.
  */
 @Component
 public class DistributedWebSocketRevocationListener {
@@ -31,9 +35,9 @@ public class DistributedWebSocketRevocationListener {
 
     @PostConstruct
     void initialize() {
-        Long latest = jdbc.queryForObject(
-                "SELECT COALESCE(MAX(id), 0) FROM websocket_session_revocations", Long.class);
-        lastProcessedId.set(latest == null ? 0L : latest);
+        // Replay is safe: closing a socket that is no longer present is a no-op.
+        // Do not bootstrap from MAX(id), because sequence order is not commit order.
+        lastProcessedId.set(0L);
     }
 
     @Scheduled(fixedDelayString = "${app.websocket.revocation-poll-interval:1000}")
