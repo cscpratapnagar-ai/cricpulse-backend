@@ -85,6 +85,12 @@ try {
   });
   fs.writeFileSync(WS_READY_FILE, "subscribed");
   await completed;
+  // Keep the subscription open briefly after the expected sequence so duplicate
+  // publishes are observable rather than hidden by an eager close.
+  await sleep(700);
+  if (messages.length !== expected.length) {
+    throw new Error(`Expected exactly ${expected.length} dismissal events; received ${messages.length} (duplicate publish suspected)`);
+  }
 
   const ids = messages.map(item => item.eventId);
   const versions = messages.map(item => Number(item.eventVersion));
