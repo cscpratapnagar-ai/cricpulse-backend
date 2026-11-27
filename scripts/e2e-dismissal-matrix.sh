@@ -103,11 +103,15 @@ run_matrix_match() {
   local current_striker="$STRIKER_ID" current_non="$NON_STRIKER_ID"
   local replacement="$NEW_BATTER_ID" wicket_index=1 wicket_type fielder dismissed next_batter
 
-  local ws_url="${BASE_URL%/api}/ws"
-  ws_url="${ws_url/http:\/\//ws:\/\/}"
-  ws_url="${ws_url/https:\/\//wss:\/\/}"
+  local ws_url ws_slug="${match_label//[^[:alnum:]]/-}"
+  if [[ "$BASE_URL" == https://* ]]; then
+    ws_url="wss://${BASE_URL#https://}"
+  else
+    ws_url="ws://${BASE_URL#http://}"
+  fi
+  ws_url="${ws_url%/api}/ws"
   export WS_URL="$ws_url" BASE_URL INNINGS_ID="$innings_id"
-  export WS_READY_FILE="$tmp/ws-ready" WS_DONE_FILE="$tmp/ws-done" WS_OUTPUT_FILE="$tmp/ws-result.json"
+  export WS_READY_FILE="$tmp/$ws_slug-ws-ready" WS_DONE_FILE="$tmp/$ws_slug-ws-done" WS_OUTPUT_FILE="$tmp/$ws_slug-ws-result.json"
   export EXPECTED_DISMISSALS
   EXPECTED_DISMISSALS="$(jq -nc --arg a "$first_type" --arg b "$second_type" --arg first "$STRIKER_ID" --arg second "$NEW_BATTER_ID" '[{wicketType:$a,dismissedPlayerId:$first},{wicketType:$b,dismissedPlayerId:$second}]')"
   node scripts/e2e-dismissal-stomp-monitor.mjs >"$tmp/ws.log" 2>&1 &
