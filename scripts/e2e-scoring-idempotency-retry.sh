@@ -331,12 +331,81 @@ if [[ "$balls_empty_undo" != "0" || "$runs_empty_undo" != "0" || "$empty_undo_pr
   exit 1
 fi
 
+echo "[9/9] Certify FOUR, SIX, WIDE, NO_BALL, BYE and LEG_BYE through persisted score state"
+record_matrix_delivery() {
+  local label="$1" bat_runs="$2" extra_runs="$3" extra_type="$4"
+  local before striker non_striker bowler legal_balls over_number ball_number body command_id
+  local response after actual_runs actual_balls last_ball
+  before="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "${auth[@]}")"
+  striker="$(jq -r '.strikerId // .striker_id // empty' <<<"$before")"
+  non_striker="$(jq -r '.nonStrikerId // .non_striker_id // empty' <<<"$before")"
+  bowler="$(jq -r '.currentBowlerId // .current_bowler_id // empty' <<<"$before")"
+  legal_balls="$(jq -r '.legalBalls // .legal_balls // -1' <<<"$before")"
+  [[ -n "$striker" && -n "$non_striker" && -n "$bowler" && "$legal_balls" -ge 0 ]] || {
+    echo "FAIL: could not read authoritative participants/ball position before $label" >&2
+    exit 1
+  }
+  over_number=$((legal_balls / 6))
+  ball_number=$((legal_balls % 6 + 1))
+  body="$(jq -nc \
+    --arg innings "$innings_id" --arg striker "$striker" --arg non "$non_striker" \
+    --arg bowler "$bowler" --arg extraType "$extra_type" \
+    --argjson over "$over_number" --argjson ball "$ball_number" \
+    --argjson batRuns "$bat_runs" --argjson extraRuns "$extra_runs" \
+    '{inningsId:$innings,overNumber:$over,ballNumber:$ball,strikerId:$striker,nonStrikerId:$non,bowlerId:$bowler,batRuns:$batRuns,extraRuns:$extraRuns,extraType:(if $extraType == "" then null else $extraType end),wicketType:null,dismissedPlayerId:null,newBatterId:null}')"
+  command_id="$(cat /proc/sys/kernel/random/uuid)"
+  response="$(curl -fsS -X POST "$BASE_URL/scoring/innings/$innings_id/deliveries" \
+    "${auth[@]}" "${lease[@]}" -H "X-Command-Id: $command_id" --data "$body")"
+  after="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "${auth[@]}")"
+  actual_runs="$(jq -r '.runs // .totalRuns // .total_runs // -1' <<<"$after")"
+  actual_balls="$(jq -r '.legalBalls // .legal_balls // -1' <<<"$after")"
+  last_ball="$(jq -c '.recentBalls[-1] // {}' <<<"$after")"
+  local expected_runs="$((matrix_runs + bat_runs + extra_runs))"
+  local legal_increment=1
+  if [[ "$extra_type" == "WIDE" || "$extra_type" == "NO_BALL" ]]; then legal_increment=0; fi
+  local expected_balls="$((matrix_balls + legal_increment))"
+  if [[ "$actual_runs" != "$expected_runs" || "$actual_balls" != "$expected_balls" ]] ||
+     ! jq -e --argjson bat "$bat_runs" --argjson extra "$extra_runs" \
+       --arg type "$extra_type" \
+       '.batRuns == $bat and .extraRuns == $extra and .extraType == (if $type == "" then null else $type end)' \
+       <<<"$last_ball" >/dev/null; then
+    echo "FAIL: $label projection mismatch expected=$expected_runs/$expected_balls actual=$actual_runs/$actual_balls" >&2
+    echo "Last ball: $last_ball" >&2
+    echo "Response: $response" >&2
+    exit 1
+  fi
+  matrix_runs="$expected_runs"
+  matrix_balls="$expected_balls"
+  echo "PASS: $label persisted as $matrix_runs/$matrix_balls"
+}
+matrix_runs=0
+matrix_balls=0
+record_matrix_delivery "FOUR" 4 0 ""
+record_matrix_delivery "SIX" 6 0 ""
+record_matrix_delivery "WIDE" 0 1 "WIDE"
+record_matrix_delivery "NO_BALL" 0 1 "NO_BALL"
+record_matrix_delivery "BYE" 0 2 "BYE"
+record_matrix_delivery "LEG_BYE" 0 2 "LEG_BYE"
+
+matrix_score="$(curl -fsS "$BASE_URL/scoring/innings/$innings_id" "${auth[@]}")"
+if ! jq -e '
+  .runs == 16 and .legalBalls == 4 and
+  ([.overs[] | select(.overNumber == 0)][0] |
+    .runs == 16 and .legalBalls == 4 and .wides == 1 and
+    .noBalls == 1 and .byes == 2 and .legByes == 2)
+' <<<"$matrix_score" >/dev/null; then
+  echo "FAIL: over summary did not preserve the boundary and extras breakdown" >&2
+  echo "$matrix_score" >&2
+  exit 1
+fi
+echo "PASS: over summary records 16 runs, 4 legal balls, 1 wide, 1 no-ball, 2 byes and 2 leg-byes"
+
 echo "PASS: undo restored score to 0/0 and empty undo was a no-op"
 echo "match=$match_id innings=$innings_id commandId=$command_id runsAfterUndo=$runs_undo legalBallsAfterUndo=$balls_undo"
 
-# Each viewer must observe the same four committed state transitions, with no
+# Each viewer must observe all ten committed state transitions, with no
 # duplicate from the idempotent retry, rejected race loser, or no-op undo.
-jq -nc --argjson raceRuns "$((1 + winning_race_runs))" '[{runs:1,legalBalls:1},{runs:$raceRuns,legalBalls:2},{runs:1,legalBalls:1},{runs:0,legalBalls:0}]' >"$tmp/ws-expected.json"
+jq -nc --argjson raceRuns "$((1 + winning_race_runs))" '[{runs:1,legalBalls:1},{runs:$raceRuns,legalBalls:2},{runs:1,legalBalls:1},{runs:0,legalBalls:0},{runs:4,legalBalls:1},{runs:10,legalBalls:2},{runs:11,legalBalls:2},{runs:12,legalBalls:2},{runs:14,legalBalls:3},{runs:16,legalBalls:4}]' >"$tmp/ws-expected.json"
 touch "$tmp/ws-viewers-done"
 if ! wait "$ws_monitor_pid"; then
   cat "$tmp/ws-viewer-one.log" >&2
