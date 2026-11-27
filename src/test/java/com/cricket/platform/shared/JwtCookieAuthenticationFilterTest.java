@@ -1,5 +1,6 @@
 package com.cricket.platform.shared;
 
+import com.cricket.platform.identity.AccessTokenRevocationService;
 import com.cricket.platform.identity.JwtService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -21,9 +22,11 @@ class JwtCookieAuthenticationFilterTest {
     @Test
     void authenticatesUsingHttpOnlyAccessCookieWhenBearerHeaderIsAbsent() throws Exception {
         JwtService jwt = mock(JwtService.class);
+        AccessTokenRevocationService revocations = mock(AccessTokenRevocationService.class);
         when(jwt.subject("cookie-token")).thenReturn("player@example.com");
         when(jwt.role("cookie-token")).thenReturn("PLAYER");
-        SecurityConfig.JwtFilter filter = new SecurityConfig.JwtFilter(jwt);
+        when(revocations.isRevoked("cookie-token")).thenReturn(false);
+        SecurityConfig.JwtFilter filter = new SecurityConfig.JwtFilter(jwt, revocations);
 
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setCookies(new jakarta.servlet.http.Cookie(JwtService.ACCESS_COOKIE_NAME, "cookie-token"));
@@ -38,14 +41,17 @@ class JwtCookieAuthenticationFilterTest {
         assertTrue(authentication.getAuthorities().stream()
                 .anyMatch(authority -> authority.getAuthority().equals("ROLE_PLAYER")));
         verify(jwt).subject("cookie-token");
+        verify(revocations).isRevoked("cookie-token");
     }
 
     @Test
     void prefersExplicitBearerTokenForBackwardCompatibility() throws Exception {
         JwtService jwt = mock(JwtService.class);
+        AccessTokenRevocationService revocations = mock(AccessTokenRevocationService.class);
         when(jwt.subject("bearer-token")).thenReturn("captain@example.com");
         when(jwt.role("bearer-token")).thenReturn("CAPTAIN");
-        SecurityConfig.JwtFilter filter = new SecurityConfig.JwtFilter(jwt);
+        when(revocations.isRevoked("bearer-token")).thenReturn(false);
+        SecurityConfig.JwtFilter filter = new SecurityConfig.JwtFilter(jwt, revocations);
 
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.addHeader("Authorization", "Bearer bearer-token");
@@ -57,17 +63,38 @@ class JwtCookieAuthenticationFilterTest {
         assertEquals("captain@example.com", SecurityContextHolder.getContext().getAuthentication().getName());
         verify(jwt).subject("bearer-token");
         verify(jwt, never()).subject("cookie-token");
+        verify(revocations).isRevoked("bearer-token");
+        verify(revocations, never()).isRevoked("cookie-token");
+    }
+
+    @Test
+    void doesNotAuthenticateWhenTokenHasBeenRevoked() throws Exception {
+        JwtService jwt = mock(JwtService.class);
+        AccessTokenRevocationService revocations = mock(AccessTokenRevocationService.class);
+        when(jwt.subject("revoked-token")).thenReturn("player@example.com");
+        when(jwt.role("revoked-token")).thenReturn("PLAYER");
+        when(revocations.isRevoked("revoked-token")).thenReturn(true);
+        SecurityConfig.JwtFilter filter = new SecurityConfig.JwtFilter(jwt, revocations);
+
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("Authorization", "Bearer revoked-token");
+
+        filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
+
+        assertNull(SecurityContextHolder.getContext().getAuthentication());
+        verify(revocations).isRevoked("revoked-token");
     }
 
     @Test
     void doesNotAuthenticateWhenNoSupportedCredentialExists() throws Exception {
         JwtService jwt = mock(JwtService.class);
-        SecurityConfig.JwtFilter filter = new SecurityConfig.JwtFilter(jwt);
+        AccessTokenRevocationService revocations = mock(AccessTokenRevocationService.class);
+        SecurityConfig.JwtFilter filter = new SecurityConfig.JwtFilter(jwt, revocations);
         MockHttpServletRequest request = new MockHttpServletRequest();
 
         filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
 
         assertNull(SecurityContextHolder.getContext().getAuthentication());
-        verifyNoInteractions(jwt);
+        verifyNoInteractions(jwt, revocations);
     }
 }
