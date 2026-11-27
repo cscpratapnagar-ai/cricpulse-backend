@@ -29,7 +29,8 @@ class CricketDeliveryRuleValidatorTest {
                 extraRuns,
                 extraType,
                 wicketType,
-                dismissedPlayerId,
+                dismissedPlayerId == null ? null
+                        : (DISMISSED.equals(dismissedPlayerId) ? STRIKER : dismissedPlayerId),
                 null,
                 null);
     }
@@ -145,6 +146,37 @@ class CricketDeliveryRuleValidatorTest {
             assertDoesNotThrow(() -> CricketDeliveryRuleValidator.validate(
                     command(0, 1, "WIDE", wicketType, DISMISSED)));
         }
+    }
+
+
+    @Test
+    void rejectsDismissalOfNonStrikerForStrikerOnlyWicketTypes() {
+        for (String wicketType : new String[] {
+                WicketType.BOWLED.name(), WicketType.CAUGHT.name(), WicketType.LBW.name(),
+                WicketType.STUMPED.name(), WicketType.HIT_WICKET.name(),
+                WicketType.HIT_BALL_TWICE.name()}) {
+            assertThrows(IllegalArgumentException.class,
+                    () -> CricketDeliveryRuleValidator.validate(command(
+                            0, 0, null, wicketType, NON_STRIKER)),
+                    wicketType + " cannot dismiss the non-striker");
+        }
+    }
+
+    @Test
+    void allowsNonStrikerDismissalForRunOutAndObstructingField() {
+        for (String wicketType : new String[] {
+                WicketType.RUN_OUT.name(), WicketType.OBSTRUCTING_THE_FIELD.name()}) {
+            assertDoesNotThrow(() -> CricketDeliveryRuleValidator.validate(command(
+                    0, 0, null, wicketType, NON_STRIKER)));
+        }
+    }
+
+    @Test
+    void rejectsDismissedPlayerOutsideActiveBattingPair() {
+        UUID inactivePlayer = UUID.randomUUID();
+        assertThrows(IllegalArgumentException.class,
+                () -> CricketDeliveryRuleValidator.validate(command(
+                        0, 0, null, WicketType.RUN_OUT.name(), inactivePlayer)));
     }
 
     @Test
