@@ -47,6 +47,7 @@ jobs:
           bash -n scripts/e2e-double-round-robin-regression.sh
           bash -n scripts/e2e-scoring-idempotency-retry.sh
           bash -n scripts/e2e-real-scoring-match.sh
+          bash -n scripts/e2e-real-wicket-broadcast.sh
           bash -n scripts/cricpulse-missing-wicket-e2e.sh
           bash -n scripts/e2e-payment-webhook-security.sh
           bash -n scripts/e2e-payment-order-admin-activation.sh
@@ -80,6 +81,7 @@ jobs:
           bash -n scripts/staging-backup-restore-rehearsal.sh
           bash -n scripts/test-staging-backup-restore-rehearsal.sh
           node --check scripts/e2e-scoring-websocket.mjs
+          node --check scripts/e2e-wicket-stomp-reconnect.mjs
 
       - name: Verify production deployment success and rollback paths
         run: bash scripts/test-production-deploy-rollback.sh
@@ -321,6 +323,26 @@ jobs:
           B_NON_STRIKER_ID: ${{ env.E2E_B_PLAYER_ID }}
           A_BOWLER_ID: ${{ env.E2E_OWNER_PLAYER_ID }}
         run: bash scripts/e2e-real-scoring-match.sh
+
+      - name: Certify real Run Out wicket, PostgreSQL projections and STOMP reconnect
+        env:
+          BASE_URL: http://localhost:8080/api
+          EMAIL: ${{ env.E2E_EMAIL }}
+          OWNER_B_EMAIL: ${{ env.E2E_OWNER_B_EMAIL }}
+          PASSWORD: ${{ env.E2E_PASSWORD }}
+          TEAM_A_ID: ${{ env.E2E_TEAM_A_ID }}
+          TEAM_B_ID: ${{ env.E2E_TEAM_B_ID }}
+          STRIKER_ID: ${{ env.E2E_OWNER_PLAYER_ID }}
+          NON_STRIKER_ID: ${{ env.E2E_PLAYER_ID }}
+          NEW_BATTER_ID: ${{ env.E2E_A_NEW_BATTER_ID }}
+          FINAL_BATTER_ID: ${{ env.E2E_A_FINAL_BATTER_ID }}
+          BOWLER_ID: ${{ env.E2E_B_PLAYER_ID }}
+          PGHOST: localhost
+          PGPORT: 5432
+          PGUSER: ${{ env.DATABASE_USERNAME }}
+          PGPASSWORD: ${{ env.DATABASE_PASSWORD }}
+          PGDATABASE: cricket
+        run: bash scripts/e2e-real-wicket-broadcast.sh
 
       - name: Run deployment smoke checks against the live CI API
         env:

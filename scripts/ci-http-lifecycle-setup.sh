@@ -8,10 +8,14 @@ RUN_DIGITS="${RUN_DIGITS: -7}"
 PASSWORD="${E2E_PASSWORD:-$(openssl rand -hex 16)A!}"
 OWNER_A_EMAIL="cricpulse-ci-owner-a-${RUN_KEY}@example.com"
 PLAYER_A_EMAIL="cricpulse-ci-player-a-${RUN_KEY}@example.com"
+PLAYER_A2_EMAIL="cricpulse-ci-player-a2-${RUN_KEY}@example.com"
+PLAYER_A3_EMAIL="cricpulse-ci-player-a3-${RUN_KEY}@example.com"
 OWNER_B_EMAIL="cricpulse-ci-owner-b-${RUN_KEY}@example.com"
 PLAYER_B_EMAIL="cricpulse-ci-player-b-${RUN_KEY}@example.com"
 OWNER_A_PHONE="900${RUN_DIGITS}"
 PLAYER_A_PHONE="901${RUN_DIGITS}"
+PLAYER_A2_PHONE="906${RUN_DIGITS}"
+PLAYER_A3_PHONE="905${RUN_DIGITS}"
 OWNER_B_PHONE="902${RUN_DIGITS}"
 PLAYER_B_PHONE="903${RUN_DIGITS}"
 COOKIE_JAR="$(mktemp)"
@@ -43,6 +47,8 @@ register() { curl_json POST "$BASE_URL/users" "$(jq -nc --arg n "$1" --arg e "$2
 
 register 'CricPulse CI Owner A' "$OWNER_A_EMAIL" "$OWNER_A_PHONE"
 register 'CricPulse CI Player A' "$PLAYER_A_EMAIL" "$PLAYER_A_PHONE"
+register 'CricPulse CI Player A2' "$PLAYER_A2_EMAIL" "$PLAYER_A2_PHONE"
+register 'CricPulse CI Player A3' "$PLAYER_A3_EMAIL" "$PLAYER_A3_PHONE"
 register 'CricPulse CI Owner B' "$OWNER_B_EMAIL" "$OWNER_B_PHONE"
 register 'CricPulse CI Player B' "$PLAYER_B_EMAIL" "$PLAYER_B_PHONE"
 
@@ -91,12 +97,14 @@ AUTH_A=(-H "Authorization: Bearer $OWNER_A_TOKEN"); AUTH_B=(-H "Authorization: B
 
 OWNER_A_PROFILE="$(curl_api "${AUTH_A[@]}" "$BASE_URL/players/me")"
 PLAYER_A_PROFILE="$(curl_api -H "Authorization: Bearer $(login_token "$PLAYER_A_EMAIL")" "$BASE_URL/players/me")"
+PLAYER_A2_PROFILE="$(curl_api -H "Authorization: Bearer $(login_token "$PLAYER_A2_EMAIL")" "$BASE_URL/players/me")"
+PLAYER_A3_PROFILE="$(curl_api -H "Authorization: Bearer $(login_token "$PLAYER_A3_EMAIL")" "$BASE_URL/players/me")"
 OWNER_B_PROFILE="$(curl_api "${AUTH_B[@]}" "$BASE_URL/players/me")"
 PLAYER_B_PROFILE="$(curl_api -H "Authorization: Bearer $(login_token "$PLAYER_B_EMAIL")" "$BASE_URL/players/me")"
-OWNER_A_PLAYER_ID="$(jq -r '.id' <<<"$OWNER_A_PROFILE")"; PLAYER_A_ID="$(jq -r '.id' <<<"$PLAYER_A_PROFILE")"
+OWNER_A_PLAYER_ID="$(jq -r '.id' <<<"$OWNER_A_PROFILE")"; PLAYER_A_ID="$(jq -r '.id' <<<"$PLAYER_A_PROFILE")"; PLAYER_A2_ID="$(jq -r '.id' <<<"$PLAYER_A2_PROFILE")"; PLAYER_A3_ID="$(jq -r '.id' <<<"$PLAYER_A3_PROFILE")"
 OWNER_B_PLAYER_ID="$(jq -r '.id' <<<"$OWNER_B_PROFILE")"; PLAYER_B_ID="$(jq -r '.id' <<<"$PLAYER_B_PROFILE")"
 
-test -n "$OWNER_A_PLAYER_ID" && test "$OWNER_A_PLAYER_ID" != null; test -n "$PLAYER_A_ID" && test "$PLAYER_A_ID" != null
+test -n "$OWNER_A_PLAYER_ID" && test "$OWNER_A_PLAYER_ID" != null; test -n "$PLAYER_A_ID" && test "$PLAYER_A_ID" != null; test -n "$PLAYER_A2_ID" && test "$PLAYER_A2_ID" != null; test -n "$PLAYER_A3_ID" && test "$PLAYER_A3_ID" != null
 test -n "$OWNER_B_PLAYER_ID" && test "$OWNER_B_PLAYER_ID" != null; test -n "$PLAYER_B_ID" && test "$PLAYER_B_ID" != null
 
 TEAM_A="$(curl_api -X POST "$BASE_URL/teams" "${AUTH_A[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg n "CricPulse CI A ${RUN_KEY}" '{name:$n,city:"CI"}')")"; TEAM_A_ID="$(jq -r '.id' <<<"$TEAM_A")"
@@ -106,6 +114,8 @@ test -n "$TEAM_A_ID" && test -n "$TEAM_B_ID"
 # Team creation already establishes the authenticated owner as team management
 # member. Only the additional player needs an explicit roster membership.
 curl_api -X POST "$BASE_URL/teams/$TEAM_A_ID/members" "${AUTH_A[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg p "$PLAYER_A_ID" '{playerId:$p,role:"PLAYER"}')" >/dev/null
+curl_api -X POST "$BASE_URL/teams/$TEAM_A_ID/members" "${AUTH_A[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg p "$PLAYER_A2_ID" '{playerId:$p,role:"PLAYER"}')" >/dev/null
+curl_api -X POST "$BASE_URL/teams/$TEAM_A_ID/members" "${AUTH_A[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg p "$PLAYER_A3_ID" '{playerId:$p,role:"PLAYER"}')" >/dev/null
 curl_api -X POST "$BASE_URL/teams/$TEAM_B_ID/members" "${AUTH_B[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg p "$PLAYER_B_ID" '{playerId:$p,role:"PLAYER"}')" >/dev/null
 
 TEAM_B2="$(curl_api -X POST "$BASE_URL/teams" "${AUTH_B[@]}" -H 'Content-Type: application/json' --data "$(jq -nc --arg n "CricPulse CI B2 ${RUN_KEY}" '{name:$n,city:"CI"}')")"
@@ -135,6 +145,8 @@ E2E_TEAM_A_ID=$TEAM_A_ID
 E2E_TEAM_B_ID=$TEAM_B_ID
 E2E_OWNER_PLAYER_ID=$OWNER_A_PLAYER_ID
 E2E_PLAYER_ID=$PLAYER_A_ID
+E2E_A_NEW_BATTER_ID=$PLAYER_A2_ID
+E2E_A_FINAL_BATTER_ID=$PLAYER_A3_ID
 E2E_B_OWNER_PLAYER_ID=$OWNER_B_PLAYER_ID
 E2E_B_PLAYER_ID=$PLAYER_B_ID
 E2E_MATCH_ID=$MATCH_ID

@@ -65,3 +65,15 @@ The scoring idempotency E2E starts three independent STOMP clients before any sc
 - Existing unit tests separately assert that anonymous public subscriptions do not require a membership lookup and unauthenticated private subscriptions are rejected.
 
 This CI check certifies server-side public/private topic parity and anonymous subscription behavior. It does not replace staging verification on real browsers, mobile devices, OBS, or vMix.
+
+## Real wicket integration certification
+
+The backend CI also runs `scripts/e2e-real-wicket-broadcast.sh` against the disposable PostgreSQL-backed API fixture.
+
+- Records a non-striker Run Out with one completed run and verifies crossing plus replacement-batter placement.
+- Records a subsequent Bowled dismissal to verify bowler wicket credit, legal-ball count, runs conceded and economy. Run Out is not credited to the bowler; Bowled is.
+- Verifies persisted fall-of-wicket rows, scorecard dismissal types, and partnership rows including the zero-ball current partnership after the second wicket.
+- Compares the authenticated scorer projection, anonymous public innings snapshot, and public Match Centre broadcast-state score and event version.
+- Connects an anonymous public STOMP client before scoring, verifies the ordered Run Out and Bowled snapshots, disconnects, reconnects, and recovers the latest committed version through the public REST snapshot.
+
+This is a real API/PostgreSQL/STOMP CI integration test. It does not certify physical mobile devices, browser rendering, OBS/vMix capture, network packet loss, or a production-host soak; those remain staging/operator acceptance checks.
