@@ -89,8 +89,10 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 let firstSocket;
 let secondSocket;
 let failure;
+let receivedMessages = [];
 try {
   const messages = [];
+  receivedMessages = messages;
   const messagePromise = new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error("Timed out waiting for both committed wicket STOMP events")), 30000);
     globalThis.__resolveWicketMessages = () => {
@@ -162,7 +164,7 @@ try {
   failure = error;
   firstSocket?.close();
   secondSocket?.close();
-  fs.writeFileSync(outputFile, JSON.stringify({ ok: false, error: error.message, payload }, null, 2));
+  fs.writeFileSync(outputFile, JSON.stringify({ ok: false, error: error.message, messages: receivedMessages }, null, 2));
   console.error(`FAIL: ${error.message}`);
   process.exitCode = 1;
 } finally {
