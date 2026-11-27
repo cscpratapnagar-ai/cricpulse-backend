@@ -335,7 +335,13 @@ jobs:
           STRIKER_ID: ${{ env.E2E_OWNER_PLAYER_ID }}
           NON_STRIKER_ID: ${{ env.E2E_PLAYER_ID }}
           NEW_BATTER_ID: ${{ env.E2E_A_NEW_BATTER_ID }}
+          FINAL_BATTER_ID: ${{ env.E2E_A_FINAL_BATTER_ID }}
           BOWLER_ID: ${{ env.E2E_B_PLAYER_ID }}
+          PGHOST: localhost
+          PGPORT: 5432
+          PGUSER: ${{ env.DATABASE_USERNAME }}
+          PGPASSWORD: ${{ env.DATABASE_PASSWORD }}
+          PGDATABASE: cricket
         run: bash scripts/e2e-real-wicket-broadcast.sh
 
       - name: Run deployment smoke checks against the live CI API
