@@ -165,4 +165,30 @@ class WebSocketSecurityInterceptorTest {
         return new UsernamePasswordAuthenticationToken(name, null,
                 List.of(new SimpleGrantedAuthority("ROLE_PLAYER")));
     }
+
+    @Test
+    void relayModeRewritesAuthorizedPrivateSubscriptionToRabbitTopicRoutingKey() {
+        UUID inningsId = UUID.randomUUID();
+        var user = authenticatedUser("user@example.com");
+        WebSocketSecurityInterceptor relayInterceptor = new WebSocketSecurityInterceptor(jwt, jdbc, true);
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
+        accessor.setUser(user);
+        accessor.setDestination("/topic/innings/" + inningsId);
+        when(jdbc.queryForObject(anyString(), eq(Integer.class), any(), any(), any(), any(), any())).thenReturn(1);
+
+        assertNotNull(relayInterceptor.preSend(message(accessor), null));
+        assertEquals("/topic/innings." + inningsId, accessor.getDestination());
+    }
+
+    @Test
+    void relayModeRewritesAnonymousPublicSubscriptionToRabbitTopicRoutingKey() {
+        UUID inningsId = UUID.randomUUID();
+        WebSocketSecurityInterceptor relayInterceptor = new WebSocketSecurityInterceptor(jwt, jdbc, true);
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
+        accessor.setDestination("/topic/public/innings/" + inningsId);
+
+        assertNotNull(relayInterceptor.preSend(message(accessor), null));
+        assertEquals("/topic/public.innings." + inningsId, accessor.getDestination());
+        verifyNoInteractions(jdbc);
+    }
 }

@@ -68,4 +68,28 @@ class LiveScoreBroadcastPublicationGuardTest {
         verify(jdbc, never()).update(org.mockito.ArgumentMatchers.contains("UPDATE broadcast_publication_cursors"),
                 any(Object[].class));
     }
+
+    @Test
+    void relayModePublishesUsingRabbitMqDotSeparatedTopicRoutingKeys() {
+        JdbcTemplate jdbc = org.mockito.Mockito.mock(JdbcTemplate.class);
+        SimpMessagingTemplate messaging = org.mockito.Mockito.mock(SimpMessagingTemplate.class);
+        GetLiveScore liveScore = org.mockito.Mockito.mock(GetLiveScore.class);
+        UUID inningsId = UUID.randomUUID();
+        GetLiveScore.Score score = new GetLiveScore.Score(
+                inningsId, UUID.randomUUID(), 1, 18, 1, 12, 20, "LIVE", 0,
+                2, 0, UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+                List.of(), List.of(), List.of(), List.of(), null, List.of()
+        ).withEventVersion(12L);
+        when(jdbc.queryForObject(eq("SELECT id FROM innings WHERE id = ? FOR UPDATE"), eq(UUID.class), eq(inningsId)))
+                .thenReturn(inningsId);
+        when(jdbc.queryForObject(eq("SELECT published_version FROM broadcast_publication_cursors WHERE innings_id = ?"), eq(Long.class), eq(inningsId)))
+                .thenReturn(11L);
+        when(liveScore.execute(inningsId)).thenReturn(score);
+
+        LiveScoreBroadcastPublicationGuard guard = new LiveScoreBroadcastPublicationGuard(jdbc, messaging, liveScore, true);
+        assertTrue(guard.publishIfNewer(new LiveScoreCommittedEvent(inningsId, UUID.randomUUID(), 12, 12, "DELIVERY_RECORDED")));
+
+        verify(messaging).convertAndSend(eq("/topic/innings." + inningsId), any(Object.class));
+        verify(messaging).convertAndSend(eq("/topic/public.innings." + inningsId), any(Object.class));
+    }
 }

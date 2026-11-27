@@ -231,9 +231,41 @@ jobs:
           fi
           echo "PASS: mutable production image tags are rejected"
 
+      - name: Start RabbitMQ STOMP broker for cross-replica certification
+        env:
+          RABBITMQ_DEFAULT_USER: ci_broker
+          RABBITMQ_DEFAULT_PASS: ci-rabbitmq-broker-password-only
+        run: |
+          docker run -d --name cricpulse-ci-rabbitmq \
+            -e RABBITMQ_DEFAULT_USER="$RABBITMQ_DEFAULT_USER" \
+            -e RABBITMQ_DEFAULT_PASS="$RABBITMQ_DEFAULT_PASS" \
+            -e RABBITMQ_DEFAULT_VHOST=/ \
+            -p 61613:61613 rabbitmq:4-management-alpine \
+            sh -c 'rabbitmq-plugins enable --offline rabbitmq_stomp && rabbitmq-server'
+          for attempt in {1..60}; do
+            if docker exec cricpulse-ci-rabbitmq rabbitmq-diagnostics -q check_port_connectivity >/dev/null 2>&1 \
+              && docker exec cricpulse-ci-rabbitmq rabbitmq-plugins list -e | grep -q rabbitmq_stomp \
+              && timeout 1 bash -c '</dev/tcp/127.0.0.1/61613' 2>/dev/null; then
+              echo "RabbitMQ STOMP listener is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs cricpulse-ci-rabbitmq >&2 || true
+          echo "RabbitMQ STOMP listener did not become ready" >&2
+          exit 1
+
       - name: Start application
         env:
           PAYMENT_WEBHOOK_SECRET: ci-payment-webhook-hmac-secret-for-e2e-only
+          WEBSOCKET_BROKER_RELAY_ENABLED: 'true'
+          WEBSOCKET_BROKER_RELAY_HOST: localhost
+          WEBSOCKET_BROKER_RELAY_PORT: '61613'
+          WEBSOCKET_BROKER_RELAY_CLIENT_LOGIN: ci_broker
+          WEBSOCKET_BROKER_RELAY_CLIENT_PASSCODE: ci-rabbitmq-broker-password-only
+          WEBSOCKET_BROKER_RELAY_SYSTEM_LOGIN: ci_broker
+          WEBSOCKET_BROKER_RELAY_SYSTEM_PASSCODE: ci-rabbitmq-broker-password-only
+          WEBSOCKET_BROKER_RELAY_VIRTUAL_HOST: /
         run: |
           nohup java -jar target/*.jar > "$RUNNER_TEMP/cricpulse-api.log" 2>&1 &
           echo $! > "$RUNNER_TEMP/cricpulse-api.pid"
@@ -247,6 +279,39 @@ jobs:
           echo "CricPulse API did not become healthy" >&2
           cat "$RUNNER_TEMP/cricpulse-api.log" >&2 || true
           exit 1
+
+      - name: Start second API replica against shared PostgreSQL and RabbitMQ
+        env:
+          PORT: '8081'
+          PAYMENT_WEBHOOK_SECRET: ci-payment-webhook-hmac-secret-for-e2e-only
+          WEBSOCKET_BROKER_RELAY_ENABLED: 'true'
+          WEBSOCKET_BROKER_RELAY_HOST: localhost
+          WEBSOCKET_BROKER_RELAY_PORT: '61613'
+          WEBSOCKET_BROKER_RELAY_CLIENT_LOGIN: ci_broker
+          WEBSOCKET_BROKER_RELAY_CLIENT_PASSCODE: ci-rabbitmq-broker-password-only
+          WEBSOCKET_BROKER_RELAY_SYSTEM_LOGIN: ci_broker
+          WEBSOCKET_BROKER_RELAY_SYSTEM_PASSCODE: ci-rabbitmq-broker-password-only
+          WEBSOCKET_BROKER_RELAY_VIRTUAL_HOST: /
+        run: |
+          nohup java -jar target/*.jar > "$RUNNER_TEMP/cricpulse-api-replica-2.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/cricpulse-api-replica-2.pid"
+          for attempt in {1..60}; do
+            if curl -fsS http://localhost:8081/actuator/health/readiness >/dev/null; then
+              echo "Second CricPulse API replica is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Second CricPulse API replica did not become ready" >&2
+          cat "$RUNNER_TEMP/cricpulse-api-replica-2.log" >&2 || true
+          exit 1
+
+      - name: Verify both API replicas have an active RabbitMQ broker relay
+        run: |
+          for url in http://localhost:8080/actuator/health/readiness http://localhost:8081/actuator/health/readiness; do
+            curl -fsS "$url" | jq -e '.status == "UP"' >/dev/null
+            echo "PASS: broker relay healthy at $url"
+          done
 
       - name: Install PostgreSQL 16 client tools for server-version compatibility
         run: |
@@ -318,6 +383,7 @@ jobs:
       - name: Run HTTP + WebSocket scoring idempotency and rollback E2E
         env:
           BASE_URL: http://localhost:8080/api
+          WS_URL: ws://localhost:8081/ws
           EMAIL: ${{ env.E2E_EMAIL }}
           OWNER_B_EMAIL: ${{ env.E2E_OWNER_B_EMAIL }}
           PASSWORD: ${{ env.E2E_PASSWORD }}
@@ -453,9 +519,12 @@ jobs:
           path: ${{ runner.temp }}/cricpulse-api.log
           if-no-files-found: ignore
 
-      - name: Stop application
+      - name: Stop API replicas and RabbitMQ broker
         if: always()
         run: |
-          if [[ -f "$RUNNER_TEMP/cricpulse-api.pid" ]]; then
-            kill "$(cat "$RUNNER_TEMP/cricpulse-api.pid")" 2>/dev/null || true
-          fi
+          for pid_file in "$RUNNER_TEMP/cricpulse-api.pid" "$RUNNER_TEMP/cricpulse-api-replica-2.pid"; do
+            if [[ -f "$pid_file" ]]; then
+              kill "$(cat "$pid_file")" 2>/dev/null || true
+            fi
+          done
+          docker rm -f cricpulse-ci-rabbitmq >/dev/null 2>&1 || true
