@@ -258,14 +258,14 @@ jobs:
       - name: Start application
         env:
           PAYMENT_WEBHOOK_SECRET: ci-payment-webhook-hmac-secret-for-e2e-only
-          APP_WEBSOCKET_BROKER_RELAY_ENABLED: 'true'
-          APP_WEBSOCKET_BROKER_RELAY_HOST: localhost
-          APP_WEBSOCKET_BROKER_RELAY_PORT: '61613'
-          APP_WEBSOCKET_BROKER_RELAY_CLIENT_LOGIN: ci_broker
-          APP_WEBSOCKET_BROKER_RELAY_CLIENT_PASSCODE: ci-rabbitmq-broker-password-only
-          APP_WEBSOCKET_BROKER_RELAY_SYSTEM_LOGIN: ci_broker
-          APP_WEBSOCKET_BROKER_RELAY_SYSTEM_PASSCODE: ci-rabbitmq-broker-password-only
-          APP_WEBSOCKET_BROKER_RELAY_VIRTUAL_HOST: /
+          WEBSOCKET_BROKER_RELAY_ENABLED: 'true'
+          WEBSOCKET_BROKER_RELAY_HOST: localhost
+          WEBSOCKET_BROKER_RELAY_PORT: '61613'
+          WEBSOCKET_BROKER_RELAY_CLIENT_LOGIN: ci_broker
+          WEBSOCKET_BROKER_RELAY_CLIENT_PASSCODE: ci-rabbitmq-broker-password-only
+          WEBSOCKET_BROKER_RELAY_SYSTEM_LOGIN: ci_broker
+          WEBSOCKET_BROKER_RELAY_SYSTEM_PASSCODE: ci-rabbitmq-broker-password-only
+          WEBSOCKET_BROKER_RELAY_VIRTUAL_HOST: /
         run: |
           nohup java -jar target/*.jar > "$RUNNER_TEMP/cricpulse-api.log" 2>&1 &
           echo $! > "$RUNNER_TEMP/cricpulse-api.pid"
@@ -284,14 +284,14 @@ jobs:
         env:
           PORT: '8081'
           PAYMENT_WEBHOOK_SECRET: ci-payment-webhook-hmac-secret-for-e2e-only
-          APP_WEBSOCKET_BROKER_RELAY_ENABLED: 'true'
-          APP_WEBSOCKET_BROKER_RELAY_HOST: localhost
-          APP_WEBSOCKET_BROKER_RELAY_PORT: '61613'
-          APP_WEBSOCKET_BROKER_RELAY_CLIENT_LOGIN: ci_broker
-          APP_WEBSOCKET_BROKER_RELAY_CLIENT_PASSCODE: ci-rabbitmq-broker-password-only
-          APP_WEBSOCKET_BROKER_RELAY_SYSTEM_LOGIN: ci_broker
-          APP_WEBSOCKET_BROKER_RELAY_SYSTEM_PASSCODE: ci-rabbitmq-broker-password-only
-          APP_WEBSOCKET_BROKER_RELAY_VIRTUAL_HOST: /
+          WEBSOCKET_BROKER_RELAY_ENABLED: 'true'
+          WEBSOCKET_BROKER_RELAY_HOST: localhost
+          WEBSOCKET_BROKER_RELAY_PORT: '61613'
+          WEBSOCKET_BROKER_RELAY_CLIENT_LOGIN: ci_broker
+          WEBSOCKET_BROKER_RELAY_CLIENT_PASSCODE: ci-rabbitmq-broker-password-only
+          WEBSOCKET_BROKER_RELAY_SYSTEM_LOGIN: ci_broker
+          WEBSOCKET_BROKER_RELAY_SYSTEM_PASSCODE: ci-rabbitmq-broker-password-only
+          WEBSOCKET_BROKER_RELAY_VIRTUAL_HOST: /
         run: |
           nohup java -jar target/*.jar > "$RUNNER_TEMP/cricpulse-api-replica-2.log" 2>&1 &
           echo $! > "$RUNNER_TEMP/cricpulse-api-replica-2.pid"
