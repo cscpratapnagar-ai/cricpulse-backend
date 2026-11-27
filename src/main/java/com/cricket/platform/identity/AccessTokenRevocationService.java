@@ -25,6 +25,8 @@ public class AccessTokenRevocationService {
     public void revoke(String token) {
         if (token == null || token.isBlank()) return;
         Instant expiresAt = jwt.expiresAt(token);
+        // Opportunistically remove expired fingerprints so the revocation table stays bounded.
+        jdbc.update("DELETE FROM revoked_access_tokens WHERE expires_at <= now()");
         jdbc.update("""
                 INSERT INTO revoked_access_tokens(token_fingerprint, expires_at)
                 VALUES (?, ?)
