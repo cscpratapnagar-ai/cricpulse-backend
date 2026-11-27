@@ -97,4 +97,26 @@ class JwtCookieAuthenticationFilterTest {
         assertNull(SecurityContextHolder.getContext().getAuthentication());
         verifyNoInteractions(jwt, revocations);
     }
+
+    @Test
+    void refreshesLastActiveTimestampForAnAuthenticatedDeviceSession() throws Exception {
+        JwtService jwt = mock(JwtService.class);
+        AccessTokenRevocationService revocations = mock(AccessTokenRevocationService.class);
+        com.cricket.platform.identity.SessionRegistryService sessions =
+                mock(com.cricket.platform.identity.SessionRegistryService.class);
+        when(jwt.subject("session-token")).thenReturn("player@example.com");
+        when(jwt.role("session-token")).thenReturn("PLAYER");
+        when(jwt.sessionId("session-token")).thenReturn("session-123");
+        when(sessions.isActive("session-123", "player@example.com")).thenReturn(true);
+        when(revocations.isRevoked("session-token")).thenReturn(false);
+        SecurityConfig.JwtFilter filter = new SecurityConfig.JwtFilter(jwt, revocations, sessions);
+
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("Authorization", "Bearer session-token");
+
+        filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
+
+        verify(sessions).touch("session-123", "player@example.com");
+    }
+
 }

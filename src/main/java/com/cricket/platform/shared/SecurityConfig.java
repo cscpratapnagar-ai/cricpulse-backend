@@ -133,6 +133,7 @@ public class SecurityConfig {
 
                 boolean activeSession = sessions == null || (sessionId != null && sessions.isActive(sessionId, subject));
                 if (activeSession && !tokenRevocations.isRevoked(token)) {
+                    if (sessions != null && sessionId != null) sessions.touch(sessionId, subject);
                     var authentication = new UsernamePasswordAuthenticationToken(
                             subject, null, List.of(new SimpleGrantedAuthority("ROLE_" + role)));
                     if (sessionId != null) authentication.setDetails(sessionId);
