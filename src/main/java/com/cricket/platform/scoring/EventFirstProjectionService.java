@@ -22,6 +22,7 @@ public class EventFirstProjectionService {
     public Result record(DeliveryCommand command,
                          int overNumber,
                          int ballNumber) {
+        CricketDeliveryRuleValidator.validate(command);
         // Serialize reconciliation with all other scoring writes for this innings.
         // A legacy delivery may exist in the projection table without a matching
         // delivery_events row (for example, it was recorded before event-first
