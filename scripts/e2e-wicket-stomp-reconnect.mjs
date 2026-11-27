@@ -12,7 +12,7 @@ const expectedNonStriker = process.env.STRIKER_ID;
 const dismissedPlayerId = process.env.DISMISSED_PLAYER_ID;
 const finalBatterId = process.env.FINAL_BATTER_ID;
 
-if (![wsUrl, inningsId, baseUrl, readyFile, doneFile, outputFile, expectedStriker, expectedNonStriker].every(Boolean)) {
+if (![wsUrl, inningsId, baseUrl, readyFile, doneFile, outputFile, expectedStriker, expectedNonStriker, dismissedPlayerId, finalBatterId].every(Boolean)) {
   throw new Error("WS_URL, INNINGS_ID, BASE_URL, WS_READY_FILE, WS_DONE_FILE, WS_OUTPUT_FILE, NEW_BATTER_ID and STRIKER_ID are required");
 }
 if (typeof WebSocket === "undefined") throw new Error("Node.js 22+ built-in WebSocket is required");
@@ -139,8 +139,8 @@ try {
   firstSocket.close();
   await sleep(150);
   secondSocket = await connect();
-  const response = await fetch(\`\${baseUrl}/public/innings/\${inningsId}\`);
-  if (!response.ok) throw new Error(\`Reconnect recovery GET failed with HTTP \${response.status}\`);
+  const response = await fetch(baseUrl + "/public/innings/" + inningsId);
+  if (!response.ok) throw new Error("Reconnect recovery GET failed with HTTP " + response.status);
   const recovered = await response.json();
   if (Number(recovered.eventVersion) !== versions[1]
       || Number(recovered.runs) !== 1
