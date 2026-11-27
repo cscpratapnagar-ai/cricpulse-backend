@@ -5,7 +5,7 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 APP="$TMP/host/staging"
 mkdir -p "$APP/release-tools" "$TMP/bin"
-printf 'POSTGRES_PASSWORD=Staging-Only-Secret-123456\nJWT_SECRET=staging-jwt-secret-at-least-32-bytes-long\n' > "$APP/.env"
+printf 'POSTGRES_PASSWORD=Staging-Only-Secret-123456\nJWT_SECRET=staging-jwt-secret-at-least-32-bytes-long\nRABBITMQ_USERNAME=staging_broker\nRABBITMQ_PASSWORD=Staging-Broker-Only-Secret-123456\n' > "$APP/.env"
 chmod 600 "$APP/.env"
 printf 'services: {}\n' > "$APP/docker-compose.staging.yml"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$APP/release-tools/staging-deployment-smoke.sh"

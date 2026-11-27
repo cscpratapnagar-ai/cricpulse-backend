@@ -1,7 +1,16 @@
 app:
   cors:
     allowed-origin-patterns: http://localhost:4200,https://*.app.github.dev,https://*.cricketpulse.app
-
+  websocket:
+    broker-relay:
+      enabled: ${WEBSOCKET_BROKER_RELAY_ENABLED:false}
+      host: ${WEBSOCKET_BROKER_RELAY_HOST:localhost}
+      port: ${WEBSOCKET_BROKER_RELAY_PORT:61613}
+      client-login: ${WEBSOCKET_BROKER_RELAY_CLIENT_LOGIN:cricpulse}
+      client-passcode: ${WEBSOCKET_BROKER_RELAY_CLIENT_PASSCODE:local-cricpulse-broker-password}
+      system-login: ${WEBSOCKET_BROKER_RELAY_SYSTEM_LOGIN:cricpulse}
+      system-passcode: ${WEBSOCKET_BROKER_RELAY_SYSTEM_PASSCODE:local-cricpulse-broker-password}
+      virtual-host: ${WEBSOCKET_BROKER_RELAY_VIRTUAL_HOST:/}
 spring:
   application:
     name: cricketpulse-api
@@ -25,26 +34,19 @@ spring:
       max-request-size: 3MB
   lifecycle:
     timeout-per-shutdown-phase: ${SHUTDOWN_TIMEOUT:30s}
-
 server:
   port: ${PORT:8080}
   shutdown: graceful
-
 payments:
   webhook:
-    # Configure only after selecting and onboarding a real gateway.
     secret: ${PAYMENT_WEBHOOK_SECRET:}
-
 security:
   jwt:
-    # Local Maven runs can start without manually exporting a secret. Production
-    # deployments still provide JWT_SECRET explicitly through docker-compose.
     secret: ${JWT_SECRET:local-only-cricpulse-jwt-secret-change-me-2026}
     expiration-seconds: ${JWT_EXPIRATION_SECONDS:86400}
   auth:
     cookie-secure: ${AUTH_COOKIE_SECURE:true}
     cookie-same-site: ${AUTH_COOKIE_SAME_SITE:Lax}
-
 management:
   endpoint:
     health:
@@ -54,12 +56,11 @@ management:
         liveness:
           include: livenessState
         readiness:
-          include: readinessState
+          include: readinessState,brokerRelay
   endpoints:
     web:
       exposure:
         include: health,info,prometheus
-
 logging:
   pattern:
     level: "%5p [requestId:%X{requestId}]"

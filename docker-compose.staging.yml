@@ -7,12 +7,24 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-cricket_staging}
       POSTGRES_USER: ${POSTGRES_USER:-cricket_app}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
-    volumes:
-      - cricpulse_staging_postgres_data:/var/lib/postgresql/data
+    volumes: [cricpulse_staging_postgres_data:/var/lib/postgresql/data]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-cricket_app} -d $${POSTGRES_DB:-cricket_staging}"]
+      test: ["CMD-SHELL","pg_isready -U $${POSTGRES_USER:-cricket_app} -d $${POSTGRES_DB:-cricket_staging}"]
       interval: 5s
       timeout: 5s
+      retries: 12
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:?RABBITMQ_USERNAME is required}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-/}
+    command: ["sh","-c","rabbitmq-plugins enable --offline rabbitmq_stomp && rabbitmq-server"]
+    healthcheck:
+      test: ["CMD-SHELL","rabbitmq-diagnostics -q ping && rabbitmq-diagnostics -q check_port_connectivity"]
+      interval: 10s
+      timeout: 10s
       retries: 12
   backend:
     image: ${BACKEND_IMAGE:?BACKEND_IMAGE digest reference is required}
@@ -23,24 +35,29 @@ services:
       DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       JWT_EXPIRATION_SECONDS: ${JWT_EXPIRATION_SECONDS:-86400}
+      WEBSOCKET_BROKER_RELAY_ENABLED: "true"
+      WEBSOCKET_BROKER_RELAY_HOST: rabbitmq
+      WEBSOCKET_BROKER_RELAY_PORT: 61613
+      WEBSOCKET_BROKER_RELAY_CLIENT_LOGIN: ${RABBITMQ_USERNAME:?RABBITMQ_USERNAME is required}
+      WEBSOCKET_BROKER_RELAY_CLIENT_PASSCODE: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
+      WEBSOCKET_BROKER_RELAY_SYSTEM_LOGIN: ${RABBITMQ_USERNAME:?RABBITMQ_USERNAME is required}
+      WEBSOCKET_BROKER_RELAY_SYSTEM_PASSCODE: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
+      WEBSOCKET_BROKER_RELAY_VIRTUAL_HOST: ${RABBITMQ_VHOST:-/}
       PORT: 8080
-    ports:
-      - "127.0.0.1:18081:8080"
+    ports: ["127.0.0.1:18081:8080"]
     depends_on:
-      postgres:
-        condition: service_healthy
+      postgres: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/actuator/health/readiness >/dev/null || exit 1"]
+      test: ["CMD-SHELL","wget -qO- http://127.0.0.1:8080/actuator/health/readiness >/dev/null || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
   frontend:
     image: ${FRONTEND_IMAGE:?FRONTEND_IMAGE digest reference is required}
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:18080:80"
+    ports: ["127.0.0.1:18080:80"]
     depends_on:
-      backend:
-        condition: service_healthy
+      backend: {condition: service_healthy}
 volumes:
   cricpulse_staging_postgres_data:

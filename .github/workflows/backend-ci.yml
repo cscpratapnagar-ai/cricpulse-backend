@@ -163,6 +163,8 @@ jobs:
         env:
           POSTGRES_PASSWORD: Staging-Only-Secret-123456
           JWT_SECRET: staging-jwt-secret-at-least-32-bytes-long
+          RABBITMQ_USERNAME: ci_broker
+          RABBITMQ_PASSWORD: Staging-Broker-Only-Secret-123456
           BACKEND_IMAGE: ghcr.io/cscpratapnagar-ai/cricpulse-backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
           FRONTEND_IMAGE: ghcr.io/cscpratapnagar-ai/cricpulse-ui@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
         run: docker compose -f docker-compose.staging.yml config --quiet
@@ -171,12 +173,16 @@ jobs:
         env:
           POSTGRES_PASSWORD: Preflight-Only-Secret-7c29a4b6
           JWT_SECRET: ci-jwt-secret-at-least-32-bytes-long
+          RABBITMQ_USERNAME: ci_broker
+          RABBITMQ_PASSWORD: Production-Broker-Only-Secret-123456
         run: docker compose -f docker-compose.production.yml config --quiet
 
       - name: Run production release preflight guard
         env:
           POSTGRES_PASSWORD: Preflight-Only-Secret-7c29a4b6
           JWT_SECRET: ci-jwt-secret-at-least-32-bytes-long
+          RABBITMQ_USERNAME: ci_broker
+          RABBITMQ_PASSWORD: Production-Broker-Only-Secret-123456
           BACKEND_TAG: sha-abcdef1
           FRONTEND_TAG: sha-1234567
         run: bash scripts/production-release-preflight.sh
@@ -185,6 +191,8 @@ jobs:
         env:
           POSTGRES_PASSWORD: Preflight-Only-Secret-7c29a4b6
           JWT_SECRET: ci-jwt-secret-at-least-32-bytes-long
+          RABBITMQ_USERNAME: ci_broker
+          RABBITMQ_PASSWORD: Production-Broker-Only-Secret-123456
           BACKEND_TAG: sha-abcdef1
           FRONTEND_TAG: sha-1234567
           BACKEND_IMAGE: ghcr.io/cscpratapnagar-ai/cricpulse-backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -195,6 +203,8 @@ jobs:
         env:
           POSTGRES_PASSWORD: Preflight-Only-Secret-7c29a4b6
           JWT_SECRET: ci-jwt-secret-at-least-32-bytes-long
+          RABBITMQ_USERNAME: ci_broker
+          RABBITMQ_PASSWORD: Production-Broker-Only-Secret-123456
           BACKEND_TAG: sha-abcdef1
           FRONTEND_TAG: sha-1234567
           BACKEND_IMAGE: ghcr.io/cscpratapnagar-ai/cricpulse-backend:sha-abcdef1
@@ -210,6 +220,8 @@ jobs:
         env:
           POSTGRES_PASSWORD: Preflight-Only-Secret-7c29a4b6
           JWT_SECRET: ci-jwt-secret-at-least-32-bytes-long
+          RABBITMQ_USERNAME: ci_broker
+          RABBITMQ_PASSWORD: Production-Broker-Only-Secret-123456
           BACKEND_TAG: main
           FRONTEND_TAG: sha-1234567
         run: |

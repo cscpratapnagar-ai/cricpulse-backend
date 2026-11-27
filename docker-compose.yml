@@ -7,15 +7,29 @@ services:
       POSTGRES_DB: cricket
       POSTGRES_USER: cricket_app
       POSTGRES_PASSWORD: cricket_dev_password
-    ports:
-      - "5432:5432"
-    volumes:
-      - cricket_postgres_data:/var/lib/postgresql/data
+    ports: ["5432:5432"]
+    volumes: [cricket_postgres_data:/var/lib/postgresql/data]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cricket_app -d cricket"]
+      test: ["CMD-SHELL","pg_isready -U cricket_app -d cricket"]
       interval: 5s
       timeout: 5s
       retries: 10
-
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    container_name: cricketpulse-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: cricpulse
+      RABBITMQ_DEFAULT_PASS: local-cricpulse-broker-password
+      RABBITMQ_DEFAULT_VHOST: /
+    command: ["sh","-c","rabbitmq-plugins enable --offline rabbitmq_stomp && rabbitmq-server"]
+    ports:
+      - "127.0.0.1:61613:61613"
+      - "127.0.0.1:15672:15672"
+    healthcheck:
+      test: ["CMD-SHELL","rabbitmq-diagnostics -q ping && rabbitmq-diagnostics -q check_port_connectivity"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
 volumes:
   cricket_postgres_data:
