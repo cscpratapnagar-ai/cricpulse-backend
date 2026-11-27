@@ -2,6 +2,8 @@ package com.cricket.platform.identity;
 
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class JwtServiceTest {
@@ -13,6 +15,17 @@ class JwtServiceTest {
 
         assertEquals("scorer@example.com", jwt.subject(ticket));
         assertEquals("SCORER", jwt.role(ticket));
+    }
+
+    @Test
+    void exposesValidatedExpirationForRevocation() {
+        Instant before = Instant.now();
+        String token = jwt.create("scorer@example.com", "SCORER", 60);
+
+        Instant expiration = jwt.expiresAt(token);
+
+        assertTrue(expiration.isAfter(before.plusSeconds(59)));
+        assertTrue(expiration.isBefore(before.plusSeconds(61)));
     }
 
     @Test
