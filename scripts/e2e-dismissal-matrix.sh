@@ -21,7 +21,12 @@ command -v jq >/dev/null
 command -v psql >/dev/null
 
 tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
+ws_pid=""
+cleanup() {
+  if [[ -n "$ws_pid" ]]; then kill "$ws_pid" 2>/dev/null || true; fi
+  rm -rf "$tmp"
+}
+trap cleanup EXIT
 
 login_token() {
   local email="$1" jar="$2" csrf token
@@ -97,6 +102,23 @@ run_matrix_match() {
 
   local current_striker="$STRIKER_ID" current_non="$NON_STRIKER_ID"
   local replacement="$NEW_BATTER_ID" wicket_index=1 wicket_type fielder dismissed next_batter
+
+  local ws_url="${BASE_URL%/api}/ws"
+  ws_url="${ws_url/http:\/\//ws:\/\/}"
+  ws_url="${ws_url/https:\/\//wss:\/\/}"
+  export WS_URL="$ws_url" BASE_URL INNINGS_ID="$innings_id"
+  export WS_READY_FILE="$tmp/ws-ready" WS_DONE_FILE="$tmp/ws-done" WS_OUTPUT_FILE="$tmp/ws-result.json"
+  export EXPECTED_DISMISSALS
+  EXPECTED_DISMISSALS="$(jq -nc --arg a "$first_type" --arg b "$second_type" --arg first "$STRIKER_ID" --arg second "$NEW_BATTER_ID" '[{wicketType:$a,dismissedPlayerId:$first},{wicketType:$b,dismissedPlayerId:$second}]')"
+  node scripts/e2e-dismissal-stomp-monitor.mjs >"$tmp/ws.log" 2>&1 &
+  ws_pid=$!
+  for attempt in {1..150}; do
+    [[ -f "$WS_READY_FILE" ]] && break
+    if ! kill -0 "$ws_pid" 2>/dev/null; then cat "$tmp/ws.log" >&2; exit 1; fi
+    sleep 0.1
+  done
+  [[ -f "$WS_READY_FILE" ]] || { echo "STOMP dismissal subscriber did not become ready" >&2; cat "$tmp/ws.log" >&2; exit 1; }
+
   for wicket_type in "$first_type" "$second_type"; do
     if [[ "$wicket_index" -eq 1 ]]; then
       dismissed="$current_striker"
@@ -117,6 +139,13 @@ run_matrix_match() {
     wicket_index=$((wicket_index+1))
   done
 
+  for attempt in {1..450}; do [[ -f "$WS_DONE_FILE" ]] && break; sleep 0.1; done
+  if [[ ! -f "$WS_DONE_FILE" ]]; then echo "STOMP dismissal verification timed out" >&2; cat "$tmp/ws.log" >&2; exit 1; fi
+  wait "$ws_pid"
+  ws_pid=""
+  cat "$tmp/ws.log"
+  jq -e '.ok == true' "$WS_OUTPUT_FILE" >/dev/null
+
   score="$(request "$token_a" GET "$BASE_URL/scoring/innings/$innings_id")"
   public_score="$(curl -fsS "$BASE_URL/public/innings/$innings_id")"
   broadcast="$(curl -fsS "$BASE_URL/public/matches/$match_id/broadcast-state")"
@@ -125,7 +154,10 @@ run_matrix_match() {
   assert_eq "$match_label wicket count" "$(jq -r '.wickets' <<<"$score")" "2"
   assert_eq "$match_label legal balls" "$(jq -r '.legalBalls' <<<"$score")" "2"
   assert_eq "$match_label final striker replacement" "$(jq -r '.strikerId' <<<"$score")" "$FINAL_BATTER_ID"
-  assert_eq "$match_label bowler wicket credits" "$(jq -r --arg id "$BOWLER_ID" '.bowlers[] | select(.playerId==$id) | .wickets' <<<"$score")" "2"
+  local expected_bowler_wickets=2
+  [[ "$first_type" == "RUN_OUT" ]] && expected_bowler_wickets=1
+  [[ "$second_type" == "RUN_OUT" ]] && expected_bowler_wickets=$((expected_bowler_wickets-1))
+  assert_eq "$match_label bowler wicket credits" "$(jq -r --arg id "$BOWLER_ID" '.bowlers[] | select(.playerId==$id) | .wickets' <<<"$score")" "$expected_bowler_wickets"
   assert_eq "$match_label bowler economy" "$(jq -r --arg id "$BOWLER_ID" '.bowlers[] | select(.playerId==$id) | .economy' <<<"$score")" "0.00"
   assert_eq "$match_label fall of wickets" "$(jq -r '.fallOfWickets | length' <<<"$score")" "2"
   assert_eq "$match_label second partnership reset" "$(jq -r '.partnership.runs' <<<"$score")/$(jq -r '.partnership.balls' <<<"$score")" "0/0"
@@ -142,9 +174,11 @@ run_matrix_match() {
   echo "PASS: $match_label API, PostgreSQL, scorecard, bowler figures, fielder and public projection certification"
 }
 
-# Two isolated matches, two wickets each. The bowler is also the named fielder
-# for Caught (caught-and-bowled) and the selected wicketkeeper for Stumped.
+# Each match is observed live over anonymous public STOMP before the first wicket.
+# The third scenario explicitly dismisses the striker by Run Out; Task #169 covers
+# the non-striker Run Out and crossing/replacement path.
 run_matrix_match "Caught-LBW" "CAUGHT" "LBW" "$BOWLER_ID" ""
 run_matrix_match "Stumped-HitWicket" "STUMPED" "HIT_WICKET" "$BOWLER_ID" ""
+run_matrix_match "Striker-RunOut-Caught" "RUN_OUT" "CAUGHT" "" "$BOWLER_ID"
 
-echo "PASS: Task #170 Caught, LBW, Stumped and Hit Wicket real API dismissal matrix"
+echo "PASS: Task #171 live STOMP dismissal matrix, striker Run Out and reconnect snapshot recovery"
