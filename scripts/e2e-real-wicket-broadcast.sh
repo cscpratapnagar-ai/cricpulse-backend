@@ -147,7 +147,8 @@ assert_eq "public REST score parity" "$(jq -r '"\(.runs)/\(.wickets)/\(.legalBal
 assert_eq "broadcast Match Centre score parity" "$(jq -r --arg id "$innings_id" '[.innings[] | select(.score.inningsId==$id) | .score | "\(.runs)/\(.wickets)/\(.legalBalls)/\(.eventVersion)"] | first' <<<"$broadcast")" "$(jq -r '"\(.runs)/\(.wickets)/\(.legalBalls)/\(.eventVersion)"' <<<"$score")"
 assert_eq "scorecard innings contains RUN_OUT" "$(jq -r --arg id "$NON_STRIKER_ID" '[.[] | select(.inningsNumber==1) | .batting[]? | select(.playerId==$id and .dismissal=="RUN_OUT")] | length' <<<"$scorecard")" "1"
 assert_eq "scorecard innings contains BOWLED" "$(jq -r --arg id "$NEW_BATTER_ID" '[.[] | select(.inningsNumber==1) | .batting[]? | select(.playerId==$id and .dismissal=="BOWLED")] | length' <<<"$scorecard")" "1"
-assert_eq "scorecard bowler does not get Run Out credit" "$(jq -r --arg id "$BOWLER_ID" '[.[] | select(.inningsNumber==1) | .bowling[]? | select(.playerId==$id) | .wickets] | first' <<<"$scorecard")" "0"
+assert_eq "scorecard bowler gets only the Bowled wicket credit" "$(jq -r --arg id "$BOWLER_ID" '[.[] | select(.inningsNumber==1) | .bowling[]? | select(.playerId==$id) | .wickets] | first' <<<"$scorecard")" "1"
+assert_eq "scorecard bowler economy" "$(jq -r --arg id "$BOWLER_ID" '[.[] | select(.inningsNumber==1) | .bowling[]? | select(.playerId==$id) | .economy] | first' <<<"$scorecard")" "3.00"
 
 echo "[7/7] Verify STOMP delivery and reconnect snapshot recovery"
 for attempt in {1..200}; do [[ -f "$WS_DONE_FILE" ]] && break; sleep 0.1; done
