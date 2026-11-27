@@ -28,14 +28,17 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
     private final JdbcTemplate jdbc;
     private final SessionRegistryService sessions;
     private final ActiveWebSocketSessions activeSockets;
+    private final boolean relayEnabled;
 
     @Autowired
     public WebSocketSecurityInterceptor(JwtService jwtService, JdbcTemplate jdbc,
-            SessionRegistryService sessions, ActiveWebSocketSessions activeSockets) {
+            SessionRegistryService sessions, ActiveWebSocketSessions activeSockets,
+            @org.springframework.beans.factory.annotation.Value("${app.websocket.broker-relay.enabled:false}") boolean relayEnabled) {
         this.jwtService = jwtService;
         this.jdbc = jdbc;
         this.sessions = sessions;
         this.activeSockets = activeSockets;
+        this.relayEnabled = relayEnabled;
     }
 
     WebSocketSecurityInterceptor(JwtService jwtService, JdbcTemplate jdbc) {
@@ -43,6 +46,7 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
         this.jdbc = jdbc;
         this.sessions = null;
         this.activeSockets = null;
+        this.relayEnabled = false;
     }
 
     @Override
@@ -74,7 +78,10 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
             String destination = accessor.getDestination();
             UUID inningsId = inningsId(destination);
             if (inningsId == null) throw new IllegalArgumentException("Invalid live match subscription destination");
-            if (destination.startsWith(PUBLIC_TOPIC_PREFIX)) return message;
+            if (destination.startsWith(PUBLIC_TOPIC_PREFIX)) {
+                rewriteRabbitTopicDestination(accessor, inningsId, true);
+                return message;
+            }
 
             if (authentication == null || !authentication.isAuthenticated()) {
                 throw new IllegalArgumentException("WebSocket authentication is required");
@@ -82,6 +89,7 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
             if (!canViewInnings(authentication, inningsId)) {
                 throw new IllegalArgumentException("You are not authorized to subscribe to this live match");
             }
+            rewriteRabbitTopicDestination(accessor, inningsId, false);
         }
         return message;
     }
@@ -127,6 +135,13 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
         } catch (IllegalArgumentException ex) {
             return null;
         }
+    }
+
+    private void rewriteRabbitTopicDestination(StompHeaderAccessor accessor, UUID inningsId, boolean isPublic) {
+        if (!relayEnabled) return;
+        accessor.setDestination(isPublic
+                ? "/topic/public.innings." + inningsId
+                : "/topic/innings." + inningsId);
     }
 
     private boolean canViewInnings(Authentication authentication, UUID inningsId) {
