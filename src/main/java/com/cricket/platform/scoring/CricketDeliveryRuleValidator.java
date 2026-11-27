@@ -51,6 +51,32 @@ public final class CricketDeliveryRuleValidator {
         if (command.wicketType() != null && command.dismissedPlayerId() == null) {
             throw new IllegalArgumentException("Dismissed player is required for a wicket");
         }
+        if (command.wicketType() != null) {
+            validateDismissedPlayer(command.strikerId(), command.nonStrikerId(),
+                    command.dismissedPlayerId(), command.wicketType());
+        }
+    }
+
+    public static void validateDismissedPlayer(
+            java.util.UUID strikerId,
+            java.util.UUID nonStrikerId,
+            java.util.UUID dismissedPlayerId,
+            String wicketType) {
+        if (dismissedPlayerId == null) {
+            throw new IllegalArgumentException("Dismissed player is required for a wicket");
+        }
+        if (dismissedPlayerId.equals(strikerId)) {
+            return;
+        }
+        if (!dismissedPlayerId.equals(nonStrikerId)) {
+            throw new IllegalArgumentException(
+                    "Dismissed player must be the current striker or non-striker");
+        }
+        if (!WicketType.RUN_OUT.name().equals(wicketType)
+                && !WicketType.OBSTRUCTING_THE_FIELD.name().equals(wicketType)) {
+            throw new IllegalArgumentException(
+                    wicketType + " can only dismiss the striker, not the non-striker");
+        }
     }
 
     public static void validateWicketDelivery(String wicketType, String extraType) {
