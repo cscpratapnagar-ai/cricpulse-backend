@@ -91,16 +91,24 @@ login_token() {
   curl_json POST "$BASE_URL/auth/login" "$(jq -nc --arg e "$1" --arg p "$PASSWORD" '{email:$e,password:$p}')" >/dev/null
   awk '$6 == "CRICPULSE_ACCESS" { print $7 }' "$COOKIE_JAR" | tail -n 1
 }
+# Keep each profile lookup on the exact cookie session that just logged in.
+# Reusing one cookie jar while alternating identities can leave a different
+# account's cookie attached to a request that is meant to validate another user.
+cookie_profile() {
+  refresh_csrf
+  curl_json POST "$BASE_URL/auth/login" "$(jq -nc --arg e "$1" --arg p "$PASSWORD" '{email:$e,password:$p}')" >/dev/null
+  curl -fsS -b "$COOKIE_JAR" "$BASE_URL/players/me"
+}
 OWNER_A_TOKEN="$(login_token "$OWNER_A_EMAIL")"; OWNER_B_TOKEN="$(login_token "$OWNER_B_EMAIL")"
 test -n "$OWNER_A_TOKEN" && test "$OWNER_A_TOKEN" != null; test -n "$OWNER_B_TOKEN" && test "$OWNER_B_TOKEN" != null
 AUTH_A=(-H "Authorization: Bearer $OWNER_A_TOKEN"); AUTH_B=(-H "Authorization: Bearer $OWNER_B_TOKEN")
 
-OWNER_A_PROFILE="$(curl_api "${AUTH_A[@]}" "$BASE_URL/players/me")"
-PLAYER_A_PROFILE="$(curl_api -H "Authorization: Bearer $(login_token "$PLAYER_A_EMAIL")" "$BASE_URL/players/me")"
-PLAYER_A2_PROFILE="$(curl_api -H "Authorization: Bearer $(login_token "$PLAYER_A2_EMAIL")" "$BASE_URL/players/me")"
-PLAYER_A3_PROFILE="$(curl_api -H "Authorization: Bearer $(login_token "$PLAYER_A3_EMAIL")" "$BASE_URL/players/me")"
-OWNER_B_PROFILE="$(curl_api "${AUTH_B[@]}" "$BASE_URL/players/me")"
-PLAYER_B_PROFILE="$(curl_api -H "Authorization: Bearer $(login_token "$PLAYER_B_EMAIL")" "$BASE_URL/players/me")"
+OWNER_A_PROFILE="$(cookie_profile "$OWNER_A_EMAIL")"
+PLAYER_A_PROFILE="$(cookie_profile "$PLAYER_A_EMAIL")"
+PLAYER_A2_PROFILE="$(cookie_profile "$PLAYER_A2_EMAIL")"
+PLAYER_A3_PROFILE="$(cookie_profile "$PLAYER_A3_EMAIL")"
+OWNER_B_PROFILE="$(cookie_profile "$OWNER_B_EMAIL")"
+PLAYER_B_PROFILE="$(cookie_profile "$PLAYER_B_EMAIL")"
 OWNER_A_PLAYER_ID="$(jq -r '.id' <<<"$OWNER_A_PROFILE")"; PLAYER_A_ID="$(jq -r '.id' <<<"$PLAYER_A_PROFILE")"; PLAYER_A2_ID="$(jq -r '.id' <<<"$PLAYER_A2_PROFILE")"; PLAYER_A3_ID="$(jq -r '.id' <<<"$PLAYER_A3_PROFILE")"
 OWNER_B_PLAYER_ID="$(jq -r '.id' <<<"$OWNER_B_PROFILE")"; PLAYER_B_ID="$(jq -r '.id' <<<"$PLAYER_B_PROFILE")"
 
